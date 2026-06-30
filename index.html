@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>FSCC v14 — Sanatorio Parque</title>
+<title>FSCC v18 — Sanatorio Parque</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap" rel="stylesheet" />
 <style>
@@ -1743,6 +1743,23 @@ function pushNotifMant(titulo, detalle, mantId){
   renderNotifPanel();
 }
 
+function pushNotifMantNueva(titulo, detalle, mantId){
+  // Notificación de nueva solicitud de Mantenimiento → solo admin
+  const notif={
+    id:Date.now()+Math.random(),
+    tipo:'mant_nueva', titulo, detalle, taskId:null, mantId,
+    ts:nowISO(),
+    leida:false,
+    targets:['admin']
+  };
+  notifications.unshift(notif);
+  if(notifications.length>100)notifications=notifications.slice(0,100);
+  LS.set('fscc_notif',notifications);
+  fbSave('fscc_notif',notifications).catch(()=>{});
+  updateBell();
+  renderNotifPanel();
+}
+
 function getMyNotifs(){
   if(!currentUser)return[];
   if(currentUser.rol==='admin'||currentUser.rol==='supervisor'){
@@ -1771,8 +1788,8 @@ function renderNotifPanel(){
   const mine=getMyNotifs();
   if(!mine.length){el.innerHTML='<div class="notif-empty">Sin notificaciones.</div>';return;}
   el.innerHTML=mine.map(n=>{
-    const dotCls=n.tipo==='completed'?'green':n.tipo==='incident'?'red':n.tipo==='mant_respuesta'?'blue':'';
-    const icon=n.tipo==='completed'?'✅':n.tipo==='incident'?'⚠️':n.tipo==='mant_respuesta'?'🔧':'🔔';
+    const dotCls=n.tipo==='completed'?'green':n.tipo==='incident'?'red':(n.tipo==='mant_respuesta'||n.tipo==='mant_nueva')?'blue':'';
+    const icon=n.tipo==='completed'?'✅':n.tipo==='incident'?'⚠️':(n.tipo==='mant_respuesta'||n.tipo==='mant_nueva')?'🔧':'🔔';
     return`<div class="notif-item${n.leida?'':' unread'}" onclick="markNotifRead('${n.id}')">
       <div class="notif-dot ${dotCls}"></div>
       <div class="notif-item-body">
@@ -1788,7 +1805,7 @@ function markNotifRead(id){
   const n=notifications.find(x=>String(x.id)===String(id));
   if(n)n.leida=true;
   saveAll();updateBell();renderNotifPanel();
-  if(n && n.tipo==='mant_respuesta'){
+  if(n && (n.tipo==='mant_respuesta'||n.tipo==='mant_nueva')){
     toggleNotifPanel({stopPropagation:()=>{}});
     const tab=document.getElementById('tabMant');
     if(tab) switchView('mantenimiento', tab);
@@ -2300,7 +2317,10 @@ function renderSvOperarios(){
             <span style="font-family:var(--mono);font-size:13px;font-weight:600;color:var(--${clsP});">${pct}%</span>
           </div>
           <div style="font-family:var(--mono);font-size:10px;color:var(--text3);margin-bottom:6px;">${ok}/${tareas.length} cumplidas</div>
-          <button class="op-hist-btn" onclick="openHistOperario('${opEscaped}')">📊 Ver historial</button>
+          <div style="display:flex;gap:6px;justify-content:flex-end;">
+            <button class="op-hist-btn" onclick="openHistOperario('${opEscaped}')">📊 Historial</button>
+            <button class="op-hist-btn" onclick="openReporteOperarioModal('${opEscaped}')">📄 Reporte</button>
+          </div>
         </div>
       </div>
       <div class="op-worker-body">${taskRows}</div>
@@ -2992,6 +3012,147 @@ function printSectorReport(sector,filtro){
   w.document.open();w.document.write(html);w.document.close();
   w.onload=()=>{w.focus();w.print();};
   audit(`Planilla impresa: ${sector}`,'','tarea');saveAll();
+}
+
+// ═══════════════════════════════════════════════════
+//  REPORTE PDF POR OPERARIO
+// ═══════════════════════════════════════════════════
+let _repOpNombre = null;
+
+function openReporteOperarioModal(opNombre){
+  _repOpNombre = opNombre;
+  document.getElementById('repOpTitle').textContent = 'Reporte de ' + opNombre;
+  const t = today();
+  document.getElementById('repOpDesde').value = t;
+  document.getElementById('repOpHasta').value = t;
+  document.getElementById('modalReporteOperario').classList.add('open');
+}
+
+function setRepOpRango(tipo){
+  const r = getDateRange(tipo);
+  if(!r) return;
+  document.getElementById('repOpDesde').value = r.from;
+  document.getElementById('repOpHasta').value = r.to;
+}
+
+function buildReporteOperarioHTML(opNombre, desde, hasta){
+  const now = new Date();
+  const ts = now.toLocaleDateString('es-AR',{weekday:'long',year:'numeric',month:'long',day:'numeric'})+' — '+now.toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+
+  // Tareas del operario en el rango
+  const tareasOp = tasks.filter(t => t.responsable===opNombre && t.fechaReg>=desde && t.fechaReg<=hasta);
+  const total = tareasOp.length;
+  const ok = tareasOp.filter(t=>t.estado==='Cumplido').length;
+  const noR = tareasOp.filter(t=>t.estado==='No realizada').length;
+  const pend = tareasOp.filter(t=>t.estado==='Pendiente'||t.estado==='Vencido').length;
+  const pct = total?Math.round(ok/total*100):0;
+
+  // HACCP del operario en el rango
+  const haccpOp = haccpLogs.filter(l => l.operario===opNombre && l.fecha>=desde && l.fecha<=hasta);
+  const haccpNoConf = haccpOp.filter(l=>l.conformidad==='no-conforme').length;
+
+  // Usuario / rol
+  const userObj = users.find(u=>u.nombre===opNombre);
+  const _rolLabels = {admin:'Admin',supervisor:'Supervisor',operario:'Operario',cubre:'Cubre'};
+  const rolLabel = userObj ? (_rolLabels[userObj.rol]||userObj.rol) : '—';
+  const sectores = userObj && userObj.sectores && userObj.sectores.length ? userObj.sectores.join(', ') : (userObj && userObj.cubreSector ? userObj.cubreSector : [...new Set(tareasOp.map(t=>t.sector))].join(', '));
+
+  const periodoLabel = desde===hasta ? fmtDate(desde) : fmtDate(desde)+' — '+fmtDate(hasta);
+
+  const tareaRows = tareasOp.map(t=>{
+    const ec=t.estado==='Cumplido'?'#1a7a4a':t.estado==='No realizada'?'#b02020':t.estado==='Pendiente'?'#a05c10':'#b02020';
+    const eb=t.estado==='Cumplido'?'#e6f4ed':t.estado==='No realizada'?'#fde8e8':t.estado==='Pendiente'?'#fdf0e0':'#fde8e8';
+    const incid = t.incidencia ? `<div style="font-size:10px;color:#b02020;margin-top:2px;">⚠ ${t.incidencia.motivo}: ${t.incidencia.desc||''}</div>` : '';
+    return `<tr><td>${fmtDate(t.fechaReg)}</td><td>${t.sector}</td><td>${t.tipo}</td><td>${t.turno}</td>
+      <td><span style="background:${eb};color:${ec};padding:2px 8px;border-radius:3px;font-size:11px;font-weight:600">${t.estado}</span></td>
+      <td style="font-size:11px">${t.horaRegistro?fmtDatetime(t.horaRegistro).split(' ')[1]:'—'}</td>
+      <td style="font-size:11px">${t.obs||'—'}${incid}</td></tr>`;
+  }).join('');
+
+  const haccpRows = haccpOp.map(l=>{
+    const ec = l.conformidad==='conforme'?'#1a7a4a':'#b02020';
+    const eb = l.conformidad==='conforme'?'#e6f4ed':'#fde8e8';
+    return `<tr><td>${fmtDate(l.fecha)}</td><td>${l.pcc}</td><td>${l.sector}</td>
+      <td style="font-size:11px">${l.valor!==null&&l.valor!==undefined?l.valor+' '+(l.unidad||''):'—'}</td>
+      <td><span style="background:${eb};color:${ec};padding:2px 8px;border-radius:3px;font-size:11px;font-weight:600">${l.conformidad==='conforme'?'Conforme':'No conforme'}</span></td>
+      <td style="font-size:11px">${l.accionCorrectiva||l.obs||'—'}</td></tr>`;
+  }).join('');
+
+  return {html:`<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"/><title>Reporte ${opNombre}</title>
+<style>body{font-family:'Segoe UI',sans-serif;margin:0;background:#f5f4f0;}
+.cover{background:#1a2744;color:#fff;padding:1.5rem 2rem;border-bottom:3px solid #c4922a;}
+.cover h1{font-size:16px;font-weight:600;margin:0 0 2px;}.cover .sub{font-size:11px;color:rgba(255,255,255,.5);}
+.cover .meta{font-size:12px;color:rgba(255,255,255,.65);margin-top:8px;display:flex;gap:20px;flex-wrap:wrap;}
+.metrics{display:flex;gap:10px;padding:1rem 2rem;background:#ebebE6;flex-wrap:wrap;}
+.m{background:#fff;border-radius:6px;padding:10px 14px;min-width:90px;}
+.ml{font-size:10px;color:#9a9995;text-transform:uppercase;margin-bottom:3px;}
+.mv{font-size:20px;font-weight:600;}.ok{color:#1a7a4a}.warn{color:#a05c10}.danger{color:#b02020}
+.content{padding:1rem 2rem;}
+.sec-title{font-size:12px;font-weight:700;color:#1a2744;text-transform:uppercase;letter-spacing:.04em;margin:18px 0 8px;border-bottom:2px solid #c4922a;padding-bottom:4px;}
+table{width:100%;border-collapse:collapse;font-size:12px;background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.06);}
+thead th{background:#1a2744;color:#fff;padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.05em;}
+tbody tr{border-bottom:1px solid #e4e3dd;}tbody td{padding:7px 10px;vertical-align:middle;}
+.empty-msg{text-align:center;padding:16px;color:#9a9995;font-size:12px;background:#fff;border-radius:8px;}
+.firma-box{margin-top:2.5rem;padding:0 2rem 1.5rem;display:flex;gap:40px;justify-content:space-around;}
+.firma-slot{flex:1;text-align:center;}
+.firma-line{border-top:1px solid #444;margin-top:50px;padding-top:6px;font-size:11px;color:#444;}
+.footer{text-align:center;font-size:10px;color:#9a9995;padding:1rem;}
+@media print{body{background:#fff;}.cover,thead{-webkit-print-color-adjust:exact;print-color-adjust:exact;}}
+</style></head><body>
+<div class="cover"><div class="sub">Sanatorio Parque — Food Service Control Center</div>
+<h1>REPORTE DE DESEMPEÑO: ${opNombre.toUpperCase()}</h1>
+<div class="meta"><span>📍 ${sectores||'—'}</span><span>👤 ${rolLabel}</span><span>📅 Período: ${periodoLabel}</span></div></div>
+<div class="metrics">
+  <div class="m"><div class="ml">Tareas totales</div><div class="mv">${total}</div></div>
+  <div class="m"><div class="ml">Cumplidas</div><div class="mv ok">${ok}</div></div>
+  <div class="m"><div class="ml">No realizadas</div><div class="mv danger">${noR}</div></div>
+  <div class="m"><div class="ml">Pendientes</div><div class="mv warn">${pend}</div></div>
+  <div class="m"><div class="ml">Cumplimiento</div><div class="mv ${pct>=80?'ok':pct>=50?'warn':'danger'}">${pct}%</div></div>
+  <div class="m"><div class="ml">No conf. HACCP</div><div class="mv ${haccpNoConf?'danger':'ok'}">${haccpNoConf}</div></div>
+</div>
+<div class="content">
+  <div class="sec-title">Tareas de limpieza y mantenimiento</div>
+  <table>
+    <thead><tr><th>Fecha</th><th>Sector</th><th>Tarea</th><th>Turno</th><th>Estado</th><th>Hora</th><th>Observaciones</th></tr></thead>
+    <tbody>${tareaRows||'<tr><td colspan="7" style="text-align:center;padding:16px;color:#9a9995">Sin tareas registradas en el período</td></tr>'}</tbody>
+  </table>
+
+  <div class="sec-title">Registros HACCP / CAA</div>
+  ${haccpOp.length?`<table>
+    <thead><tr><th>Fecha</th><th>PCC</th><th>Sector</th><th>Valor</th><th>Conformidad</th><th>Acción correctiva</th></tr></thead>
+    <tbody>${haccpRows}</tbody>
+  </table>`:'<div class="empty-msg">Sin registros HACCP en el período</div>'}
+
+  <div class="firma-box">
+    <div class="firma-slot"><div class="firma-line">Firma del operario — ${opNombre}</div></div>
+    <div class="firma-slot"><div class="firma-line">Firma de supervisión — ${currentUser?currentUser.nombre:''}</div></div>
+  </div>
+</div>
+<div class="footer">FOOD SERVICE CONTROL CENTER · SANATORIO PARQUE · Generado el ${ts}</div></body></html>`,now};
+}
+
+function generarReporteOperario(modo){
+  const opNombre = _repOpNombre;
+  if(!opNombre) return;
+  const desde = document.getElementById('repOpDesde').value;
+  const hasta = document.getElementById('repOpHasta').value;
+  if(!desde || !hasta){alert('Seleccioná el rango de fechas.');return;}
+  if(desde > hasta){alert('La fecha "Desde" no puede ser posterior a "Hasta".');return;}
+
+  const {html, now} = buildReporteOperarioHTML(opNombre, desde, hasta);
+
+  if(modo === 'print'){
+    const w = window.open('','_blank');
+    if(!w){alert('El navegador bloqueó la ventana de impresión. Habilitá pop-ups para este sitio.');return;}
+    w.document.open();w.document.write(html);w.document.close();
+    w.onload=()=>{w.focus();w.print();};
+    audit(`Reporte operario impreso: ${opNombre}`,`${desde} a ${hasta}`,'tarea');
+  } else {
+    dlBlob(html,'text/html','Reporte_'+opNombre.replace(/\s+/g,'_')+'_'+now.toISOString().slice(0,10)+'.html');
+    audit(`Reporte operario descargado: ${opNombre}`,`${desde} a ${hasta}`,'tarea');
+  }
+  saveAll();
+  closeModal('modalReporteOperario');
 }
 
 // ═══════════════════════════════════════════════════
@@ -3911,7 +4072,7 @@ function saveMantSolicitud(){
     };
     mantSolicitudes.unshift(sol);
     audit(`Solicitud mant. creada: ${sector}`, `${tipo} — ${prioridad}`, 'sistema');
-    pushNotif('incident', '🔧 Nueva solicitud Mantenimiento', `${sector}: ${tipo} (${prioridad})`, null);
+    pushNotifMantNueva('🔧 Nueva solicitud de Mantenimiento', `${sector}: ${tipo} (${prioridad}) — por ${sol.solicitante}`, sol.id);
   }
 
   saveMant();
@@ -4079,7 +4240,7 @@ function exportMantCSV(){
 function autoBackupJSON(){
   try {
     const backup = {
-      version: 'FSCC-v14',
+      version: 'FSCC-v18',
       fecha: new Date().toISOString(),
       generadoPor: currentUser ? currentUser.nombre : '—',
       cfg, tasks, users,
@@ -4349,6 +4510,29 @@ loadData();
     <div class="form-actions" style="margin-top:16px;">
       <button class="btn btn-ghost" onclick="closeModal('modalHistOperario')">Cerrar</button>
       <button class="btn btn-outline" onclick="exportHistOperarioCSV()">⬇ Exportar CSV</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Reporte PDF Operario -->
+<div class="modal-bg" id="modalReporteOperario">
+  <div class="modal-box">
+    <button class="modal-close" onclick="closeModal('modalReporteOperario')">✕</button>
+    <div class="modal-title" id="repOpTitle">Reporte de operario</div>
+    <div class="modal-sub">Seleccioná el período del reporte.</div>
+    <div class="form-grid" style="margin:14px 0;">
+      <div class="fg"><label>Desde</label><input type="date" id="repOpDesde" /></div>
+      <div class="fg"><label>Hasta</label><input type="date" id="repOpHasta" /></div>
+    </div>
+    <div style="display:flex;gap:6px;margin-bottom:16px;flex-wrap:wrap;">
+      <button class="btn btn-ghost btn-sm" onclick="setRepOpRango('hoy')">Hoy</button>
+      <button class="btn btn-ghost btn-sm" onclick="setRepOpRango('semana')">Esta semana</button>
+      <button class="btn btn-ghost btn-sm" onclick="setRepOpRango('mes')">Este mes</button>
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-ghost" onclick="closeModal('modalReporteOperario')">Cancelar</button>
+      <button class="btn btn-outline" onclick="generarReporteOperario('print')">🖨 Imprimir / PDF</button>
+      <button class="btn btn-primary" onclick="generarReporteOperario('download')">⬇ Descargar</button>
     </div>
   </div>
 </div>
