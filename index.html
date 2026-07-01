@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>FSCC v21 — Sanatorio Parque</title>
+<title>FSCC v22 — Sanatorio Parque</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap" rel="stylesheet" />
 <style>
@@ -511,6 +511,7 @@ tbody td{padding:8px 10px;vertical-align:middle;}
       </div>
       <div class="toolbar-r">
         <button class="btn btn-ghost" onclick="printSvReport()">🖨 Imprimir</button>
+        <button class="btn btn-ghost" onclick="openTareaExtraModal()">➕ Nueva tarea</button>
         <button class="btn btn-outline" onclick="toggleSvForm()" id="btnSvToggle">+ Asignar tarea</button>
       </div>
     </div>
@@ -1087,6 +1088,50 @@ tbody td{padding:8px 10px;vertical-align:middle;}
     <div class="form-actions">
       <button class="btn btn-ghost" onclick="closeModal('modalEdit')">Cancelar</button>
       <button class="btn btn-primary" onclick="saveEdit()">Guardar cambios</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ MODAL REASIGNAR TAREA ══ -->
+<div class="modal-bg" id="modalReasignar" onclick="handleModalClick(event,'modalReasignar')">
+  <div class="modal-box">
+    <button class="modal-close" onclick="closeModal('modalReasignar')">✕</button>
+    <div class="modal-title">Reasignar tarea</div>
+    <div class="modal-sub" id="reasignarSubtitle"></div>
+    <div style="margin:16px 0;">
+      <div class="fg"><label>Asignar a</label><select id="reasignarOperario"></select></div>
+      <div class="fg"><label>Turno</label><select id="reasignarTurno"></select></div>
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-ghost" onclick="closeModal('modalReasignar')">Cancelar</button>
+      <button class="btn btn-primary" onclick="confirmarReasignar()">Reasignar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ MODAL TAREA EXTRA ══ -->
+<div class="modal-bg" id="modalTareaExtra" onclick="handleModalClick(event,'modalTareaExtra')">
+  <div class="modal-box">
+    <button class="modal-close" onclick="closeModal('modalTareaExtra')">✕</button>
+    <div class="modal-title">➕ Nueva tarea</div>
+    <div class="modal-sub">Creá una tarea no habitual y asignala a un operario.</div>
+    <div class="form-grid" style="margin:14px 0;">
+      <div class="fg"><label>Descripción</label><input type="text" id="teDesc" placeholder="Ej: Limpiar campana extractora" /></div>
+      <div class="fg"><label>Sector</label><select id="teSector"></select></div>
+      <div class="fg"><label>Asignar a</label><select id="teOperario"></select></div>
+      <div class="fg"><label>Turno</label><select id="teTurno"></select></div>
+      <div class="fg"><label>Prioridad</label>
+        <select id="tePrioridad">
+          <option value="normal">Normal</option>
+          <option value="alta">Alta 🟡</option>
+          <option value="urgente">Urgente 🔴</option>
+        </select>
+      </div>
+      <div class="fg"><label>Observaciones <span style="font-size:10px;color:var(--text3)">(opcional)</span></label><input type="text" id="teObs" placeholder="Indicaciones adicionales..." /></div>
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-ghost" onclick="closeModal('modalTareaExtra')">Cancelar</button>
+      <button class="btn btn-primary" onclick="guardarTareaExtra()">Crear tarea</button>
     </div>
   </div>
 </div>
@@ -2447,6 +2492,7 @@ function renderSupervisor(){
         <div class="sv-task-turno">${t.turno}</div>
         <div class="sv-task-estado"><span class="badge ${ec}">${t.estado}</span></div>
         <div class="sv-task-hora">${t.horaRegistro?fmtDatetime(t.horaRegistro).split(' ')[1]:'—'}</div>
+        ${t.estado!=='Cumplido'?`<button class="btn btn-ghost btn-sm" style="font-size:10px;padding:2px 7px;" onclick="openReasignarModal(${t.id})">↔ Reasignar</button>`:''}
       </div>`;
     }).join('');
 
@@ -2653,6 +2699,86 @@ function printSvReport(){
   w.document.open();w.document.write(html);w.document.close();
   w.onload=()=>{w.focus();w.print();};
   audit('Reporte de supervisión impreso','','tarea');saveAll();
+}
+
+// ═══════════════════════════════════════════════════
+//  REASIGNACIÓN DE TAREAS
+// ═══════════════════════════════════════════════════
+let _reasignarTaskId = null;
+
+function openReasignarModal(taskId){
+  const t = tasks.find(x=>x.id===taskId);
+  if(!t) return;
+  _reasignarTaskId = taskId;
+  document.getElementById('reasignarSubtitle').textContent = t.sector+' — '+t.tipo+' ('+t.turno+')';
+
+  // Llenar select de operarios
+  const selOp = document.getElementById('reasignarOperario');
+  const operarios = users.filter(u=>u.rol==='operario'||u.rol==='cubre');
+  selOp.innerHTML = operarios.map(u=>`<option value="${u.nombre}" ${u.nombre===t.responsable?'selected':''}>${u.nombre}</option>`).join('');
+
+  // Llenar select de turno
+  const selT = document.getElementById('reasignarTurno');
+  selT.innerHTML = (cfg.turnos||['Mañana','Tarde']).map(tr=>`<option value="${tr}" ${tr===t.turno?'selected':''}>${tr}</option>`).join('');
+
+  document.getElementById('modalReasignar').classList.add('open');
+}
+
+function confirmarReasignar(){
+  const t = tasks.find(x=>x.id===_reasignarTaskId);
+  if(!t) return;
+  const nuevoResp = document.getElementById('reasignarOperario').value;
+  const nuevoTurno = document.getElementById('reasignarTurno').value;
+  const anterior = t.responsable;
+  t.responsable = nuevoResp;
+  t.turno = nuevoTurno;
+  t.asignadoPor = currentUser.nombre;
+  audit(`Tarea reasignada: ${t.sector} — ${t.tipo}`, `${anterior} → ${nuevoResp} (${nuevoTurno})`, 'tarea');
+  saveAll(); closeModal('modalReasignar'); renderAll();
+}
+
+// ═══════════════════════════════════════════════════
+//  TAREA EXTRA (modal simplificado)
+// ═══════════════════════════════════════════════════
+function openTareaExtraModal(){
+  // Llenar selects
+  const selSec = document.getElementById('teSector');
+  selSec.innerHTML = cfg.sectores.map(s=>`<option value="${s}">${s}</option>`).join('');
+  const selOp = document.getElementById('teOperario');
+  const operarios = users.filter(u=>u.rol==='operario'||u.rol==='cubre');
+  selOp.innerHTML = operarios.map(u=>`<option value="${u.nombre}">${u.nombre}</option>`).join('');
+  const selT = document.getElementById('teTurno');
+  selT.innerHTML = (cfg.turnos||['Mañana','Tarde']).map(t=>`<option value="${t}">${t}</option>`).join('');
+  document.getElementById('teDesc').value='';
+  document.getElementById('teObs').value='';
+  document.getElementById('tePrioridad').value='normal';
+  document.getElementById('modalTareaExtra').classList.add('open');
+}
+
+function guardarTareaExtra(){
+  const desc = document.getElementById('teDesc').value.trim();
+  const sector = document.getElementById('teSector').value;
+  const resp = document.getElementById('teOperario').value;
+  const turno = document.getElementById('teTurno').value;
+  const prioridad = document.getElementById('tePrioridad').value;
+  const obs = document.getElementById('teObs').value.trim();
+  if(!desc){ alert('Escribí una descripción para la tarea.'); return; }
+  if(!resp){ alert('Elegí un operario.'); return; }
+  const t={
+    id:Date.now()+Math.random(),
+    sector, equipo:'', equipoId:'',
+    tipo:desc,
+    responsable:resp, turno,
+    estado:'Pendiente', prioridad,
+    asignadoPor:currentUser.nombre,
+    fechaReg:today(), fechaVenc:addDays(today(),1),
+    horaRegistro:null, obs, foto:'',
+    tareaExtra:true
+  };
+  tasks.unshift(t);
+  audit(`Tarea extra creada: ${sector} — ${desc}`,`Resp: ${resp} | ${turno} | ${prioridad}`,'tarea');
+  saveAll(); closeModal('modalTareaExtra'); renderAll();
+  pushNotif('completed','📋 Nueva tarea asignada',`${desc} — ${sector} (${resp})`,t.id);
 }
 
 // ═══════════════════════════════════════════════════
@@ -4543,7 +4669,7 @@ function exportMantCSV(){
 function autoBackupJSON(){
   try {
     const backup = {
-      version: 'FSCC-v21',
+      version: 'FSCC-v22',
       fecha: new Date().toISOString(),
       generadoPor: currentUser ? currentUser.nombre : '—',
       cfg, tasks, users,
