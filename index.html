@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>FSCC v23 — Sanatorio Parque</title>
+<title>FSCC v24 — Sanatorio Parque</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap" rel="stylesheet" />
 <style>
@@ -302,6 +302,18 @@ tbody td{padding:8px 10px;vertical-align:middle;}
 .hist-chart-wrap{margin-bottom:16px;}
 .hist-chart-title{font-family:var(--mono);font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;}
 .hist-bars{display:flex;align-items:flex-end;gap:4px;height:80px;background:var(--bg);border-radius:var(--r);padding:8px 10px;}
+/* ── Dashboard Histórico ── */
+.hist-dash-bars{display:flex;align-items:flex-end;gap:3px;height:120px;padding:4px 0 0;}
+.hist-dash-bar-wrap{display:flex;flex-direction:column;align-items:center;gap:3px;flex:1;min-width:18px;cursor:pointer;}
+.hist-dash-bar{width:100%;border-radius:3px 3px 0 0;transition:opacity .15s;min-height:2px;}
+.hist-dash-bar:hover{opacity:.8;}
+.hist-dash-label{font-size:8px;color:var(--text3);font-family:var(--mono);text-align:center;white-space:nowrap;}
+.hist-dash-pct{font-size:8px;color:var(--text2);font-family:var(--mono);}
+.hist-metrica-card{background:var(--surface);border:.5px solid var(--border);border-radius:var(--rl);padding:10px 14px;}
+.hist-metrica-label{font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px;}
+.hist-metrica-val{font-size:22px;font-weight:700;font-family:var(--mono);}
+.hist-top-row{display:flex;align-items:center;justify-content:space-between;padding:5px 0;border-bottom:.5px solid var(--border);}
+.hist-top-row:last-child{border-bottom:none;}
 .hist-bar-col{display:flex;flex-direction:column;align-items:center;flex:1;gap:2px;height:100%;}
 .hist-bar-track{flex:1;width:100%;display:flex;align-items:flex-end;justify-content:center;}
 .hist-bar-fill{width:100%;border-radius:3px 3px 0 0;background:var(--navy);transition:height .3s;min-height:2px;}
@@ -592,6 +604,31 @@ tbody td{padding:8px 10px;vertical-align:middle;}
   <div class="metrics-grid" id="metricsGrid"></div>
   <div class="sl">Cumplimiento por sector</div>
   <div class="bars-grid" id="barsGrid"></div>
+  <div class="sl" style="margin-top:1.5rem;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+    <span>📈 Tendencia histórica de cumplimiento</span>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
+      <select class="flt" id="histPeriodo" onchange="renderHistorico()">
+        <option value="7">Últimos 7 días</option>
+        <option value="14">Últimos 14 días</option>
+        <option value="30" selected>Últimos 30 días</option>
+      </select>
+      <select class="flt" id="histSector" onchange="renderHistorico()">
+        <option value="">Todos los sectores</option>
+      </select>
+      <select class="flt" id="histOperario" onchange="renderHistorico()">
+        <option value="">Todos los operarios</option>
+      </select>
+    </div>
+  </div>
+  <div id="histDashboard" style="margin-bottom:1.5rem;">
+    <div id="histMetricas" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:1rem;"></div>
+    <div id="histGrafico" style="background:var(--surface);border:.5px solid var(--border);border-radius:var(--rl);padding:1rem 1.25rem;overflow-x:auto;"></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px;">
+      <div id="histTopBuenos" style="background:var(--surface);border:.5px solid var(--border);border-radius:var(--rl);padding:1rem 1.25rem;"></div>
+      <div id="histTopMalos" style="background:var(--surface);border:.5px solid var(--border);border-radius:var(--rl);padding:1rem 1.25rem;"></div>
+    </div>
+  </div>
+
   <div class="toolbar">
     <div class="toolbar-l">
       <div class="sl" style="margin:0;border:none;padding:0;">Registros</div>
@@ -3121,6 +3158,140 @@ function autoVenc(){
 // ═══════════════════════════════════════════════════
 //  METRICS / BARS (Admin Dashboard)
 // ═══════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════
+//  DASHBOARD HISTÓRICO DE CUMPLIMIENTO
+// ═══════════════════════════════════════════════════
+function getHistoricoData(dias, sector, operario){
+  const hoy = today();
+  const fechas = [];
+  for(let i=dias-1;i>=0;i--){
+    const d = new Date();
+    d.setDate(d.getDate()-i);
+    fechas.push(d.toISOString().slice(0,10));
+  }
+
+  return fechas.map(fecha=>{
+    let t = tasks.filter(tk=>tk.fechaReg===fecha);
+    if(sector) t = t.filter(tk=>tk.sector===sector);
+    if(operario) t = t.filter(tk=>tk.responsable===operario);
+    const total = t.length;
+    const ok = t.filter(tk=>tk.estado==='Cumplido').length;
+    const noR = t.filter(tk=>tk.estado==='No realizada').length;
+    const pct = total>0?Math.round(ok/total*100):null;
+    return {fecha, total, ok, noR, pct};
+  });
+}
+
+function getSectorStats(dias, operario){
+  const hoy = today();
+  const desde = new Date();
+  desde.setDate(desde.getDate()-(dias-1));
+  const desdeStr = desde.toISOString().slice(0,10);
+
+  let t = tasks.filter(tk=>tk.fechaReg>=desdeStr && tk.fechaReg<=hoy);
+  if(operario) t = t.filter(tk=>tk.responsable===operario);
+
+  const porSector = {};
+  t.forEach(tk=>{
+    if(!porSector[tk.sector]) porSector[tk.sector]={total:0,ok:0};
+    porSector[tk.sector].total++;
+    if(tk.estado==='Cumplido') porSector[tk.sector].ok++;
+  });
+
+  return Object.entries(porSector)
+    .map(([s,v])=>({sector:s, pct:v.total>0?Math.round(v.ok/v.total*100):0, total:v.total, ok:v.ok}))
+    .filter(x=>x.total>=3) // solo sectores con al menos 3 tareas
+    .sort((a,b)=>b.pct-a.pct);
+}
+
+function renderHistorico(){
+  const dias = parseInt(document.getElementById('histPeriodo').value)||30;
+  const sector = document.getElementById('histSector').value;
+  const operario = document.getElementById('histOperario').value;
+
+  const data = getHistoricoData(dias, sector, operario);
+  const conDatos = data.filter(d=>d.pct!==null);
+
+  // ── Métricas ──
+  const promedio = conDatos.length ? Math.round(conDatos.reduce((a,b)=>a+b.pct,0)/conDatos.length) : 0;
+  const mejor = conDatos.length ? Math.max(...conDatos.map(d=>d.pct)) : 0;
+  const peor = conDatos.length ? Math.min(...conDatos.map(d=>d.pct)) : 0;
+  const totalTareas = conDatos.reduce((a,b)=>a+b.total,0);
+  const totalOk = conDatos.reduce((a,b)=>a+b.ok,0);
+  const totalNoR = conDatos.reduce((a,b)=>a+b.noR,0);
+
+  const colorPct = p=>p>=80?'var(--green)':p>=50?'var(--amber)':'var(--red)';
+
+  document.getElementById('histMetricas').innerHTML = [
+    {label:'Promedio período', val:promedio+'%', color:colorPct(promedio)},
+    {label:'Mejor día', val:mejor+'%', color:'var(--green)'},
+    {label:'Peor día', val:peor+'%', color:'var(--red)'},
+    {label:'Tareas totales', val:totalTareas, color:'var(--navy)'},
+    {label:'Cumplidas', val:totalOk, color:'var(--green)'},
+    {label:'No realizadas', val:totalNoR, color:'var(--red)'},
+  ].map(m=>`<div class="hist-metrica-card">
+    <div class="hist-metrica-label">${m.label}</div>
+    <div class="hist-metrica-val" style="color:${m.color}">${m.val}</div>
+  </div>`).join('');
+
+  // ── Gráfico de barras ──
+  const maxPct = 100;
+  const barras = data.map(d=>{
+    const pct = d.pct!==null?d.pct:0;
+    const h = d.pct!==null?Math.max(2,Math.round(pct/maxPct*110)):2;
+    const bg = d.pct===null?'var(--border)':pct>=80?'var(--green)':pct>=50?'var(--amber)':'var(--red)';
+    const lbl = d.fecha.slice(5); // MM-DD
+    const dia = new Date(d.fecha+'T12:00:00').toLocaleDateString('es-AR',{weekday:'short'}).slice(0,2);
+    return `<div class="hist-dash-bar-wrap" title="${d.fecha}: ${d.pct!==null?d.pct+'%':'Sin datos'} (${d.ok}/${d.total})">
+      <div class="hist-dash-pct">${d.pct!==null?d.pct+'%':''}</div>
+      <div class="hist-dash-bar" style="height:${h}px;background:${bg};"></div>
+      <div class="hist-dash-label">${dia}<br>${lbl}</div>
+    </div>`;
+  }).join('');
+
+  document.getElementById('histGrafico').innerHTML =
+    `<div style="font-size:11px;color:var(--text3);font-family:var(--mono);margin-bottom:8px;">% Cumplimiento diario</div>
+     <div class="hist-dash-bars">${barras}</div>
+     <div style="display:flex;gap:12px;margin-top:8px;flex-wrap:wrap;">
+       <span style="font-size:10px;color:var(--text3);">■ <span style="color:var(--green)">≥80% Bueno</span></span>
+       <span style="font-size:10px;color:var(--text3);">■ <span style="color:var(--amber)">50–79% Regular</span></span>
+       <span style="font-size:10px;color:var(--text3);">■ <span style="color:var(--red)"><50% Crítico</span></span>
+       <span style="font-size:10px;color:var(--text3);">■ <span style="color:var(--border)">Sin datos</span></span>
+     </div>`;
+
+  // ── Top sectores ──
+  const stats = getSectorStats(dias, operario);
+  const top3buenos = stats.slice(0,3);
+  const top3malos = [...stats].sort((a,b)=>a.pct-b.pct).slice(0,3);
+
+  document.getElementById('histTopBuenos').innerHTML =
+    `<div style="font-size:11px;font-weight:600;color:var(--green);margin-bottom:8px;">🏆 Mejor cumplimiento</div>`+
+    (top3buenos.length?top3buenos.map(s=>`<div class="hist-top-row">
+      <span style="font-size:12px;color:var(--text1)">${s.sector}</span>
+      <span style="font-family:var(--mono);font-size:13px;font-weight:600;color:${colorPct(s.pct)}">${s.pct}%</span>
+    </div>`).join(''):'<div style="font-size:12px;color:var(--text3)">Sin datos suficientes</div>');
+
+  document.getElementById('histTopMalos').innerHTML =
+    `<div style="font-size:11px;font-weight:600;color:var(--red);margin-bottom:8px;">⚠ Requieren atención</div>`+
+    (top3malos.length?top3malos.map(s=>`<div class="hist-top-row">
+      <span style="font-size:12px;color:var(--text1)">${s.sector}</span>
+      <span style="font-family:var(--mono);font-size:13px;font-weight:600;color:${colorPct(s.pct)}">${s.pct}%</span>
+    </div>`).join(''):'<div style="font-size:12px;color:var(--text3)">Sin datos suficientes</div>');
+}
+
+function initHistoricoSelects(){
+  const selSec = document.getElementById('histSector');
+  const selOp = document.getElementById('histOperario');
+  if(!selSec||!selOp) return;
+  const curSec = selSec.value;
+  const curOp = selOp.value;
+  selSec.innerHTML = '<option value="">Todos los sectores</option>' +
+    (cfg.sectores||[]).map(s=>`<option value="${s}" ${s===curSec?'selected':''}>${s}</option>`).join('');
+  const ops = users.filter(u=>u.rol==='operario'||u.rol==='cubre');
+  selOp.innerHTML = '<option value="">Todos los operarios</option>' +
+    ops.map(u=>`<option value="${u.nombre}" ${u.nombre===curOp?'selected':''}>${u.nombre}</option>`).join('');
+}
+
 function renderMetrics(){
   const total=tasks.length,cumplidos=tasks.filter(t=>t.estado==='Cumplido').length;
   const pendientes=tasks.filter(t=>t.estado==='Pendiente').length;
@@ -4699,7 +4870,7 @@ function exportMantCSV(){
 function autoBackupJSON(){
   try {
     const backup = {
-      version: 'FSCC-v23',
+      version: 'FSCC-v24',
       fecha: new Date().toISOString(),
       generadoPor: currentUser ? currentUser.nombre : '—',
       cfg, tasks, users,
@@ -5077,7 +5248,7 @@ function switchView(v,btn){
   if(v==='sectores')renderSectores();
   if(v==='mis-tareas')renderMisTareas();
   if(v==='supervisor'){populateSelects();renderSvActive();}
-  if(v==='dashboard'){renderMetrics();renderBars();renderAlert();renderTable();}
+  if(v==='dashboard'){renderMetrics();renderBars();renderAlert();renderTable();initHistoricoSelects();renderHistorico();}
   if(v==='haccp'){renderHaccpActive();}
   if(v==='mantenimiento'){renderMant();}
   if(v==='capacitaciones'){renderCapacitaciones();}
