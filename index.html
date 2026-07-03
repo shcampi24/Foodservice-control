@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>FSCC v25 — Sanatorio Parque</title>
+<title>FSCC v26 — Sanatorio Parque</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap" rel="stylesheet" />
 <style>
@@ -3727,6 +3727,8 @@ function openReporteOperarioModal(opNombre){
   const t = today();
   document.getElementById('repOpDesde').value = t;
   document.getElementById('repOpHasta').value = t;
+  document.getElementById('repOpFirmaPass').value = '';
+  document.getElementById('repOpFirmaMsg').style.display = 'none';
   document.getElementById('modalReporteOperario').classList.add('open');
 }
 
@@ -3737,7 +3739,7 @@ function setRepOpRango(tipo){
   document.getElementById('repOpHasta').value = r.to;
 }
 
-function buildReporteOperarioHTML(opNombre, desde, hasta){
+function buildReporteOperarioHTML(opNombre, desde, hasta, firmaData){
   const now = new Date();
   const ts = now.toLocaleDateString('es-AR',{weekday:'long',year:'numeric',month:'long',day:'numeric'})+' — '+now.toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
 
@@ -3827,7 +3829,17 @@ tbody tr{border-bottom:1px solid #e4e3dd;}tbody td{padding:7px 10px;vertical-ali
 
   <div class="firma-box">
     <div class="firma-slot"><div class="firma-line">Firma del operario — ${opNombre}</div></div>
-    <div class="firma-slot"><div class="firma-line">Firma de supervisión — ${currentUser?currentUser.nombre:''}</div></div>
+    <div class="firma-slot">
+      ${firmaData ?
+        `<div style="border:1.5px solid #1a7a4a;border-radius:6px;padding:10px 14px;background:#e8f5ee;text-align:center;">
+          <div style="font-size:13px;font-weight:700;color:#1a7a4a;margin-bottom:4px;">✅ VALIDADO DIGITALMENTE</div>
+          <div style="font-size:11px;color:#1a4a2a;"><b>${firmaData.firmante}</b> (${firmaData.rol})</div>
+          <div style="font-size:10px;color:#4a7a5a;margin-top:3px;">${firmaData.ts}</div>
+          <div style="font-size:9px;color:#6a9a7a;margin-top:2px;">Usuario: @${firmaData.usuario}</div>
+        </div>` :
+        `<div class="firma-line">Firma de supervisión — ${currentUser?currentUser.nombre:''}</div>`
+      }
+    </div>
   </div>
 </div>
 <div class="footer">FOOD SERVICE CONTROL CENTER · SANATORIO PARQUE · Generado el ${ts}</div></body></html>`,now};
@@ -3841,20 +3853,49 @@ function generarReporteOperario(modo){
   if(!desde || !hasta){alert('Seleccioná el rango de fechas.');return;}
   if(desde > hasta){alert('La fecha "Desde" no puede ser posterior a "Hasta".');return;}
 
-  const {html, now} = buildReporteOperarioHTML(opNombre, desde, hasta);
+  // Validar firma digital
+  const passInput = document.getElementById('repOpFirmaPass').value;
+  const firmaMsg = document.getElementById('repOpFirmaMsg');
+  let firmaData = null;
+
+  if(passInput){
+    // Verificar contraseña del usuario actual
+    if(currentUser && currentUser.pass === passInput){
+      const ahora = new Date();
+      firmaData = {
+        firmante: currentUser.nombre,
+        rol: currentUser.rol,
+        ts: ahora.toLocaleDateString('es-AR',{weekday:'long',year:'numeric',month:'long',day:'numeric'}) +
+            ' a las ' + ahora.toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'}),
+        usuario: currentUser.user
+      };
+      firmaMsg.style.display='block';
+      firmaMsg.style.color='var(--green)';
+      firmaMsg.textContent='✅ Contraseña verificada — el reporte llevará tu firma digital.';
+    } else {
+      firmaMsg.style.display='block';
+      firmaMsg.style.color='var(--red)';
+      firmaMsg.textContent='❌ Contraseña incorrecta. Verificá e intentá de nuevo.';
+      return;
+    }
+  }
+
+  const {html, now} = buildReporteOperarioHTML(opNombre, desde, hasta, firmaData);
 
   if(modo === 'print'){
     const w = window.open('','_blank');
     if(!w){alert('El navegador bloqueó la ventana de impresión. Habilitá pop-ups para este sitio.');return;}
     w.document.open();w.document.write(html);w.document.close();
     w.onload=()=>{w.focus();w.print();};
-    audit(`Reporte operario impreso: ${opNombre}`,`${desde} a ${hasta}`,'tarea');
+    audit(`Reporte operario impreso: ${opNombre}`,`${desde} a ${hasta}${firmaData?' — firmado por '+firmaData.firmante:''}` ,'tarea');
   } else {
     dlBlob(html,'text/html','Reporte_'+opNombre.replace(/\s+/g,'_')+'_'+now.toISOString().slice(0,10)+'.html');
-    audit(`Reporte operario descargado: ${opNombre}`,`${desde} a ${hasta}`,'tarea');
+    audit(`Reporte operario descargado: ${opNombre}`,`${desde} a ${hasta}${firmaData?' — firmado por '+firmaData.firmante:''}` ,'tarea');
   }
   saveAll();
   closeModal('modalReporteOperario');
+  document.getElementById('repOpFirmaPass').value='';
+  firmaMsg.style.display='none';
 }
 
 // ═══════════════════════════════════════════════════
@@ -4942,7 +4983,7 @@ function exportMantCSV(){
 function autoBackupJSON(){
   try {
     const backup = {
-      version: 'FSCC-v25',
+      version: 'FSCC-v26',
       fecha: new Date().toISOString(),
       generadoPor: currentUser ? currentUser.nombre : '—',
       cfg, tasks, users,
@@ -5418,6 +5459,15 @@ loadData();
       <button class="btn btn-ghost btn-sm" onclick="setRepOpRango('hoy')">Hoy</button>
       <button class="btn btn-ghost btn-sm" onclick="setRepOpRango('semana')">Esta semana</button>
       <button class="btn btn-ghost btn-sm" onclick="setRepOpRango('mes')">Este mes</button>
+    </div>
+    <div style="background:var(--surface);border:.5px solid var(--border);border-radius:var(--rl);padding:12px 14px;margin-bottom:16px;">
+      <div style="font-size:11px;font-weight:600;color:var(--navy);margin-bottom:8px;text-transform:uppercase;letter-spacing:.04em;">🔐 Validación digital</div>
+      <div style="font-size:12px;color:var(--text2);margin-bottom:10px;">Ingresá tu contraseña para firmar digitalmente el reporte. Si no la ingresás, el reporte se genera sin firma.</div>
+      <div class="fg" style="margin:0;">
+        <label>Tu contraseña</label>
+        <input type="password" id="repOpFirmaPass" placeholder="Contraseña de tu usuario" />
+      </div>
+      <div id="repOpFirmaMsg" style="display:none;font-size:11px;margin-top:6px;"></div>
     </div>
     <div class="form-actions">
       <button class="btn btn-ghost" onclick="closeModal('modalReporteOperario')">Cancelar</button>
