@@ -1665,7 +1665,6 @@ function startTurnoTimer(){
 //  ALERTAS AUTOMÁTICAS POR TAREAS VENCIDAS
 // ═══════════════════════════════════════════════════
 let _alertasTimer = null;
-const ALERTA_HORAS_PENDIENTE = 3; // horas sin completar dentro del turno
 
 function chequearAlertasTareas(){
   if(!currentUser) return;
@@ -1675,36 +1674,34 @@ function chequearAlertasTareas(){
   const t = today();
   const minAhora = ahora.getHours()*60 + ahora.getMinutes();
 
-  // Clave para no re-alertar lo ya notificado en esta sesión
   if(!window._alertasYaEnviadas) window._alertasYaEnviadas = new Set();
 
   tasks.forEach(tk=>{
-    if(tk.estado==='Cumplido') return; // ya cumplida, ignorar
+    if(tk.estado==='Cumplido') return;
     const keyVenc = 'venc_'+tk.id;
-    const keyPend = 'pend_'+tk.id;
+    const keyTurno = 'turno_'+tk.id;
 
-    // CASO 1: tarea vencida (fechaVenc < hoy y sigue pendiente/no realizada)
+    // CASO 1: tarea de días anteriores sin completar
     if(tk.fechaVenc && tk.fechaVenc < t && !window._alertasYaEnviadas.has(keyVenc)){
       window._alertasYaEnviadas.add(keyVenc);
       pushNotifAlerta(
-        '⏰ Tarea vencida',
+        '⏰ Tarea vencida sin completar',
         `${tk.sector} — ${tk.tipo} (${tk.responsable||'Sin asignar'}) venció el ${fmtDate(tk.fechaVenc)}`,
         tk.id
       );
     }
 
-    // CASO 2: tarea del día actual sin completar después de X horas desde el inicio del turno
-    if(tk.fechaReg === t && !window._alertasYaEnviadas.has(keyPend)){
+    // CASO 2: tarea del día actual cuyo turno ya terminó y sigue pendiente
+    if(tk.fechaReg === t && !window._alertasYaEnviadas.has(keyTurno)){
       const turnoInfo = cfg.turnosHorarios && cfg.turnosHorarios[tk.turno];
       if(turnoInfo){
-        const [ih,im] = turnoInfo.inicio.split(':').map(Number);
-        const minInicio = ih*60+im;
-        const minTranscurridos = minAhora - minInicio;
-        if(minTranscurridos >= ALERTA_HORAS_PENDIENTE*60 && minAhora < (ih+8)*60){
-          window._alertasYaEnviadas.add(keyPend);
+        const [fh,fm] = turnoInfo.fin.split(':').map(Number);
+        const minFin = fh*60+fm;
+        if(minAhora >= minFin){
+          window._alertasYaEnviadas.add(keyTurno);
           pushNotifAlerta(
-            '⚠ Tarea sin completar',
-            `${tk.sector} — ${tk.tipo} lleva más de ${ALERTA_HORAS_PENDIENTE}h pendiente (${tk.responsable||'Sin asignar'})`,
+            '⏰ Turno cerrado con tarea pendiente',
+            `${tk.sector} — ${tk.tipo} (${tk.responsable||'Sin asignar'}) no se completó en el turno ${tk.turno}`,
             tk.id
           );
         }
@@ -1714,7 +1711,6 @@ function chequearAlertasTareas(){
 }
 
 function pushNotifAlerta(titulo, detalle, taskId){
-  // Alerta → solo admin y supervisor
   const notif={
     id:Date.now()+Math.random(),
     tipo:'alerta_vencida', titulo, detalle, taskId,
@@ -1732,8 +1728,8 @@ function pushNotifAlerta(titulo, detalle, taskId){
 
 function startAlertasTimer(){
   if(_alertasTimer) clearInterval(_alertasTimer);
-  chequearAlertasTareas(); // chequear al iniciar
-  _alertasTimer = setInterval(chequearAlertasTareas, 5*60*1000); // cada 5 minutos
+  chequearAlertasTareas();
+  _alertasTimer = setInterval(chequearAlertasTareas, 5*60*1000);
 }
 
 function getTurnoActivoNombre(){
