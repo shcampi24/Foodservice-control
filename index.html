@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>FSCC v27 — Sanatorio Parque</title>
+<title>FSCC v28 — Sanatorio Parque</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap" rel="stylesheet" />
 <style>
@@ -223,6 +223,7 @@ tbody td{padding:8px 10px;vertical-align:middle;}
 .b-vok{background:var(--green-bg);color:var(--green);}.b-vwarn{background:var(--amber-bg);color:var(--amber);}.b-vlate{background:var(--red-bg);color:var(--red);}
 .b-incid{background:#fde8e8;color:var(--red);}
 .b-admin{background:#e8e0f8;color:#5020a0;}
+.b-coord{background:#fef3cd;color:#8a5a00;}
 .b-sv{background:#e0f0e8;color:#1a5a3a;}
 .b-op{background:var(--blue-bg);color:var(--blue);}
 .b-cubre{background:#f0e0f8;color:#7a3a9a;}
@@ -1221,6 +1222,7 @@ tbody td{padding:8px 10px;vertical-align:middle;}
       <div class="fg"><label>Rol</label>
         <select id="nuRol" onchange="toggleUserFields()">
           <option value="admin">Admin — acceso total + configuración</option>
+          <option value="coordinadora">Coordinadora — audita todo, sin acceso a configuración</option>
           <option value="supervisor">Supervisor — asigna tareas, supervisa todos los sectores</option>
           <option value="operario">Operario — sector asignado</option>
           <option value="cubre">Cubre/Reemplazante — sector dinámico</option>
@@ -1668,7 +1670,7 @@ let _alertasTimer = null;
 
 function chequearAlertasTareas(){
   if(!currentUser) return;
-  if(currentUser.rol!=='admin' && currentUser.rol!=='supervisor') return;
+  if(currentUser.rol!=='admin' && currentUser.rol!=='coordinadora' && currentUser.rol!=='supervisor') return;
 
   const ahora = new Date();
   const t = today();
@@ -2077,8 +2079,9 @@ function pushNotifMantNueva(titulo, detalle, mantId){
 
 function getMyNotifs(){
   if(!currentUser)return[];
-  if(currentUser.rol==='admin'||currentUser.rol==='supervisor'){
-    return notifications.filter(n=>n.targets.includes(currentUser.rol));
+  if(currentUser.rol==='admin'||currentUser.rol==='coordinadora'||currentUser.rol==='supervisor'){
+    const rol = currentUser.rol==='coordinadora'?'supervisor':currentUser.rol;
+    return notifications.filter(n=>n.targets.includes(rol));
   }
   return[];
 }
@@ -2093,7 +2096,7 @@ function updateBell(){
   // Bell visible solo para admin/supervisor
   const bellWrap=document.getElementById('bellWrap');
   if(bellWrap){
-    const show=currentUser&&(currentUser.rol==='admin'||currentUser.rol==='supervisor');
+    const show=currentUser&&(currentUser.rol==='admin'||currentUser.rol==='coordinadora'||currentUser.rol==='supervisor');
     bellWrap.style.display=show?'':'none';
   }
 }
@@ -2265,7 +2268,7 @@ function doLogin(){
   // Header info
   document.getElementById('hdrUserName').textContent=found.nombre;
   const rb=document.getElementById('hdrRoleBadge');
-  const rolLabels={admin:'Admin',supervisor:'Supervisor',operario:'Operario',cubre:'Cubre'};
+  const rolLabels={admin:'Admin',coordinadora:'Coordinadora',supervisor:'Supervisor',operario:'Operario',cubre:'Cubre'};
   rb.textContent=rolLabels[found.rol]||found.rol;
   rb.className='role-badge '+found.rol;
 
@@ -2284,12 +2287,12 @@ function doLogin(){
     el.style.display=found.rol==='admin'?'':'none';
   });
   document.querySelectorAll('.sv-admin-only').forEach(el=>{
-    el.style.display=(found.rol==='admin'||found.rol==='supervisor')?'':'none';
+    el.style.display=(found.rol==='admin'||found.rol==='coordinadora'||found.rol==='supervisor')?'':'none';
   });
 
-  // Supervisor no necesita "Mis Tareas" (no tiene sector propio)
+  // Supervisor/Coordinadora no necesita "Mis Tareas" (no tiene sector propio)
   const tabMis=document.getElementById('tabMisTareas');
-  if(found.rol==='supervisor'){
+  if(found.rol==='supervisor'||found.rol==='coordinadora'){
     tabMis.style.display='none';
   } else {
     tabMis.style.display='';
@@ -2306,6 +2309,8 @@ function doLogin(){
   // Vista inicial por rol
   if(found.rol==='admin'){
     switchViewById('dashboard');
+  } else if(found.rol==='coordinadora'){
+    switchViewById('dashboard'); // coordinadora arranca en dashboard como admin
   } else if(found.rol==='supervisor'){
     switchViewById('supervisor');
   } else {
@@ -2332,7 +2337,7 @@ function doLogout(){
 // ═══════════════════════════════════════════════════
 function getMySectors(){
   if(!currentUser)return[];
-  if(currentUser.rol==='admin'||currentUser.rol==='supervisor')return cfg.sectores;
+  if(currentUser.rol==='admin'||currentUser.rol==='coordinadora'||currentUser.rol==='supervisor')return cfg.sectores;
   if(currentUser.rol==='operario')return Array.isArray(currentUser.sectores)?currentUser.sectores.filter(s=>cfg.sectores.includes(s)):[];
   if(currentUser.rol==='cubre')return currentUser.cubreSector&&cfg.sectores.includes(currentUser.cubreSector)?[currentUser.cubreSector]:[];
   return[];
@@ -2353,7 +2358,7 @@ function getOtherSectorTasks(sector){
 //  VISTA OPERARIO — MIS TAREAS
 // ═══════════════════════════════════════════════════
 function renderMisTareas(){
-  if(!currentUser||currentUser.rol==='supervisor')return;
+  if(!currentUser||currentUser.rol==='supervisor'||currentUser.rol==='coordinadora')return;
   const myS=getMySectors();
   const myT=getMyTasks();
 
@@ -2973,7 +2978,7 @@ function openIncidFotoModal(id){
 function renderUsersConfig(){
   const el=document.getElementById('cfgUsers');
   el.innerHTML=users.map((u,i)=>{
-    const rolBadge=u.rol==='admin'?'b-admin':u.rol==='supervisor'?'b-sv':u.rol==='cubre'?'b-cubre':'b-op';
+    const rolBadge=u.rol==='admin'?'b-admin':u.rol==='coordinadora'?'b-coord':u.rol==='supervisor'?'b-sv':u.rol==='cubre'?'b-cubre':'b-op';
     const sectorInfo=u.rol==='operario'&&u.sectores&&u.sectores.length?
       `<span style="font-size:11px;color:var(--text3)">📍 ${u.sectores.join(', ')}</span>`:'';
     const cubreInfo=u.rol==='cubre'?
@@ -2981,8 +2986,8 @@ function renderUsersConfig(){
        <button class="btn btn-ghost btn-sm" onclick="openCubreSectorModal(${i})">Cambiar sector</button>`:'';
     const sectorBtn=u.rol==='operario'?
       `<button class="btn btn-ghost btn-sm" onclick="openAsignarSectoresModal(${i})">Sectores</button>`:'';
-    const svNote=u.rol==='supervisor'?
-      `<span style="font-size:11px;color:var(--text3)">↔ Todos los sectores</span>`:'';
+    const svNote=(u.rol==='supervisor'||u.rol==='coordinadora')?
+      `<span style="font-size:11px;color:var(--text3)">${u.rol==='coordinadora'?'⭐ Todos los sectores':'↔ Todos los sectores'}</span>`:``;
     return`<div class="user-item">
       <span class="user-item-name">${u.nombre}</span>
       <span style="font-family:var(--mono);font-size:11px;color:var(--text3)">@${u.user}</span>
@@ -3757,7 +3762,7 @@ function buildReporteOperarioHTML(opNombre, desde, hasta, firmaData){
 
   // Usuario / rol
   const userObj = users.find(u=>u.nombre===opNombre);
-  const _rolLabels = {admin:'Admin',supervisor:'Supervisor',operario:'Operario',cubre:'Cubre'};
+  const _rolLabels = {admin:'Admin',coordinadora:'Coordinadora',supervisor:'Supervisor',operario:'Operario',cubre:'Cubre'};
   const rolLabel = userObj ? (_rolLabels[userObj.rol]||userObj.rol) : '—';
   const sectores = userObj && userObj.sectores && userObj.sectores.length ? userObj.sectores.join(', ') : (userObj && userObj.cubreSector ? userObj.cubreSector : [...new Set(tareasOp.map(t=>t.sector))].join(', '));
 
@@ -4983,7 +4988,7 @@ function exportMantCSV(){
 function autoBackupJSON(){
   try {
     const backup = {
-      version: 'FSCC-v27',
+      version: 'FSCC-v28',
       fecha: new Date().toISOString(),
       generadoPor: currentUser ? currentUser.nombre : '—',
       cfg, tasks, users,
@@ -5179,7 +5184,7 @@ function saveCapacitaciones(){
 }
 
 function renderCapacitaciones(){
-  const esSvAdmin = currentUser && (currentUser.rol==='admin'||currentUser.rol==='supervisor');
+  const esSvAdmin = currentUser && (currentUser.rol==='admin'||currentUser.rol==='coordinadora'||currentUser.rol==='supervisor');
 
   // Mostrar/ocultar botones de admin
   const adminBtns = document.getElementById('capAdminBtns');
