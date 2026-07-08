@@ -831,6 +831,7 @@ tbody td{padding:8px 10px;vertical-align:middle;}
   <div style="text-align:right;margin-top:8px;">
     <button class="btn btn-danger btn-sm" onclick="resetData()">Restablecer datos de ejemplo</button>
     <button class="btn btn-outline btn-sm" onclick="importarOperariosReales()">⬆ Importar operarios reales</button>
+    <button class="btn btn-outline btn-sm" onclick="importarSectoresReales()">🏥 Cargar zonas reales</button>
   </div>
 </div>
 
@@ -1960,6 +1961,41 @@ function seedTasks(){
     });
   });
   saveAll();
+}
+
+function importarSectoresReales(){
+  if(!confirm('Esto reemplaza los sectores actuales por las zonas funcionales reales del Sanatorio Parque. ¿Continuar?')) return;
+
+  const sectoresReales = [
+    // Producción
+    'Cocina Caliente',
+    'Cocina Fría',
+    // Almacenamiento
+    'Cámara de Carnes',
+    'Cámara de Verduras',
+    'Depósito de Alimentos Secos',
+    'Depósito de Frío',
+    // Distribución
+    'Área de Distribución',
+    'Depósito de Carros',
+    'Snack / Cafetería',
+    'Comedor de Personal',
+    // Soporte
+    'Zona de Lavado',
+    'Sector Proveedores',
+    'Vestuario / Filtro Sanitario',
+    // Distribución por piso
+    'Bar Planta Baja',
+    'Bar Subsuelo',
+    'Mater / Niño',
+  ];
+
+  cfg.sectores = sectoresReales;
+  saveAll();
+  renderConfig();
+  populateSelects();
+  alert('✅ ' + sectoresReales.length + ' zonas funcionales cargadas correctamente.');
+  audit('Zonas funcionales importadas', sectoresReales.join(', '), 'sistema');
 }
 
 function importarOperariosReales(){
