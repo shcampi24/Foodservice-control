@@ -832,6 +832,7 @@ tbody td{padding:8px 10px;vertical-align:middle;}
     <button class="btn btn-danger btn-sm" onclick="resetData()">Restablecer datos de ejemplo</button>
     <button class="btn btn-outline btn-sm" onclick="importarOperariosReales()">⬆ Importar operarios reales</button>
     <button class="btn btn-outline btn-sm" onclick="importarSectoresReales()">🏥 Cargar zonas reales</button>
+    <button class="btn btn-outline btn-sm" onclick="asignarSectoresOperarios()">📋 Asignar zonas a operarios</button>
   </div>
 </div>
 
@@ -1965,37 +1966,64 @@ function seedTasks(){
 
 function importarSectoresReales(){
   if(!confirm('Esto reemplaza los sectores actuales por las zonas funcionales reales del Sanatorio Parque. ¿Continuar?')) return;
+  cfg.sectores = ['Cocina Caliente','Cocina Fría','Cámara de Carnes','Cámara de Verduras','Depósito de Alimentos Secos','Depósito de Frío','Área de Distribución','Depósito de Carros','Snack / Cafetería','Comedor de Personal','Zona de Lavado','Sector Proveedores','Vestuario / Filtro Sanitario','Bar Planta Baja','Bar Subsuelo','Mater / Niño'];
+  saveAll(); renderConfig(); populateSelects();
+  alert('✅ 16 zonas funcionales cargadas.');
+  audit('Zonas funcionales importadas','','sistema');
+}
 
-  const sectoresReales = [
-    // Producción
-    'Cocina Caliente',
-    'Cocina Fría',
-    // Almacenamiento
-    'Cámara de Carnes',
-    'Cámara de Verduras',
-    'Depósito de Alimentos Secos',
-    'Depósito de Frío',
-    // Distribución
-    'Área de Distribución',
-    'Depósito de Carros',
-    'Snack / Cafetería',
-    'Comedor de Personal',
-    // Soporte
-    'Zona de Lavado',
-    'Sector Proveedores',
-    'Vestuario / Filtro Sanitario',
-    // Distribución por piso
-    'Bar Planta Baja',
-    'Bar Subsuelo',
-    'Mater / Niño',
-  ];
+function asignarSectoresOperarios(){
+  if(!confirm('Esto asigna automáticamente las zonas a cada operario según el organigrama de julio 2026. ¿Continuar?')) return;
 
-  cfg.sectores = sectoresReales;
-  saveAll();
-  renderConfig();
-  populateSelects();
-  alert('✅ ' + sectoresReales.length + ' zonas funcionales cargadas correctamente.');
-  audit('Zonas funcionales importadas', sectoresReales.join(', '), 'sistema');
+  const asignaciones = {
+    'vcarrizo':   ['Bar Planta Baja'],
+    'ytoscani':   ['Bar Planta Baja'],
+    'jruiz':      ['Bar Planta Baja'],
+    'sbondino':   ['Bar Subsuelo'],
+    'lpaliza':    ['Bar Subsuelo'],
+    'lmartinez':  ['Bar Subsuelo'],
+    'bdiaz':      ['Bar Subsuelo'],
+    'lvasquez':   ['Bar Subsuelo'],
+    'bsandoval':  ['Bar Subsuelo'],
+    'mlelli':     ['Mater / Niño'],
+    'svilarvera': ['Mater / Niño'],
+    'jtorres':    ['Mater / Niño'],
+    'mbardo':     ['Mater / Niño'],
+    'florenciap': ['Área de Distribución'],
+    'silvias':    ['Área de Distribución'],
+    'vacosta':    ['Área de Distribución'],
+    'ceciliad':   ['Área de Distribución'],
+    'rlohaiza':   ['Área de Distribución'],
+    'dgonzalez':  ['Área de Distribución'],
+    'gpared':     ['Área de Distribución'],
+    'jmorillo':   ['Área de Distribución'],
+    'vfrang':     ['Área de Distribución'],
+    'sofiaf':     ['Área de Distribución'],
+    'mwehimuller':['Área de Distribución'],
+    'melaniled':  ['Área de Distribución'],
+    'ezequielm':  ['Área de Distribución'],
+    'carziaga':   ['Área de Distribución'],
+    'mrodriguez': ['Cocina Caliente'],
+    'mblanco':    ['Cocina Caliente'],
+    'jmachuca':   ['Cocina Caliente'],
+    'gcaceres':   ['Cocina Caliente'],
+    'steve':      ['Cocina Caliente'],
+    'julian':     ['Cocina Caliente'],
+    'cbracamon':  ['Depósito de Alimentos Secos'],
+    'mmartinez':  ['Depósito de Alimentos Secos'],
+    'dlugo':      ['Depósito de Alimentos Secos'],
+  };
+
+  let asignados = 0;
+  users.forEach(u=>{
+    if(asignaciones[u.user]){
+      u.sectores = asignaciones[u.user];
+      asignados++;
+    }
+  });
+  saveAll(); renderUsersConfig();
+  alert('✅ ' + asignados + ' operarios asignados a sus zonas correctamente.');
+  audit('Asignación masiva de zonas', asignados + ' operarios', 'sistema');
 }
 
 function importarOperariosReales(){
