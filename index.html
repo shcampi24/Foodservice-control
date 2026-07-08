@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>FSCC v29 — Sanatorio Parque</title>
+<title>FSCC v27 — Sanatorio Parque</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap" rel="stylesheet" />
 <style>
@@ -53,7 +53,6 @@ body{font-family:var(--sans);background:var(--bg);color:var(--text);min-height:1
 .app-wrap.active{display:block;}
 .hdr{background:var(--navy);color:#fff;padding:0 1.5rem;display:flex;align-items:center;justify-content:space-between;height:54px;border-bottom:2px solid var(--gold);position:sticky;top:0;z-index:100;}
 .hdr h1{font-family:var(--mono);font-size:13px;font-weight:500;letter-spacing:.04em;color:#fff;}
-.hdr h1:hover{color:var(--gold);transition:color .2s;}
 .hdr .sub{font-size:11px;color:rgba(255,255,255,.45);letter-spacing:.05em;text-transform:uppercase;margin-left:12px;}
 .hdr-right{display:flex;align-items:center;gap:14px;}
 .hdr-date{font-family:var(--mono);font-size:10px;color:rgba(255,255,255,.4);}
@@ -423,7 +422,7 @@ tbody td{padding:8px 10px;vertical-align:middle;}
 <!-- ══ APP ══ -->
 <div class="app-wrap" id="appWrap">
 <header class="hdr">
-  <div style="display:flex;align-items:baseline;gap:4px;cursor:pointer;" onclick="volverInicio()" title="Volver al inicio">
+  <div style="display:flex;align-items:baseline;gap:4px;">
     <h1>FOOD SERVICE CONTROL CENTER</h1>
     <span class="sub">Sanatorio Parque</span>
   </div>
@@ -461,8 +460,8 @@ tbody td{padding:8px 10px;vertical-align:middle;}
   <button class="nav-tab" id="tabCapacitaciones" onclick="switchView('capacitaciones',this)">📚 Capacitaciones</button>
   <!-- Solo supervisor y admin -->
   <button class="nav-tab sv-admin-only" id="tabSupervisor" onclick="switchView('supervisor',this)">Supervisión</button>
-  <!-- Admin y coordinadora -->
-  <button class="nav-tab admin-only coord-only" id="tabDashboard" onclick="switchView('dashboard',this)">📊 Tablero</button>
+  <!-- Solo admin -->
+  <button class="nav-tab admin-only" onclick="switchView('dashboard',this)">Tablero Admin</button>
   <button class="nav-tab admin-only sv-admin-only" onclick="switchView('sectores',this)">Planillas</button>
   <button class="nav-tab admin-only sv-admin-only" onclick="switchView('haccp',this)">🌡 HACCP/CAA</button>
   <button class="nav-tab sv-admin-only" id="tabMant" onclick="switchView('mantenimiento',this)">🔧 Mantenimiento <span id="mantBadge" style="display:none;" class="badge-mant-count">0</span></button>
@@ -831,6 +830,7 @@ tbody td{padding:8px 10px;vertical-align:middle;}
 
   <div style="text-align:right;margin-top:8px;">
     <button class="btn btn-danger btn-sm" onclick="resetData()">Restablecer datos de ejemplo</button>
+    <button class="btn btn-outline btn-sm" onclick="importarOperariosReales()">⬆ Importar operarios reales</button>
   </div>
 </div>
 
@@ -1962,6 +1962,58 @@ function seedTasks(){
   saveAll();
 }
 
+function importarOperariosReales(){
+  if(!confirm('Esto agrega los 35 operarios reales al sistema. Los usuarios existentes NO se borran. ¿Continuar?')) return;
+
+  const nuevos = [
+    {nombre:"Vanesa Carrizo",      user:"vcarrizo",     pass:"fscc2026",rol:"operario",email:"",sectores:[],cubreSector:null},
+    {nombre:"Yanina Toscani",      user:"ytoscani",     pass:"fscc2026",rol:"operario",email:"",sectores:[],cubreSector:null},
+    {nombre:"Jesica Ruiz",         user:"jruiz",        pass:"fscc2026",rol:"operario",email:"",sectores:[],cubreSector:null},
+    {nombre:"Sabina Bondino",      user:"sbondino",     pass:"fscc2026",rol:"operario",email:"",sectores:[],cubreSector:null},
+    {nombre:"Lucia Paliza",        user:"lpaliza",      pass:"fscc2026",rol:"operario",email:"",sectores:[],cubreSector:null},
+    {nombre:"Luciana Martinez",    user:"lmartinez",    pass:"fscc2026",rol:"operario",email:"",sectores:[],cubreSector:null},
+    {nombre:"Brian Diaz",          user:"bdiaz",        pass:"fscc2026",rol:"operario",email:"",sectores:[],cubreSector:null},
+    {nombre:"Ludmila Vasquez",     user:"lvasquez",     pass:"fscc2026",rol:"operario",email:"",sectores:[],cubreSector:null},
+    {nombre:"Brisa Sandoval",      user:"bsandoval",    pass:"fscc2026",rol:"operario",email:"",sectores:[],cubreSector:null},
+    {nombre:"Melisa Lelli",        user:"mlelli",       pass:"fscc2026",rol:"operario",email:"",sectores:[],cubreSector:null},
+    {nombre:"Sabrina Vilar Vera",  user:"svilarvera",   pass:"fscc2026",rol:"operario",email:"",sectores:[],cubreSector:null},
+    {nombre:"Julian Torres",       user:"jtorres",      pass:"fscc2026",rol:"operario",email:"",sectores:[],cubreSector:null},
+    {nombre:"Mariela Bardo",       user:"mbardo",       pass:"fscc2026",rol:"operario",email:"",sectores:[],cubreSector:null},
+    {nombre:"Florencia P.",        user:"florenciap",   pass:"fscc2026",rol:"operario",email:"",sectores:[],cubreSector:null},
+    {nombre:"Silvia S.",           user:"silvias",      pass:"fscc2026",rol:"operario",email:"",sectores:[],cubreSector:null},
+    {nombre:"Vanesa Acosta",       user:"vacosta",      pass:"fscc2026",rol:"operario",email:"",sectores:[],cubreSector:null},
+    {nombre:"Cecilia D.",          user:"ceciliad",     pass:"fscc2026",rol:"operario",email:"",sectores:[],cubreSector:null},
+    {nombre:"Rocio Lohaiza",       user:"rlohaiza",     pass:"fscc2026",rol:"operario",email:"",sectores:[],cubreSector:null},
+    {nombre:"Daiana Gonzalez",     user:"dgonzalez",    pass:"fscc2026",rol:"operario",email:"",sectores:[],cubreSector:null},
+    {nombre:"Gaston Pared",        user:"gpared",       pass:"fscc2026",rol:"operario",email:"",sectores:[],cubreSector:null},
+    {nombre:"Jorge Morillo",       user:"jmorillo",     pass:"fscc2026",rol:"operario",email:"",sectores:[],cubreSector:null},
+    {nombre:"Virginia Frang",      user:"vfrang",       pass:"fscc2026",rol:"operario",email:"",sectores:[],cubreSector:null},
+    {nombre:"Sofia Fer.",          user:"sofiaf",       pass:"fscc2026",rol:"operario",email:"",sectores:[],cubreSector:null},
+    {nombre:"Maria Wehimuller",    user:"mwehimuller",  pass:"fscc2026",rol:"operario",email:"",sectores:[],cubreSector:null},
+    {nombre:"Melani LeD.",         user:"melaniled",    pass:"fscc2026",rol:"operario",email:"",sectores:[],cubreSector:null},
+    {nombre:"Ezequiel Man.",       user:"ezequielm",    pass:"fscc2026",rol:"operario",email:"",sectores:[],cubreSector:null},
+    {nombre:"Carolina Arziaga",    user:"carziaga",     pass:"fscc2026",rol:"operario",email:"",sectores:[],cubreSector:null},
+    {nombre:"Maximiliano Rodriguez",user:"mrodriguez",  pass:"fscc2026",rol:"operario",email:"",sectores:[],cubreSector:null},
+    {nombre:"Miqueas Blanco",      user:"mblanco",      pass:"fscc2026",rol:"operario",email:"",sectores:[],cubreSector:null},
+    {nombre:"Javier Machuca",      user:"jmachuca",     pass:"fscc2026",rol:"operario",email:"",sectores:[],cubreSector:null},
+    {nombre:"Gustavo Caceres",     user:"gcaceres",     pass:"fscc2026",rol:"operario",email:"",sectores:[],cubreSector:null},
+    {nombre:"Steve",               user:"steve",        pass:"fscc2026",rol:"cubre",email:"",sectores:[],cubreSector:null},
+    {nombre:"Julian",              user:"julian",       pass:"fscc2026",rol:"cubre",email:"",sectores:[],cubreSector:null},
+    {nombre:"Carlos Bracamon",     user:"cbracamon",    pass:"fscc2026",rol:"operario",email:"",sectores:[],cubreSector:null},
+    {nombre:"Maxi Martinez",       user:"mmartinez",    pass:"fscc2026",rol:"operario",email:"",sectores:[],cubreSector:null},
+    {nombre:"Diego Lugo",          user:"dlugo",        pass:"fscc2026",rol:"operario",email:"",sectores:[],cubreSector:null},
+  ];
+
+  // Evitar duplicados por user
+  const existentes = users.map(u=>u.user);
+  const agregar = nuevos.filter(n=>!existentes.includes(n.user));
+  users.push(...agregar);
+  saveAll();
+  renderUsersConfig();
+  alert(`✅ ${agregar.length} operarios importados correctamente. Contraseña inicial: fscc2026`);
+  audit(`Importación masiva de operarios`, `${agregar.length} usuarios agregados`, 'sistema');
+}
+
 function resetData(){
   if(!confirm('Restablecer todos los datos de ejemplo? Se perderán los datos actuales.'))return;
   audit('Datos restablecidos','','sistema');
@@ -2253,19 +2305,6 @@ async function enviarMailBienvenida(u, pass){
   }
 }
 
-// Volver al inicio desde el logo
-function volverInicio(){
-  if(!currentUser) return;
-  const rol = currentUser.rol;
-  if(rol==='admin'||rol==='coordinadora'){
-    switchViewById('dashboard');
-  } else if(rol==='supervisor'){
-    switchViewById('supervisor');
-  } else {
-    switchViewById('mis-tareas');
-  }
-}
-
 function doLogin(){
   const u=document.getElementById('loginUser').value.trim();
   const p=document.getElementById('loginPass').value;
@@ -2298,10 +2337,7 @@ function doLogin(){
     el.style.display=found.rol==='admin'?'':'none';
   });
   document.querySelectorAll('.sv-admin-only').forEach(el=>{
-    el.style.display=(found.rol==='admin'||found.rol==='coordinadora'||found.rol==='supervisor')?'':'none';
-  });
-  document.querySelectorAll('.coord-only').forEach(el=>{
-    el.style.display=(found.rol==='admin'||found.rol==='coordinadora')?'':'none';
+    el.style.display=(found.rol==='admin'||found.rol==='supervisor')?'':'none';
   });
 
   // Supervisor no necesita "Mis Tareas" (no tiene sector propio)
@@ -5000,7 +5036,7 @@ function exportMantCSV(){
 function autoBackupJSON(){
   try {
     const backup = {
-      version: 'FSCC-v29',
+      version: 'FSCC-v27',
       fecha: new Date().toISOString(),
       generadoPor: currentUser ? currentUser.nombre : '—',
       cfg, tasks, users,
