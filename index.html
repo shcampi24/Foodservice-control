@@ -53,6 +53,7 @@ body{font-family:var(--sans);background:var(--bg);color:var(--text);min-height:1
 .app-wrap.active{display:block;}
 .hdr{background:var(--navy);color:#fff;padding:0 1.5rem;display:flex;align-items:center;justify-content:space-between;height:54px;border-bottom:2px solid var(--gold);position:sticky;top:0;z-index:100;}
 .hdr h1{font-family:var(--mono);font-size:13px;font-weight:500;letter-spacing:.04em;color:#fff;}
+.hdr h1:hover{color:var(--gold);transition:color .2s;}
 .hdr .sub{font-size:11px;color:rgba(255,255,255,.45);letter-spacing:.05em;text-transform:uppercase;margin-left:12px;}
 .hdr-right{display:flex;align-items:center;gap:14px;}
 .hdr-date{font-family:var(--mono);font-size:10px;color:rgba(255,255,255,.4);}
@@ -422,7 +423,7 @@ tbody td{padding:8px 10px;vertical-align:middle;}
 <!-- ══ APP ══ -->
 <div class="app-wrap" id="appWrap">
 <header class="hdr">
-  <div style="display:flex;align-items:baseline;gap:4px;">
+  <div style="display:flex;align-items:baseline;gap:4px;cursor:pointer;" onclick="volverInicio()" title="Volver al inicio">
     <h1>FOOD SERVICE CONTROL CENTER</h1>
     <span class="sub">Sanatorio Parque</span>
   </div>
@@ -5514,6 +5515,18 @@ function eliminarCapacitacion(id){
   saveCapacitaciones();
   audit(`Capacitación eliminada: ${c.operario}`, c.tema, 'sistema');
   renderCapacitaciones();
+}
+
+function volverInicio(){
+  if(!currentUser) return;
+  const rol = currentUser.rol;
+  if(rol==='admin'||rol==='coordinadora'){
+    switchViewById('dashboard');
+  } else if(rol==='supervisor'){
+    switchViewById('supervisor');
+  } else {
+    switchViewById('mis-tareas');
+  }
 }
 
 function switchView(v,btn){
