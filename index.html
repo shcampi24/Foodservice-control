@@ -369,6 +369,10 @@ tbody td{padding:8px 10px;vertical-align:middle;}
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
   import { getFirestore, doc, getDoc, setDoc, onSnapshot, collection, getDocs } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+  import {
+    getAuth, signInWithEmailAndPassword, signOut, updatePassword,
+    createUserWithEmailAndPassword, EmailAuthProvider, reauthenticateWithCredential
+  } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 
   const firebaseConfig = {
     apiKey: "AIzaSyA2WObqIViz4QRTi0kk-N_yoFHt7AzAS4U",
@@ -381,6 +385,14 @@ tbody td{padding:8px 10px;vertical-align:middle;}
 
   const fbApp = initializeApp(firebaseConfig);
   const db    = getFirestore(fbApp);
+  const auth  = getAuth(fbApp);
+
+  // Instancia secundaria SOLO para que el Admin pueda crear/recrear cuentas de
+  // otras personas sin perder su propia sesión (crear un usuario con el SDK de
+  // cliente inicia sesión automáticamente como ese usuario nuevo — por eso se
+  // usa una app de Firebase separada, aislada, solo para ese momento puntual).
+  const fbAppSecondary = initializeApp(firebaseConfig, "Secondary");
+  const authSecondary  = getAuth(fbAppSecondary);
 
   // ── Exponer al scope global ──
   window._db         = db;
@@ -391,6 +403,15 @@ tbody td{padding:8px 10px;vertical-align:middle;}
   window._fsSet      = setDoc;
   window._fsSnap     = onSnapshot;
   window._fsGetDocs  = getDocs;
+
+  window._auth                 = auth;
+  window._authSecondary        = authSecondary;
+  window._fbSignIn             = signInWithEmailAndPassword;
+  window._fbSignOut            = signOut;
+  window._fbUpdatePassword     = updatePassword;
+  window._fbCreateUser         = createUserWithEmailAndPassword;
+  window._fbEmailCredential    = EmailAuthProvider.credential;
+  window._fbReauthenticate     = reauthenticateWithCredential;
 
   // Notificar al sistema que Firebase está listo
   window._fbReady = true;
@@ -853,6 +874,7 @@ tbody td{padding:8px 10px;vertical-align:middle;}
     <button class="btn btn-outline btn-sm" onclick="importarOperariosReales()">⬆ Importar operarios reales</button>
     <button class="btn btn-outline btn-sm" onclick="importarSectoresReales()">🏥 Cargar zonas reales</button>
     <button class="btn btn-outline btn-sm" onclick="asignarSectoresOperarios()">📋 Asignar zonas a operarios</button>
+    <button class="btn btn-danger btn-sm" onclick="regenerarPasswordsTodos()">🔐 Regenerar contraseñas de todo el personal</button>
   </div>
 </div>
 
@@ -1435,10 +1457,15 @@ function showSyncStatus(msg,color='green'){
 //  DEFAULTS
 // ═══════════════════════════════════════════════════
 const DEFAULT_USERS=[
-  {nombre:'Administrador',user:'admin',pass:'admin123',rol:'admin',sectores:[]},
-  {nombre:'Supervisor Demo',user:'supervisor',pass:'sv123',rol:'supervisor',sectores:[]},
-  {nombre:'Operario Demo',user:'operario',pass:'op123',rol:'operario',sectores:['Cocina Caliente']},
-  {nombre:'Cubre Franco',user:'cubre',pass:'cubre123',rol:'cubre',cubreSector:'Cocina Fria'}
+  // Nota: estas 4 cuentas demo ya no traen contraseña acá — las administra
+  // Firebase Auth. Solo se usan si el sistema arranca sin datos en la nube
+  // (instalación nueva); en producción, los datos reales de Firestore
+  // reemplazan esto apenas cargan. Para que funcionen hay que crearlas una
+  // vez con el botón "🔐 Regenerar contraseñas de todo el personal".
+  {nombre:'Administrador',user:'admin',rol:'admin',sectores:[],authGen:1},
+  {nombre:'Supervisor Demo',user:'supervisor',rol:'supervisor',sectores:[],authGen:1},
+  {nombre:'Operario Demo',user:'operario',rol:'operario',sectores:['Cocina Caliente'],authGen:1},
+  {nombre:'Cubre Franco',user:'cubre',rol:'cubre',cubreSector:'Cocina Fria',authGen:1}
 ];
 
 const DEFAULT_CFG={
@@ -2087,56 +2114,111 @@ function asignarSectoresOperarios(){
   audit('Asignación masiva de zonas', asignados + ' operarios', 'sistema');
 }
 
-function importarOperariosReales(){
-  if(!confirm('Esto agrega los 35 operarios reales al sistema. Los usuarios existentes NO se borran. ¿Continuar?')) return;
+async function regenerarPasswordsTodos(){
+  if(!confirm('Esto genera una contraseña nueva y única para TODOS los usuarios del sistema (menos vos, que seguís con la tuya) y descarga un CSV con la lista para repartir. Cada persona la va a tener que cambiar en su próximo ingreso. Puede tardar unos segundos porque crea una cuenta por persona en Firebase. ¿Continuar?')) return;
+  const filasCSV = [['usuario','nombre','rol','contraseña nueva']];
+  const errores = [];
+  let n = 0;
+  for(const u of users){
+    if(currentUser && u.user === currentUser.user) continue; // no tocar la sesión propia activa
+    const temporal = generarPassAleatoria();
+    try{
+      await asegurarCuentaAuth(u, temporal);
+      filasCSV.push([u.user, u.nombre, u.rol, temporal]);
+      n++;
+    }catch(e){
+      errores.push(u.user+': '+(e&&e.message?e.message:e));
+    }
+  }
+  saveAll();
+  renderUsersConfig();
+  audit('Regeneración masiva de contraseñas', `${n} usuarios${errores.length?`, ${errores.length} con error`:''}`, 'usuario');
+  if(n){
+    const csv = filasCSV.map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
+    dlBlob(csv, 'text/csv', 'contraseñas_nuevas_'+today()+'.csv');
+    alert(`✅ Se generaron ${n} contraseñas nuevas y se descargó el CSV. Repartilas de forma segura y borrá el archivo apenas termines.`+(errores.length?`\n\n⚠ ${errores.length} usuario(s) tuvieron error y no se pudieron actualizar:\n${errores.join('\n')}`:''));
+  } else {
+    alert('No había otros usuarios para regenerar.'+(errores.length?`\n\n⚠ Errores:\n${errores.join('\n')}`:''));
+  }
+}
+
+async function importarOperariosReales(){
+  if(!confirm('Esto agrega los 35 operarios reales al sistema. Cada uno recibe una contraseña temporal única (no se repite entre personas) y se va a descargar un archivo CSV con esa lista para repartir. Los usuarios existentes NO se borran. ¿Continuar?')) return;
 
   const nuevos = [
-    {nombre:"Vanesa Carrizo",      user:"vcarrizo",     pass:"fscc2026",rol:"operario",email:"",sectores:[],cubreSector:null},
-    {nombre:"Yanina Toscani",      user:"ytoscani",     pass:"fscc2026",rol:"operario",email:"",sectores:[],cubreSector:null},
-    {nombre:"Jesica Ruiz",         user:"jruiz",        pass:"fscc2026",rol:"operario",email:"",sectores:[],cubreSector:null},
-    {nombre:"Sabina Bondino",      user:"sbondino",     pass:"fscc2026",rol:"operario",email:"",sectores:[],cubreSector:null},
-    {nombre:"Lucia Paliza",        user:"lpaliza",      pass:"fscc2026",rol:"operario",email:"",sectores:[],cubreSector:null},
-    {nombre:"Luciana Martinez",    user:"lmartinez",    pass:"fscc2026",rol:"operario",email:"",sectores:[],cubreSector:null},
-    {nombre:"Brian Diaz",          user:"bdiaz",        pass:"fscc2026",rol:"operario",email:"",sectores:[],cubreSector:null},
-    {nombre:"Ludmila Vasquez",     user:"lvasquez",     pass:"fscc2026",rol:"operario",email:"",sectores:[],cubreSector:null},
-    {nombre:"Brisa Sandoval",      user:"bsandoval",    pass:"fscc2026",rol:"operario",email:"",sectores:[],cubreSector:null},
-    {nombre:"Melisa Lelli",        user:"mlelli",       pass:"fscc2026",rol:"operario",email:"",sectores:[],cubreSector:null},
-    {nombre:"Sabrina Vilar Vera",  user:"svilarvera",   pass:"fscc2026",rol:"operario",email:"",sectores:[],cubreSector:null},
-    {nombre:"Julian Torres",       user:"jtorres",      pass:"fscc2026",rol:"operario",email:"",sectores:[],cubreSector:null},
-    {nombre:"Mariela Bardo",       user:"mbardo",       pass:"fscc2026",rol:"operario",email:"",sectores:[],cubreSector:null},
-    {nombre:"Florencia P.",        user:"florenciap",   pass:"fscc2026",rol:"operario",email:"",sectores:[],cubreSector:null},
-    {nombre:"Silvia S.",           user:"silvias",      pass:"fscc2026",rol:"operario",email:"",sectores:[],cubreSector:null},
-    {nombre:"Vanesa Acosta",       user:"vacosta",      pass:"fscc2026",rol:"operario",email:"",sectores:[],cubreSector:null},
-    {nombre:"Cecilia D.",          user:"ceciliad",     pass:"fscc2026",rol:"operario",email:"",sectores:[],cubreSector:null},
-    {nombre:"Rocio Lohaiza",       user:"rlohaiza",     pass:"fscc2026",rol:"operario",email:"",sectores:[],cubreSector:null},
-    {nombre:"Daiana Gonzalez",     user:"dgonzalez",    pass:"fscc2026",rol:"operario",email:"",sectores:[],cubreSector:null},
-    {nombre:"Gaston Pared",        user:"gpared",       pass:"fscc2026",rol:"operario",email:"",sectores:[],cubreSector:null},
-    {nombre:"Jorge Morillo",       user:"jmorillo",     pass:"fscc2026",rol:"operario",email:"",sectores:[],cubreSector:null},
-    {nombre:"Virginia Frang",      user:"vfrang",       pass:"fscc2026",rol:"operario",email:"",sectores:[],cubreSector:null},
-    {nombre:"Sofia Fer.",          user:"sofiaf",       pass:"fscc2026",rol:"operario",email:"",sectores:[],cubreSector:null},
-    {nombre:"Maria Wehimuller",    user:"mwehimuller",  pass:"fscc2026",rol:"operario",email:"",sectores:[],cubreSector:null},
-    {nombre:"Melani LeD.",         user:"melaniled",    pass:"fscc2026",rol:"operario",email:"",sectores:[],cubreSector:null},
-    {nombre:"Ezequiel Man.",       user:"ezequielm",    pass:"fscc2026",rol:"operario",email:"",sectores:[],cubreSector:null},
-    {nombre:"Carolina Arziaga",    user:"carziaga",     pass:"fscc2026",rol:"operario",email:"",sectores:[],cubreSector:null},
-    {nombre:"Maximiliano Rodriguez",user:"mrodriguez",  pass:"fscc2026",rol:"operario",email:"",sectores:[],cubreSector:null},
-    {nombre:"Miqueas Blanco",      user:"mblanco",      pass:"fscc2026",rol:"operario",email:"",sectores:[],cubreSector:null},
-    {nombre:"Javier Machuca",      user:"jmachuca",     pass:"fscc2026",rol:"operario",email:"",sectores:[],cubreSector:null},
-    {nombre:"Gustavo Caceres",     user:"gcaceres",     pass:"fscc2026",rol:"operario",email:"",sectores:[],cubreSector:null},
-    {nombre:"Steve",               user:"steve",        pass:"fscc2026",rol:"cubre",email:"",sectores:[],cubreSector:null},
-    {nombre:"Julian",              user:"julian",       pass:"fscc2026",rol:"cubre",email:"",sectores:[],cubreSector:null},
-    {nombre:"Carlos Bracamon",     user:"cbracamon",    pass:"fscc2026",rol:"operario",email:"",sectores:[],cubreSector:null},
-    {nombre:"Maxi Martinez",       user:"mmartinez",    pass:"fscc2026",rol:"operario",email:"",sectores:[],cubreSector:null},
-    {nombre:"Diego Lugo",          user:"dlugo",        pass:"fscc2026",rol:"operario",email:"",sectores:[],cubreSector:null},
+    {nombre:"Vanesa Carrizo",      user:"vcarrizo",     rol:"operario",email:"",sectores:[],cubreSector:null},
+    {nombre:"Yanina Toscani",      user:"ytoscani",     rol:"operario",email:"",sectores:[],cubreSector:null},
+    {nombre:"Jesica Ruiz",         user:"jruiz",        rol:"operario",email:"",sectores:[],cubreSector:null},
+    {nombre:"Sabina Bondino",      user:"sbondino",     rol:"operario",email:"",sectores:[],cubreSector:null},
+    {nombre:"Lucia Paliza",        user:"lpaliza",      rol:"operario",email:"",sectores:[],cubreSector:null},
+    {nombre:"Luciana Martinez",    user:"lmartinez",    rol:"operario",email:"",sectores:[],cubreSector:null},
+    {nombre:"Brian Diaz",          user:"bdiaz",        rol:"operario",email:"",sectores:[],cubreSector:null},
+    {nombre:"Ludmila Vasquez",     user:"lvasquez",     rol:"operario",email:"",sectores:[],cubreSector:null},
+    {nombre:"Brisa Sandoval",      user:"bsandoval",    rol:"operario",email:"",sectores:[],cubreSector:null},
+    {nombre:"Melisa Lelli",        user:"mlelli",       rol:"operario",email:"",sectores:[],cubreSector:null},
+    {nombre:"Sabrina Vilar Vera",  user:"svilarvera",   rol:"operario",email:"",sectores:[],cubreSector:null},
+    {nombre:"Julian Torres",       user:"jtorres",      rol:"operario",email:"",sectores:[],cubreSector:null},
+    {nombre:"Mariela Bardo",       user:"mbardo",       rol:"operario",email:"",sectores:[],cubreSector:null},
+    {nombre:"Florencia P.",        user:"florenciap",   rol:"operario",email:"",sectores:[],cubreSector:null},
+    {nombre:"Silvia S.",           user:"silvias",      rol:"operario",email:"",sectores:[],cubreSector:null},
+    {nombre:"Vanesa Acosta",       user:"vacosta",      rol:"operario",email:"",sectores:[],cubreSector:null},
+    {nombre:"Cecilia D.",          user:"ceciliad",     rol:"operario",email:"",sectores:[],cubreSector:null},
+    {nombre:"Rocio Lohaiza",       user:"rlohaiza",     rol:"operario",email:"",sectores:[],cubreSector:null},
+    {nombre:"Daiana Gonzalez",     user:"dgonzalez",    rol:"operario",email:"",sectores:[],cubreSector:null},
+    {nombre:"Gaston Pared",        user:"gpared",       rol:"operario",email:"",sectores:[],cubreSector:null},
+    {nombre:"Jorge Morillo",       user:"jmorillo",     rol:"operario",email:"",sectores:[],cubreSector:null},
+    {nombre:"Virginia Frang",      user:"vfrang",       rol:"operario",email:"",sectores:[],cubreSector:null},
+    {nombre:"Sofia Fer.",          user:"sofiaf",       rol:"operario",email:"",sectores:[],cubreSector:null},
+    {nombre:"Maria Wehimuller",    user:"mwehimuller",  rol:"operario",email:"",sectores:[],cubreSector:null},
+    {nombre:"Melani LeD.",         user:"melaniled",    rol:"operario",email:"",sectores:[],cubreSector:null},
+    {nombre:"Ezequiel Man.",       user:"ezequielm",    rol:"operario",email:"",sectores:[],cubreSector:null},
+    {nombre:"Carolina Arziaga",    user:"carziaga",     rol:"operario",email:"",sectores:[],cubreSector:null},
+    {nombre:"Maximiliano Rodriguez",user:"mrodriguez",  rol:"operario",email:"",sectores:[],cubreSector:null},
+    {nombre:"Miqueas Blanco",      user:"mblanco",      rol:"operario",email:"",sectores:[],cubreSector:null},
+    {nombre:"Javier Machuca",      user:"jmachuca",     rol:"operario",email:"",sectores:[],cubreSector:null},
+    {nombre:"Gustavo Caceres",     user:"gcaceres",     rol:"operario",email:"",sectores:[],cubreSector:null},
+    {nombre:"Steve",               user:"steve",        rol:"cubre",email:"",sectores:[],cubreSector:null},
+    {nombre:"Julian",              user:"julian",       rol:"cubre",email:"",sectores:[],cubreSector:null},
+    {nombre:"Carlos Bracamon",     user:"cbracamon",    rol:"operario",email:"",sectores:[],cubreSector:null},
+    {nombre:"Maxi Martinez",       user:"mmartinez",    rol:"operario",email:"",sectores:[],cubreSector:null},
+    {nombre:"Diego Lugo",          user:"dlugo",        rol:"operario",email:"",sectores:[],cubreSector:null},
   ];
 
   // Evitar duplicados por user
   const existentes = users.map(u=>u.user);
   const agregar = nuevos.filter(n=>!existentes.includes(n.user));
-  users.push(...agregar);
+
+  // Contraseña temporal única por persona, creada como cuenta real de Firebase Auth
+  const filasCSV = [['usuario','nombre','contraseña temporal']];
+  const errores = [];
+  const agregadosOk = [];
+  for(const n of agregar){
+    const temporal = generarPassAleatoria();
+    n.authGen = 1;
+    try{
+      await crearCuentaAuth(n, temporal);
+      n.debeCambiarPass = true; // se le pide elegir su propia contraseña al primer ingreso
+      filasCSV.push([n.user, n.nombre, temporal]);
+      agregadosOk.push(n);
+    }catch(e){
+      errores.push(n.user+': '+(e&&e.message?e.message:e));
+    }
+  }
+
+  users.push(...agregadosOk);
   saveAll();
   renderUsersConfig();
-  alert(`✅ ${agregar.length} operarios importados correctamente. Contraseña inicial: fscc2026`);
-  audit(`Importación masiva de operarios`, `${agregar.length} usuarios agregados`, 'sistema');
+  audit(`Importación masiva de operarios`, `${agregadosOk.length} usuarios agregados, contraseñas individuales generadas${errores.length?`, ${errores.length} con error`:''}`, 'sistema');
+
+  if(agregadosOk.length){
+    const csv = filasCSV.map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
+    dlBlob(csv, 'text/csv', 'contraseñas_temporales_'+today()+'.csv');
+    alert(`✅ ${agregadosOk.length} operarios importados. Se descargó un CSV con la contraseña temporal de cada uno — repartilas de forma segura (cada persona la va a tener que cambiar en su primer ingreso) y borrá el archivo después de usarlo.`+(errores.length?`\n\n⚠ ${errores.length} no se pudieron crear:\n${errores.join('\n')}`:''));
+  } else if(errores.length){
+    alert('No se pudo crear ninguna cuenta nueva.\n\n'+errores.join('\n'));
+  } else {
+    alert('No había operarios nuevos para importar (ya estaban todos cargados).');
+  }
 }
 
 function resetData(){
@@ -2388,8 +2470,8 @@ async function enviarRecupPass(){
       nueva_pass: nuevaPass,
     });
 
-    // Actualizar contraseña en el sistema
-    u.pass = nuevaPass;
+    // Crear la credencial nueva en Firebase (no se puede editar la vieja sin backend propio)
+    await recrearCuentaAuth(u, nuevaPass);
     await saveAll();
     audit(`Reset de contraseña por mail: @${u.user}`,'','usuario');
 
@@ -2430,12 +2512,87 @@ async function enviarMailBienvenida(u, pass){
   }
 }
 
-function doLogin(){
+// ═══════════════════════════════════════════════════
+//  SEGURIDAD DE CONTRASEÑAS — Firebase Authentication
+// ═══════════════════════════════════════════════════
+// Las contraseñas ya NO se guardan ni se comparan en este archivo: las
+// administra Firebase Authentication. Acá solo mapeamos cada usuario del
+// sistema (username) a un "email" sintético que Firebase usa como
+// identificador de la cuenta — nadie lo ve ni lo usa como mail real.
+//
+// "authGen" (generación) es un número que empieza en 1. Cuando se resetea
+// una contraseña no se edita la cuenta vieja (no se puede sin backend
+// propio): se crea una cuenta NUEVA con la generación siguiente y el login
+// pasa a apuntar ahí. La cuenta anterior queda huérfana e inutilizable
+// desde la app (ver nota en resetPass).
+function syntheticEmail(user){
+  const gen = user.authGen || 1;
+  return (user.user||'').toLowerCase()+'.g'+gen+'@fscc-sanatorioparque.local';
+}
+
+// Crea la cuenta de Firebase Auth de un usuario usando la instancia
+// secundaria (para no perder la sesión del Admin) y cierra esa sesión
+// secundaria apenas termina.
+async function crearCuentaAuth(user, plainPassword){
+  const email = syntheticEmail(user);
+  await window._fbCreateUser(window._authSecondary, email, plainPassword);
+  await window._fbSignOut(window._authSecondary);
+}
+
+// Resetea la contraseña de un usuario generando una credencial nueva
+// (nueva generación) en vez de editar la existente.
+async function recrearCuentaAuth(user, plainPassword){
+  user.authGen = (user.authGen || 1) + 1;
+  await crearCuentaAuth(user, plainPassword);
+  user.debeCambiarPass = true;
+  delete user.pass; delete user.passHash; delete user.passSalt; // limpieza de esquemas viejos
+}
+
+// Verifica la contraseña actual del usuario logueado (para firma digital)
+// reautenticando contra Firebase, sin cerrar su sesión.
+async function verificarPasswordActual(plainInput){
+  if(!window._auth.currentUser || !currentUser) return false;
+  try{
+    const cred = window._fbEmailCredential(syntheticEmail(currentUser), plainInput);
+    await window._fbReauthenticate(window._auth.currentUser, cred);
+    return true;
+  }catch(e){ return false; }
+}
+
+// Crea la cuenta de Firebase Auth si el usuario nunca tuvo una, o la
+// recrea (nueva generación) si ya tenía — usar esto en migraciones/rotaciones
+// masivas, donde no sabemos de antemano el estado de cada usuario.
+async function asegurarCuentaAuth(user, plainPassword){
+  if(!user.authGen){
+    user.authGen = 1;
+    await crearCuentaAuth(user, plainPassword);
+    user.debeCambiarPass = true;
+    delete user.pass; delete user.passHash; delete user.passSalt;
+  } else {
+    await recrearCuentaAuth(user, plainPassword);
+  }
+}
+
+async function doLogin(){
   const u=document.getElementById('loginUser').value.trim();
   const p=document.getElementById('loginPass').value;
-  const found=users.find(x=>x.user===u&&x.pass===p);
+  const found=users.find(x=>x.user===u);
   if(!found){document.getElementById('loginError').classList.add('show');return;}
+  try{
+    await window._fbSignIn(window._auth, syntheticEmail(found), p);
+  }catch(e){
+    document.getElementById('loginError').classList.add('show');
+    return;
+  }
   document.getElementById('loginError').classList.remove('show');
+  if(found.debeCambiarPass){
+    abrirCambioPassObligatorio(found);
+    return;
+  }
+  _completarLogin(found);
+}
+
+function _completarLogin(found){
   currentUser=found;
   document.getElementById('loginScreen').classList.remove('active');
   document.getElementById('appWrap').classList.add('active');
@@ -2492,10 +2649,46 @@ function doLogin(){
   renderAll();
 }
 
+// ── Cambio de contraseña obligatorio (primer ingreso con clave temporal) ──
+let _pendingLoginUser = null;
+function abrirCambioPassObligatorio(user){
+  _pendingLoginUser = user;
+  document.getElementById('loginScreen').classList.remove('active');
+  document.getElementById('cambioPassNueva').value='';
+  document.getElementById('cambioPassConfirmar').value='';
+  document.getElementById('cambioPassMsg').style.display='none';
+  document.getElementById('cambioPassNombre').textContent = user.nombre;
+  document.getElementById('modalCambioPassObligatorio').classList.add('open');
+}
+async function confirmarCambioPassObligatorio(){
+  const n1 = document.getElementById('cambioPassNueva').value;
+  const n2 = document.getElementById('cambioPassConfirmar').value;
+  const msg = document.getElementById('cambioPassMsg');
+  const mostrar = (t)=>{ msg.textContent=t; msg.style.display='block'; };
+  if(!n1 || n1.length<4){ mostrar('La contraseña debe tener al menos 4 caracteres.'); return; }
+  if(n1 !== n2){ mostrar('Las contraseñas no coinciden.'); return; }
+  const user = _pendingLoginUser;
+  if(!user) return;
+  // El usuario ya está autenticado en Firebase con la clave temporal —
+  // updatePassword cambia SU PROPIA contraseña, esto sí lo permite el SDK de cliente.
+  try{
+    await window._fbUpdatePassword(window._auth.currentUser, n1);
+  }catch(e){
+    mostrar('No se pudo actualizar la contraseña. Volvé a intentar el ingreso.');
+    return;
+  }
+  user.debeCambiarPass = false;
+  audit('Cambio de contraseña obligatorio completado: @'+user.user,'','usuario');
+  await saveAll();
+  document.getElementById('modalCambioPassObligatorio').classList.remove('open');
+  _completarLogin(user);
+}
+
 function doLogout(){
   audit('Cierre de sesión','','sistema');saveAll();
   // Auto-backup al cerrar sesión (solo admin)
   if(currentUser&&currentUser.rol==='admin')autoBackupJSON();
+  if(window._auth) window._fbSignOut(window._auth).catch(()=>{});
   currentUser=null;
   document.getElementById('appWrap').classList.remove('active');
   document.getElementById('loginScreen').classList.add('active');
@@ -3164,11 +3357,13 @@ function renderUsersConfig(){
       `<button class="btn btn-ghost btn-sm" onclick="openAsignarSectoresModal(${i})">Sectores</button>`:'';
     const svNote=u.rol==='supervisor'?
       `<span style="font-size:11px;color:var(--text3)">↔ Todos los sectores</span>`:'';
+    const pendienteCambio = u.debeCambiarPass?
+      `<span class="badge" style="background:#fff3cd;color:#8a6416;border:1px solid #f0d880;">⏳ clave temporal sin cambiar</span>`:'';
     return`<div class="user-item">
       <span class="user-item-name">${u.nombre}</span>
       <span style="font-family:var(--mono);font-size:11px;color:var(--text3)">@${u.user}</span>
       <span class="badge ${rolBadge}">${u.rol}</span>
-      ${svNote}${sectorInfo}${cubreInfo}${sectorBtn}
+      ${svNote}${sectorInfo}${cubreInfo}${sectorBtn}${pendienteCambio}
       <button class="btn btn-ghost btn-sm" onclick="openEditUserModal(${i})">Editar</button>
       <button class="btn btn-ghost btn-sm" onclick="resetPass(${i})">🔑 Reset clave</button>
       ${u.user!=='admin'?`<button class="btn btn-danger btn-sm" onclick="removeUser(${i})">Eliminar</button>`:'<span style="font-size:10px;color:var(--text3)">protegido</span>'}
@@ -3218,8 +3413,8 @@ function openEditUserModal(i){
   document.getElementById('modalNewUser').classList.add('open');
 }
 
-function saveUserModal(){
-  if(_userEditIdx === null){ saveNewUser(); return; }
+async function saveUserModal(){
+  if(_userEditIdx === null){ await saveNewUser(); return; }
   const u = users[_userEditIdx];
   if(!u) return;
   const nombre = document.getElementById('nuNombre').value.trim();
@@ -3230,7 +3425,11 @@ function saveUserModal(){
   if(pass && pass.length < 4){ alert('La contraseña debe tener al menos 4 caracteres.'); return; }
   const cambios = [];
   if(u.nombre !== nombre){ cambios.push('nombre'); u.nombre = nombre; }
-  if(pass){ cambios.push('contraseña'); u.pass = pass; }
+  if(pass){
+    cambios.push('contraseña');
+    try{ await recrearCuentaAuth(u, pass); u.debeCambiarPass = false; }
+    catch(e){ alert('No se pudo actualizar la contraseña en Firebase. Intentá de nuevo.'); return; }
+  }
   if(u.rol !== rol){ cambios.push('rol'); u.rol = rol; }
   if((u.email||'') !== email){ cambios.push('email'); u.email = email; }
   if(rol==='operario'){ u.sectores = [document.getElementById('nuSector').value]; }
@@ -3239,19 +3438,24 @@ function saveUserModal(){
   saveAll(); renderUsersConfig(); closeModal('modalNewUser');
 }
 
-function resetPass(i){
+async function resetPass(i){
   const u = users[i];
   if(!u) return;
-  const nueva = prompt('Nueva contraseña para ' + u.nombre + ' (@' + u.user + '):\n(mínimo 4 caracteres)');
+  const nueva = prompt('Nueva contraseña para ' + u.nombre + ' (@' + u.user + '):\n(mínimo 4 caracteres)\n\nOjo: esto crea una credencial nueva en Firebase (no se puede "editar" la vieja sin backend propio). La cuenta anterior queda inutilizada.');
   if(nueva === null) return;
   if(nueva.length < 4){ alert('Mínimo 4 caracteres.'); return; }
-  u.pass = nueva;
+  try{
+    await recrearCuentaAuth(u, nueva);
+  }catch(e){
+    alert('No se pudo crear la nueva credencial en Firebase. Verificá la conexión e intentá de nuevo.');
+    return;
+  }
   audit('Contraseña reseteada: @'+u.user, '', 'usuario');
   saveAll(); renderUsersConfig();
-  alert('Contraseña actualizada.');
+  alert('Contraseña actualizada. La persona va a tener que elegir su propia clave en el próximo ingreso.');
 }
 
-function saveNewUser(){
+async function saveNewUser(){
   const nombre=document.getElementById('nuNombre').value.trim();
   const user=document.getElementById('nuUser').value.trim().toLowerCase();
   const pass=document.getElementById('nuPass').value;
@@ -3260,13 +3464,20 @@ function saveNewUser(){
   if(pass.length<4){alert('La contraseña debe tener al menos 4 caracteres.');return;}
   if(users.find(u=>u.user===user)){alert('Ese usuario ya existe.');return;}
   const email=document.getElementById('nuEmail').value.trim().toLowerCase();
-  const nu={nombre,user,pass,rol,email,sectores:[]};
+  const nu={nombre,user,rol,email,sectores:[],authGen:1};
   if(rol==='operario')nu.sectores=[document.getElementById('nuSector').value];
   if(rol==='cubre')nu.cubreSector=document.getElementById('nuCubreSector').value;
+  try{
+    await crearCuentaAuth(nu, pass);
+  }catch(e){
+    alert('No se pudo crear la cuenta en Firebase. Puede que ya exista un usuario con ese nombre. Detalle: '+(e&&e.message?e.message:e));
+    return;
+  }
   users.push(nu);
   audit(`Usuario creado: ${nombre} (@${user})`,`rol: ${rol}`,'usuario');
   saveAll();renderUsersConfig();closeModal('modalNewUser');
-  // Enviar mail de bienvenida si tiene email cargado
+  // Enviar mail de bienvenida si tiene email cargado (la contraseña en texto plano
+  // se usa acá una única vez, solo para el envío — nunca se guarda así)
   if(nu.email) enviarMailBienvenida(nu, pass);
 }
 
@@ -4029,7 +4240,7 @@ tbody tr{border-bottom:1px solid #e4e3dd;}tbody td{padding:7px 10px;vertical-ali
 <div class="footer">FOOD SERVICE CONTROL CENTER · SANATORIO PARQUE · Generado el ${ts}</div></body></html>`,now};
 }
 
-function generarReporteOperario(modo){
+async function generarReporteOperario(modo){
   const opNombre = _repOpNombre;
   if(!opNombre) return;
   const desde = document.getElementById('repOpDesde').value;
@@ -4044,7 +4255,7 @@ function generarReporteOperario(modo){
 
   if(passInput){
     // Verificar contraseña del usuario actual
-    if(currentUser && currentUser.pass === passInput){
+    if(currentUser && await verificarPasswordActual(passInput)){
       const ahora = new Date();
       firmaData = {
         firmante: currentUser.nombre,
@@ -5472,14 +5683,14 @@ function renderCapacitaciones(){
   }).join('');
 }
 
-function firmarCapacitacion(id){
+async function firmarCapacitacion(id){
   const c = capacitaciones.find(x=>String(x.id)===String(id));
   if(!c) return;
   const passInput = document.getElementById('firmaPass_'+id);
   if(!passInput) return;
   const pass = passInput.value;
   if(!pass){ alert('Ingresá tu contraseña para firmar.'); return; }
-  if(!currentUser || currentUser.pass !== pass){
+  if(!currentUser || !(await verificarPasswordActual(pass))){
     alert('Contraseña incorrecta. Verificá e intentá de nuevo.');
     passInput.value='';
     return;
@@ -5764,6 +5975,28 @@ loadData();
     <div class="form-actions">
       <button class="btn btn-ghost" onclick="closeModal('modalRecuperarPass')">Cancelar</button>
       <button class="btn btn-primary" id="recupBtn" onclick="enviarRecupPass()">Enviar nueva contraseña</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Cambio de Contraseña Obligatorio (primer ingreso / clave temporal) -->
+<div class="modal-bg" id="modalCambioPassObligatorio">
+  <div class="modal-box" style="max-width:380px;">
+    <div class="modal-title">🔒 Elegí tu contraseña</div>
+    <div class="modal-sub">Hola <span id="cambioPassNombre"></span> — por seguridad, tenés que definir tu propia contraseña antes de continuar.</div>
+    <div style="margin:16px 0;">
+      <div class="fg">
+        <label>Contraseña nueva</label>
+        <input type="password" id="cambioPassNueva" placeholder="mínimo 4 caracteres" onkeydown="if(event.key==='Enter')confirmarCambioPassObligatorio()" />
+      </div>
+      <div class="fg">
+        <label>Confirmar contraseña</label>
+        <input type="password" id="cambioPassConfirmar" placeholder="repetí la contraseña" onkeydown="if(event.key==='Enter')confirmarCambioPassObligatorio()" />
+      </div>
+      <div id="cambioPassMsg" style="display:none;font-size:12px;padding:10px;border-radius:6px;margin-top:8px;background:#fde8e8;color:#b02020;border:1px solid #f0b8b8;"></div>
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-primary" style="width:100%;justify-content:center;" onclick="confirmarCambioPassObligatorio()">Guardar y entrar</button>
     </div>
   </div>
 </div>
