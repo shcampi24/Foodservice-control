@@ -438,6 +438,31 @@ tbody td{padding:8px 10px;vertical-align:middle;}
     </div>
     <button class="btn btn-primary" style="width:100%;justify-content:center;padding:10px;" onclick="doLogin()">Ingresar</button>
     <button class="btn btn-ghost" style="width:100%;justify-content:center;margin-top:8px;font-size:12px;color:var(--text3);" onclick="openRecuperarPass()">¿Olvidaste tu contraseña?</button>
+    <button class="btn btn-ghost" style="width:100%;justify-content:center;margin-top:2px;font-size:11px;color:var(--text3);" onclick="openBootstrapAdmin()">🔧 Primer ingreso tras la actualización (solo Administrador)</button>
+  </div>
+</div>
+
+<!-- Modal: configuración inicial de la cuenta Administrador (bootstrap) -->
+<div class="modal-bg" id="modalBootstrapAdmin" onclick="handleModalClick(event,'modalBootstrapAdmin')">
+  <div class="modal-box" style="max-width:380px;">
+    <button class="modal-close" onclick="closeModal('modalBootstrapAdmin')">✕</button>
+    <div class="modal-title">🔧 Configurar cuenta de Administrador</div>
+    <div class="modal-sub">Esto es solo para la primera vez que entrás tras la actualización de seguridad — crea tu cuenta real en Firebase. Si ya la configuraste antes, usá el login normal.</div>
+    <div style="margin:16px 0;">
+      <div class="fg">
+        <label>Contraseña nueva para @admin</label>
+        <input type="password" id="bsAdminPass1" placeholder="mínimo 4 caracteres" />
+      </div>
+      <div class="fg">
+        <label>Confirmar contraseña</label>
+        <input type="password" id="bsAdminPass2" placeholder="repetí la contraseña" />
+      </div>
+      <div id="bsAdminMsg" style="display:none;font-size:12px;padding:10px;border-radius:6px;margin-top:8px;"></div>
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-ghost" onclick="closeModal('modalBootstrapAdmin')">Cancelar</button>
+      <button class="btn btn-primary" id="bsAdminBtn" onclick="confirmarBootstrapAdmin()">Configurar y entrar</button>
+    </div>
   </div>
 </div>
 
@@ -2570,6 +2595,45 @@ async function asegurarCuentaAuth(user, plainPassword){
     delete user.pass; delete user.passHash; delete user.passSalt;
   } else {
     await recrearCuentaAuth(user, plainPassword);
+  }
+}
+
+// ── Configuración inicial de la cuenta Admin (bootstrap post-migración) ──
+function openBootstrapAdmin(){
+  document.getElementById('bsAdminPass1').value='';
+  document.getElementById('bsAdminPass2').value='';
+  document.getElementById('bsAdminMsg').style.display='none';
+  document.getElementById('modalBootstrapAdmin').classList.add('open');
+}
+async function confirmarBootstrapAdmin(){
+  const p1 = document.getElementById('bsAdminPass1').value;
+  const p2 = document.getElementById('bsAdminPass2').value;
+  const msg = document.getElementById('bsAdminMsg');
+  const mostrar = (t)=>{ msg.textContent=t; msg.style.display='block'; };
+  if(!p1 || p1.length<4){ mostrar('La contraseña debe tener al menos 4 caracteres.'); return; }
+  if(p1 !== p2){ mostrar('Las contraseñas no coinciden.'); return; }
+  const adminUser = users.find(x=>x.user==='admin');
+  if(!adminUser){ mostrar('No se encontró el usuario @admin en el sistema.'); return; }
+  const btn = document.getElementById('bsAdminBtn');
+  btn.disabled = true; btn.textContent = 'Configurando...';
+  try{
+    adminUser.authGen = 1;
+    await crearCuentaAuth(adminUser, p1);
+    delete adminUser.pass; delete adminUser.passHash; delete adminUser.passSalt;
+    document.getElementById('modalBootstrapAdmin').classList.remove('open');
+    document.getElementById('loginUser').value = 'admin';
+    document.getElementById('loginPass').value = p1;
+    // Primero autenticar la sesión principal — recién ahí Firestore permite guardar
+    await doLogin();
+    audit('Cuenta de Administrador configurada (bootstrap post-migración)','','usuario');
+    await saveAll();
+  }catch(e){
+    btn.disabled = false; btn.textContent = 'Configurar y entrar';
+    if(e && e.code === 'auth/email-already-in-use'){
+      mostrar('Esa cuenta ya está configurada. Probá ingresar normalmente con tu contraseña, o contactá para resolverlo.');
+    } else {
+      mostrar('No se pudo configurar la cuenta. Verificá la conexión e intentá de nuevo.');
+    }
   }
 }
 
