@@ -581,6 +581,12 @@ tbody td{padding:8px 10px;vertical-align:middle;}
     <div class="fg" style="margin-bottom:10px;"><label>Instrucciones / Observaciones</label>
       <textarea id="svObs" placeholder="Instrucciones para el operario..."></textarea>
     </div>
+    <div class="fg" style="margin-bottom:10px;">
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;">
+        <input type="checkbox" id="svRecurrente" style="width:15px;height:15px;" />
+        🔁 Repetir automáticamente (esta tarea se va a volver a generar sola según la frecuencia configurada)
+      </label>
+    </div>
     <div class="form-actions">
       <button class="btn btn-ghost" onclick="toggleSvForm()">Cancelar</button>
       <button class="btn btn-primary" onclick="addTaskSupervisor()">✓ Asignar tarea</button>
@@ -678,6 +684,12 @@ tbody td{padding:8px 10px;vertical-align:middle;}
           <span class="foto-clear" id="fFotoClear" onclick="clearFoto('fFotoPreview','fFotoData','fFotoClear')">✕ Quitar foto</span>
         </div>
       </div>
+    </div>
+    <div class="fg" style="margin-bottom:10px;">
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;">
+        <input type="checkbox" id="fRecurrente" style="width:15px;height:15px;" />
+        🔁 Repetir automáticamente (esta tarea se va a volver a generar sola según la frecuencia configurada)
+      </label>
     </div>
     <div class="form-actions">
       <button class="btn btn-ghost" onclick="toggleForm()">Cancelar</button>
@@ -788,6 +800,13 @@ tbody td{padding:8px 10px;vertical-align:middle;}
     <div class="config-section" style="grid-column:1/-1;">
       <h3>Frecuencia de vencimiento (días)</h3>
       <div id="cfgFrecuencias" style="display:grid;grid-template-columns:1fr 1fr;gap:6px;"></div>
+    </div>
+    <div class="config-section" style="grid-column:1/-1;">
+      <h3>🔁 Tareas automáticas (recurrentes)</h3>
+      <div class="info-panel" style="font-size:11px;padding:7px 10px;margin-bottom:10px;">
+        Por defecto todo se carga de forma manual. Estas son las únicas tareas que el sistema genera solo, todos los días, porque fueron marcadas con "🔁 Repetir automáticamente" al crearlas (ej. lavado de pisos). Podés desactivarlas acá.
+      </div>
+      <div id="cfgRecurrentes" style="display:flex;flex-direction:column;gap:6px;"></div>
     </div>
   </div>
 
@@ -1466,6 +1485,10 @@ const DEFAULT_CFG={
   turnos:["Mañana","Tarde"],
   turnosHorarios:{"Mañana":{inicio:"06:00",fin:"14:00",camerarosDesde:"06:30"},"Tarde":{inicio:"14:00",fin:"22:00",camerarosDesde:null}},
   frecuencias:{"Limpieza diaria":1,"Limpieza profunda":7,"Desinfección":3,"Control de temperatura":1,"Mantenimiento preventivo":30,"Control de plagas":14,"Registro HACCP":1},
+  // recurrentes: tareas que se generan solas cada día. Vacío por defecto —
+  // todo se carga manual salvo lo que el usuario marque explícitamente como recurrente.
+  // Estructura: { equipoId: ['Tipo de tarea', ...] }
+  recurrentes:{},
   mantEmail:'',
   mantWhatsapp:'',
   mantURLSistema:''
@@ -1496,7 +1519,7 @@ async function loadDataFromFirebase(){
     const fbVacio = !fbTasks && !fbUsers && !fbCfg;
 
     if(fbUsers){users=fbUsers;LS.set('fscc_users',users);}
-    if(fbCfg){cfg=fbCfg;LS.set('fscc_cfg',cfg);}
+    if(fbCfg){cfg=fbCfg;if(!cfg.recurrentes)cfg.recurrentes={};LS.set('fscc_cfg',cfg);}
     if(fbTasks){
       tasks=fbTasks;LS.set('fscc_tasks',tasks);
     } else if(fbVacio){
@@ -1542,7 +1565,7 @@ async function loadDataFromFirebase(){
     });
     fbWatch('fscc_cfg',(val)=>{
       if(_localSaveInProgress)return;
-      cfg=val;LS.set('fscc_cfg',cfg);
+      cfg=val;if(!cfg.recurrentes)cfg.recurrentes={};LS.set('fscc_cfg',cfg);
       if(currentUser)renderAll();
     });
     fbWatch('fscc_users',(val)=>{
@@ -1761,34 +1784,18 @@ function generarTareasDelDia(){
     }
   });
 
-  // Tipos de tarea por equipo (mismo criterio que seedTasks original)
-  const tiposPorEquipo={
-    'eq1':['Limpieza diaria','Control de temperatura','Registro HACCP'],
-    'eq2':['Limpieza diaria','Limpieza profunda'],
-    'eq3':['Limpieza profunda','Desinfección'],
-    'eq4':['Limpieza profunda','Control de plagas'],
-    'eq5':['Limpieza diaria','Desinfección'],
-    'eq6':['Limpieza diaria','Desinfección'],
-    'eq7':['Limpieza diaria','Mantenimiento preventivo'],
-    'eq8':['Limpieza diaria','Desinfección'],
-    'eq13':['Limpieza diaria','Control de temperatura'],
-    'eq16':['Control de temperatura','Registro HACCP','Limpieza profunda'],
-    'eq17':['Control de temperatura','Registro HACCP'],
-    'eq18':['Control de temperatura','Registro HACCP'],
-    'eq19':['Limpieza diaria','Control de plagas'],
-    'eq20':['Limpieza diaria','Desinfección'],
-  };
+  // Tipos de tarea por equipo que se generan SOLOS cada día.
+  // Ya no hay mapa fijo: solo se autogenera lo que el usuario marcó
+  // explícitamente como recurrente (ver marcarRecurrente / botón "🔁 Repetir
+  // automáticamente" en el formulario de nueva tarea, o desde Ajustes).
+  if(!cfg.recurrentes) cfg.recurrentes = {};
 
   let generadas = 0;
   let ctr = 0;
 
   cfg.equipos.forEach(eq=>{
-    // Si el equipo no está en el mapa fijo, usar los tipos que ya tenga registrados en tasks (equipos agregados manualmente)
-    let tipos = tiposPorEquipo[eq.id];
-    if(!tipos){
-      tipos = [...new Set(tasks.filter(tk=>tk.equipoId===eq.id).map(tk=>tk.tipo))];
-      if(!tipos.length) tipos = ['Limpieza diaria'];
-    }
+    const tipos = cfg.recurrentes[eq.id] || [];
+    if(!tipos.length) return; // nada configurado como recurrente para este equipo → no se autogenera
     const sector = eq.sectores ? eq.sectores[0] : (tipos.length ? '' : '');
 
     tipos.forEach(tipo=>{
@@ -1851,6 +1858,58 @@ function generarTareasDelDia(){
   return generadas;
 }
 
+// Marca/desmarca un tipo de tarea de un equipo como "recurrente" (se generará solo).
+// checked=true → la agrega; checked=false → la quita.
+function marcarRecurrente(equipoId, tipo, checked){
+  if(!equipoId || !tipo) return;
+  if(!cfg.recurrentes) cfg.recurrentes = {};
+  if(checked){
+    if(!cfg.recurrentes[equipoId]) cfg.recurrentes[equipoId] = [];
+    if(!cfg.recurrentes[equipoId].includes(tipo)) cfg.recurrentes[equipoId].push(tipo);
+    const eq = getEquipoById(equipoId);
+    audit(`Tarea recurrente activada`, `${eq?eq.nombre:equipoId} — ${tipo}`, 'config');
+  } else {
+    if(cfg.recurrentes[equipoId]){
+      cfg.recurrentes[equipoId] = cfg.recurrentes[equipoId].filter(tp=>tp!==tipo);
+      if(!cfg.recurrentes[equipoId].length) delete cfg.recurrentes[equipoId];
+    }
+    const eq = getEquipoById(equipoId);
+    audit(`Tarea recurrente desactivada`, `${eq?eq.nombre:equipoId} — ${tipo}`, 'config');
+  }
+}
+
+// Quita una recurrencia desde el panel de Ajustes (lista de tareas automáticas configuradas)
+function quitarRecurrenteCfg(equipoId, tipo){
+  const eq = getEquipoById(equipoId);
+  if(!confirm(`¿Dejar de generar automáticamente "${tipo}" para ${eq?eq.nombre:equipoId}?`)) return;
+  marcarRecurrente(equipoId, tipo, false);
+  saveAll();
+  renderRecurrentesCfg();
+}
+
+// Renderiza en Ajustes el listado de todas las tareas configuradas como recurrentes
+function renderRecurrentesCfg(){
+  const el = document.getElementById('cfgRecurrentes');
+  if(!el) return;
+  if(!cfg.recurrentes) cfg.recurrentes = {};
+  const filas = [];
+  Object.keys(cfg.recurrentes).forEach(equipoId=>{
+    const eq = getEquipoById(equipoId);
+    (cfg.recurrentes[equipoId]||[]).forEach(tipo=>{
+      filas.push({equipoId, equipoNombre: eq?eq.nombre:'(equipo eliminado)', tipo});
+    });
+  });
+  if(!filas.length){
+    el.innerHTML = '<div style="font-size:12px;color:var(--text3);padding:8px;">Ninguna. Todas las tareas se cargan de forma manual. Marcá "🔁 Repetir automáticamente" al crear una tarea para activarla acá.</div>';
+    return;
+  }
+  el.innerHTML = filas.map(f=>`
+    <div class="config-item" style="flex-wrap:wrap;gap:6px;">
+      <div style="flex:1;min-width:160px;font-size:12px;">⚙ ${f.equipoNombre} — <span style="color:var(--text2);">${f.tipo}</span> <span style="color:var(--text3);">(cada ${(cfg.frecuencias&&cfg.frecuencias[f.tipo])||1} día/s)</span></div>
+      <button class="btn btn-danger btn-sm" onclick="quitarRecurrenteCfg('${f.equipoId}','${f.tipo.replace(/'/g,"\\'")}')">✕</button>
+    </div>`).join('');
+}
+
 function chequearGeneracionDiaria(){
   const t = today();
   const ultima = LS.get('fscc_ultimaGeneracion');
@@ -1868,6 +1927,7 @@ function loadData(){
   // Cargar desde localStorage primero (instantáneo, para no bloquear UI)
   users        = LS.get('fscc_users')  || JSON.parse(JSON.stringify(DEFAULT_USERS));
   cfg          = LS.get('fscc_cfg')    || JSON.parse(JSON.stringify(DEFAULT_CFG));
+  if(!cfg.recurrentes) cfg.recurrentes = {};
   tasks        = LS.get('fscc_tasks')  || [];
   auditLog     = LS.get('fscc_audit')  || [];
   notifications= LS.get('fscc_notif') || [];
@@ -2945,7 +3005,10 @@ function addTaskSupervisor(){
   };
   tasks.unshift(t);
   audit(`Tarea asignada (Supervisor): ${sector}${equipoNombre?' / '+equipoNombre:''} — ${tipo}`,`Resp: ${resp} | Prioridad: ${prioridad}`,'tarea');
-  saveAll();toggleSvForm();renderAll();
+  const recurrente=document.getElementById('svRecurrente').checked;
+  if(recurrente && equipoId && tipo){ marcarRecurrente(equipoId, tipo, true); }
+  document.getElementById('svRecurrente').checked=false;
+  saveAll();toggleSvForm();renderAll();renderRecurrentesCfg();
 }
 
 function printSvReport(){
@@ -3613,9 +3676,12 @@ function addTask(){
   tasks.unshift(t);
   if(t.estado==='Cumplido')appendToSectorLog(t);
   audit(`Tarea creada (Admin): ${sector}${equipoNombre?' / '+equipoNombre:''} — ${tipo}`,`Resp: ${resp}`,'tarea');
+  const recurrente=document.getElementById('fRecurrente').checked;
+  if(recurrente && equipoId && tipo){ marcarRecurrente(equipoId, tipo, true); }
   document.getElementById('fObs').value='';
+  document.getElementById('fRecurrente').checked=false;
   clearFoto('fFotoPreview','fFotoData','fFotoClear');
-  saveAll();toggleForm();renderAll();
+  saveAll();toggleForm();renderAll();renderRecurrentesCfg();
 }
 
 function deleteTask(id){
@@ -4178,6 +4244,7 @@ function renderConfig(){
   renderConfigList('sectores','cfgSectores');renderConfigList('tipos','cfgTipos');renderConfigList('turnos','cfgTurnos');
   renderEquiposConfig();
   renderFrecuencias();
+  renderRecurrentesCfg();
   renderMantConfig();
   renderTurnosHorarios();
 }
