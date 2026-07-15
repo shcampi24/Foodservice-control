@@ -451,7 +451,7 @@ tbody td{padding:8px 10px;vertical-align:middle;}
     <div style="margin:16px 0;">
       <div class="fg">
         <label>Contraseña nueva para @admin</label>
-        <input type="password" id="bsAdminPass1" placeholder="mínimo 4 caracteres" />
+        <input type="password" id="bsAdminPass1" placeholder="mínimo 6 caracteres" />
       </div>
       <div class="fg">
         <label>Confirmar contraseña</label>
@@ -512,6 +512,7 @@ tbody td{padding:8px 10px;vertical-align:middle;}
   <button class="nav-tab admin-only sv-admin-only" onclick="switchView('sectores',this)">Planillas</button>
   <button class="nav-tab admin-only sv-admin-only" onclick="switchView('haccp',this)">🌡 HACCP/CAA</button>
   <button class="nav-tab sv-admin-only" id="tabMant" onclick="switchView('mantenimiento',this)">🔧 Mantenimiento <span id="mantBadge" style="display:none;" class="badge-mant-count">0</span></button>
+  <button class="nav-tab sv-admin-only" id="tabTraz" onclick="switchView('trazabilidad',this)">📦 Trazabilidad <span id="trazBadge" style="display:none;" class="badge-mant-count">0</span></button>
   <button class="nav-tab admin-only" onclick="switchView('auditoria',this)">Auditoría</button>
   <button class="nav-tab admin-only" onclick="switchView('config',this)">Configuración</button>
 </nav>
@@ -1086,6 +1087,202 @@ tbody td{padding:8px 10px;vertical-align:middle;}
   </div>
 </div>
 
+<!-- ══ VISTA: TRAZABILIDAD DE LOTE ══ -->
+<div class="view" id="view-trazabilidad">
+  <div style="display:flex;gap:0;background:var(--bg2);border:.5px solid var(--border-light);border-radius:var(--rl) var(--rl) 0 0;overflow:hidden;border-bottom:none;flex-wrap:wrap;">
+    <button class="haccp-subtab active" id="trazTabLotes" onclick="switchTrazTab('lotes',this)">📥 Lotes recibidos</button>
+    <button class="haccp-subtab" id="trazTabProducciones" onclick="switchTrazTab('producciones',this)">🍽 Producciones</button>
+    <button class="haccp-subtab" id="trazTabBuscar" onclick="switchTrazTab('buscar',this)">🔎 Buscar trazabilidad</button>
+    <button class="haccp-subtab" id="trazTabProveedores" onclick="switchTrazTab('proveedores',this)">🏭 Proveedores</button>
+  </div>
+  <div style="background:var(--surface);border:.5px solid var(--border-light);border-top:none;border-radius:0 0 var(--rl) var(--rl);padding:0.85rem 1.25rem 1rem;margin-bottom:1rem;">
+
+    <!-- LOTES -->
+    <div id="trazPanelLotes">
+      <div class="toolbar" style="margin-bottom:1rem;flex-wrap:wrap;gap:6px;">
+        <div class="toolbar-l" style="flex-wrap:wrap;gap:6px;">
+          <select class="flt" id="trazFiltroEstadoLote" onchange="renderTrazLotes()">
+            <option value="">Todos los estados</option>
+            <option value="vigente">🟢 Vigente</option>
+            <option value="porVencer">🟡 Por vencer (≤3 días)</option>
+            <option value="vencido">🔴 Vencido</option>
+          </select>
+          <input type="text" class="flt" id="trazBuscarLote" placeholder="Buscar insumo o código..." oninput="renderTrazLotes()" />
+        </div>
+        <div class="toolbar-r">
+          <button class="btn btn-outline" onclick="exportLotesCSV()">⬇ Exportar CSV</button>
+          <button class="btn btn-primary" onclick="openLoteModal()">+ Nuevo lote recibido</button>
+        </div>
+      </div>
+      <div id="trazListadoLotes"></div>
+    </div>
+
+    <!-- PRODUCCIONES -->
+    <div id="trazPanelProducciones" style="display:none;">
+      <div class="toolbar" style="margin-bottom:1rem;flex-wrap:wrap;gap:6px;">
+        <div class="toolbar-l" style="flex-wrap:wrap;gap:6px;">
+          <input type="date" class="flt" id="trazFiltroFechaProd" onchange="renderTrazProducciones()" />
+          <select class="flt" id="trazFiltroSectorProd" onchange="renderTrazProducciones()"><option value="">Todos los sectores</option></select>
+        </div>
+        <div class="toolbar-r">
+          <button class="btn btn-outline" onclick="exportProduccionesCSV()">⬇ Exportar CSV</button>
+          <button class="btn btn-primary" onclick="openProduccionModal()">+ Nueva producción</button>
+        </div>
+      </div>
+      <div id="trazListadoProducciones"></div>
+    </div>
+
+    <!-- BUSCAR TRAZABILIDAD -->
+    <div id="trazPanelBuscar" style="display:none;">
+      <div class="toolbar" style="margin-bottom:1rem;flex-wrap:wrap;gap:6px;">
+        <div class="toolbar-l" style="flex:1;flex-wrap:wrap;gap:6px;">
+          <input type="text" class="flt" style="flex:1;min-width:220px;" id="trazBuscarQuery" placeholder="Código de lote (ej: L-20260716-003) o nombre de insumo..." onkeydown="if(event.key==='Enter')buscarTrazabilidad()" />
+          <button class="btn btn-primary" onclick="buscarTrazabilidad()">Buscar</button>
+        </div>
+      </div>
+      <div id="trazResultadoBusqueda"><div style="font-size:12px;color:var(--text3);padding:12px;">Buscá un lote por su código o por el nombre del insumo para ver en qué producciones se usó — o al revés.</div></div>
+    </div>
+
+    <!-- PROVEEDORES -->
+    <div id="trazPanelProveedores" style="display:none;">
+      <div class="toolbar" style="margin-bottom:1rem;">
+        <div class="toolbar-r" style="margin-left:auto;">
+          <button class="btn btn-primary" onclick="openProveedorModal()">+ Nuevo proveedor</button>
+        </div>
+      </div>
+      <div id="trazListadoProveedores"></div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ══ MODAL: NUEVO / EDITAR LOTE ══ -->
+<div class="modal-bg" id="modalLote" onclick="handleModalClick(event,'modalLote')">
+  <div class="modal-box wide">
+    <button class="modal-close" onclick="closeModal('modalLote')">✕</button>
+    <div class="modal-title" id="loteModalTitle" style="margin-bottom:4px;">📥 Nuevo lote recibido</div>
+    <div class="modal-sub" style="margin-bottom:14px;font-size:11px;">Se genera un código de trazabilidad interno automáticamente.</div>
+    <div class="form-grid" style="margin-bottom:10px;">
+      <div class="fg">
+        <label>Insumo</label>
+        <input type="text" id="loteInsumo" placeholder="Ej: Pechuga de pollo" />
+      </div>
+      <div class="fg">
+        <label>Proveedor</label>
+        <select id="loteProveedor"><option value="">Seleccionar...</option></select>
+      </div>
+      <div class="fg">
+        <label>Lote del proveedor</label>
+        <input type="text" id="loteNroProveedor" placeholder="Nro. de lote que trae el remito" />
+      </div>
+      <div class="fg">
+        <label>Sector de destino</label>
+        <select id="loteSector"></select>
+      </div>
+      <div class="fg">
+        <label>Cantidad</label>
+        <input type="number" id="loteCantidad" min="0" step="0.01" placeholder="0" />
+      </div>
+      <div class="fg">
+        <label>Unidad</label>
+        <select id="loteUnidad">
+          <option value="kg">kg</option><option value="g">g</option>
+          <option value="l">l</option><option value="ml">ml</option>
+          <option value="unidades">unidades</option><option value="cajas">cajas</option>
+        </select>
+      </div>
+      <div class="fg">
+        <label>Fecha de recepción</label>
+        <input type="date" id="loteFechaRecepcion" />
+      </div>
+      <div class="fg">
+        <label>Fecha de vencimiento</label>
+        <input type="date" id="loteFechaVencimiento" />
+      </div>
+    </div>
+    <div class="fg" style="margin-bottom:10px;">
+      <label>Observaciones</label>
+      <textarea id="loteObs" placeholder="Opcional..."></textarea>
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-ghost" onclick="closeModal('modalLote')">Cancelar</button>
+      <button class="btn btn-primary" onclick="guardarLote()">Guardar lote</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ MODAL: NUEVA PRODUCCIÓN ══ -->
+<div class="modal-bg" id="modalProduccion" onclick="handleModalClick(event,'modalProduccion')">
+  <div class="modal-box wide">
+    <button class="modal-close" onclick="closeModal('modalProduccion')">✕</button>
+    <div class="modal-title" style="margin-bottom:4px;">🍽 Nueva producción</div>
+    <div class="modal-sub" style="margin-bottom:14px;font-size:11px;">Registrá qué se cocinó y con qué lotes — es lo que permite rastrear un insumo hasta el plato.</div>
+    <div class="form-grid" style="margin-bottom:10px;">
+      <div class="fg">
+        <label>Preparación</label>
+        <input type="text" id="prodPreparacion" placeholder="Ej: Milanesas al horno" />
+      </div>
+      <div class="fg">
+        <label>Sector</label>
+        <select id="prodSector"></select>
+      </div>
+      <div class="fg">
+        <label>Fecha</label>
+        <input type="date" id="prodFecha" />
+      </div>
+      <div class="fg">
+        <label>Turno</label>
+        <select id="prodTurno"></select>
+      </div>
+      <div class="fg">
+        <label>Responsable</label>
+        <input type="text" id="prodResponsable" placeholder="Nombre" />
+      </div>
+    </div>
+    <div class="fg" style="margin-bottom:10px;">
+      <label>Lotes utilizados (elegí los insumos que usaste)</label>
+      <div id="prodLotesCheck" style="display:flex;flex-direction:column;gap:6px;max-height:220px;overflow-y:auto;margin-top:4px;padding:8px;background:var(--bg);border:.5px solid var(--border);border-radius:var(--r);"></div>
+    </div>
+    <div class="fg" style="margin-bottom:10px;">
+      <label>Observaciones</label>
+      <textarea id="prodObs" placeholder="Opcional..."></textarea>
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-ghost" onclick="closeModal('modalProduccion')">Cancelar</button>
+      <button class="btn btn-primary" onclick="guardarProduccion()">Guardar producción</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ MODAL: NUEVO / EDITAR PROVEEDOR ══ -->
+<div class="modal-bg" id="modalProveedor" onclick="handleModalClick(event,'modalProveedor')">
+  <div class="modal-box">
+    <button class="modal-close" onclick="closeModal('modalProveedor')">✕</button>
+    <div class="modal-title" id="proveedorModalTitle" style="margin-bottom:14px;">🏭 Nuevo proveedor</div>
+    <div class="fg" style="margin-bottom:10px;">
+      <label>Nombre / Razón social</label>
+      <input type="text" id="provNombre" placeholder="Ej: Avícola del Litoral S.A." />
+    </div>
+    <div class="fg" style="margin-bottom:10px;">
+      <label>CUIT</label>
+      <input type="text" id="provCuit" placeholder="30-12345678-9" />
+    </div>
+    <div class="fg" style="margin-bottom:10px;">
+      <label>Habilitación sanitaria (RNE / RNPA)</label>
+      <input type="text" id="provHabilitacion" placeholder="Nro. de habilitación" />
+    </div>
+    <div class="fg" style="margin-bottom:10px;">
+      <label>Vencimiento de la habilitación</label>
+      <input type="date" id="provHabilitacionVence" />
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-ghost" onclick="closeModal('modalProveedor')">Cancelar</button>
+      <button class="btn btn-primary" onclick="guardarProveedor()">Guardar proveedor</button>
+    </div>
+  </div>
+</div>
+
+
 
 </main>
 <footer class="footer">FOOD SERVICE CONTROL CENTER &middot; SANATORIO PARQUE &middot; v13</footer>
@@ -1561,9 +1758,10 @@ async function loadDataFromFirebase(){
   try{
     showSyncStatus('⏳ Sincronizando...','amber');
     // Carga inicial: traer todos los datos de Firebase de una vez
-    const [fbUsers,fbCfg,fbTasks,fbAudit,fbNotif,fbHaccp,fbMant]=await Promise.all([
+    const [fbUsers,fbCfg,fbTasks,fbAudit,fbNotif,fbHaccp,fbMant,fbTraz]=await Promise.all([
       fbLoad('fscc_users'), fbLoad('fscc_cfg'), fbLoad('fscc_tasks'),
-      fbLoad('fscc_audit'), fbLoad('fscc_notif'), fbLoad('fscc_haccp'), fbLoad('fscc_mant')
+      fbLoad('fscc_audit'), fbLoad('fscc_notif'), fbLoad('fscc_haccp'), fbLoad('fscc_mant'),
+      fbLoad('fscc_traz')
     ]);
 
     // Regla: si Firebase tiene datos, SIEMPRE ganan sobre localStorage
@@ -1596,6 +1794,7 @@ async function loadDataFromFirebase(){
     if(fbNotif){notifications=fbNotif;LS.set('fscc_notif',notifications);}
     if(fbHaccp){haccpLogs=fbHaccp;LS.set('fscc_haccp',haccpLogs);}
     if(fbMant){mantSolicitudes=fbMant;LS.set('fscc_mant',mantSolicitudes);}
+    if(fbTraz){traz=fbTraz;if(!traz.proveedores)traz.proveedores=[];if(!traz.lotes)traz.lotes=[];if(!traz.producciones)traz.producciones=[];LS.set('fscc_traz',traz);}
 
     // Capacitaciones
     const fbCap = await fbLoad('fscc_cap');
@@ -1607,6 +1806,7 @@ async function loadDataFromFirebase(){
 
     // ── Generación diaria de tareas (solo después de tener datos frescos de Firebase) ──
     chequearGeneracionDiaria();
+    chequearVencimientosLotes();
 
     // ── Listeners en tiempo real para TODAS las colecciones críticas ──
     // Solo actualizar si no hay un save local en curso (evita loop)
@@ -1638,6 +1838,11 @@ async function loadDataFromFirebase(){
       if(_localSaveInProgress)return;
       mantSolicitudes=val;LS.set('fscc_mant',mantSolicitudes);
       if(currentUser){updateMantBadge();renderAll();}
+    });
+    fbWatch('fscc_traz',(val)=>{
+      if(_localSaveInProgress)return;
+      traz=val||{proveedores:[],lotes:[],producciones:[]};LS.set('fscc_traz',traz);
+      if(currentUser && document.getElementById('view-trazabilidad') && document.getElementById('view-trazabilidad').classList.contains('active')) renderTraz();
     });
     fbWatch('fscc_cap',(val)=>{
       if(_localSaveInProgress)return;
@@ -1987,6 +2192,7 @@ function loadData(){
   // seedTasks solo se llama desde loadDataFromFirebase si Firebase está vacío
   loadHaccp();
   loadMant();
+  loadTraz();
   // Sincronizar con Firebase
   if(window._fbReady){
     loadDataFromFirebase();
@@ -1999,7 +2205,7 @@ async function saveAll(){
   // Guardar local primero (inmediato)
   LS.set('fscc_cfg',cfg);LS.set('fscc_tasks',tasks);
   LS.set('fscc_users',users);LS.set('fscc_audit',auditLog);
-  LS.set('fscc_notif',notifications);saveHaccp();saveMant();
+  LS.set('fscc_notif',notifications);saveHaccp();saveMant();saveTraz();
   // Luego sincronizar con Firebase
   showSyncStatus('⏳ Guardando...','amber');
   // Flag: bloquear listeners entrantes mientras guardamos
@@ -2010,7 +2216,8 @@ async function saveAll(){
       fbSave('fscc_cfg',cfg), fbSave('fscc_tasks',tasks),
       fbSave('fscc_users',users), fbSave('fscc_audit',auditLog),
       fbSave('fscc_notif',notifications),
-      fbSave('fscc_haccp',haccpLogs), fbSave('fscc_mant',mantSolicitudes)
+      fbSave('fscc_haccp',haccpLogs), fbSave('fscc_mant',mantSolicitudes),
+      fbSave('fscc_traz',traz)
     ]);
     showSyncStatus('☁ Guardado','green');
   }catch(e){
@@ -2283,8 +2490,8 @@ function audit(accion,detalle='',tag=''){
 function renderAuditoria(){
   const el=document.getElementById('auditList');
   if(!auditLog.length){el.innerHTML='<div style="padding:24px;text-align:center;font-size:13px;color:var(--text3)">Sin registros.</div>';return;}
-  const tagColor={config:'#e8e0f8',tarea:'#e6eef8',incid:'#fde8e8',usuario:'#fdf0e0',sistema:'#ebebE6',notif:'#e6f4ed',haccp:'#fde8ff'};
-  const tagText={config:'#5020a0',tarea:'#1a4a8a',incid:'#b02020',usuario:'#a05c10',sistema:'#5a5955',notif:'#1a7a4a',haccp:'#7a1a9a'};
+  const tagColor={config:'#e8e0f8',tarea:'#e6eef8',incid:'#fde8e8',usuario:'#fdf0e0',sistema:'#ebebE6',notif:'#e6f4ed',haccp:'#fde8ff',trazabilidad:'#e0f0f5'};
+  const tagText={config:'#5020a0',tarea:'#1a4a8a',incid:'#b02020',usuario:'#a05c10',sistema:'#5a5955',notif:'#1a7a4a',haccp:'#7a1a9a',trazabilidad:'#0e6a80'};
   el.innerHTML=auditLog.map(a=>`
     <div class="audit-row">
       <span class="audit-time">${fmtDatetime(a.ts)}</span>
@@ -2388,8 +2595,8 @@ function renderNotifPanel(){
   const mine=getMyNotifs();
   if(!mine.length){el.innerHTML='<div class="notif-empty">Sin notificaciones.</div>';return;}
   el.innerHTML=mine.map(n=>{
-    const dotCls=n.tipo==='completed'?'green':n.tipo==='incident'?'red':(n.tipo==='mant_respuesta'||n.tipo==='mant_nueva')?'blue':n.tipo==='alerta_vencida'?'red':'';
-    const icon=n.tipo==='completed'?'✅':n.tipo==='incident'?'⚠️':(n.tipo==='mant_respuesta'||n.tipo==='mant_nueva')?'🔧':n.tipo==='alerta_vencida'?'⏰':'🔔';
+    const dotCls=n.tipo==='completed'?'green':n.tipo==='incident'?'red':(n.tipo==='mant_respuesta'||n.tipo==='mant_nueva')?'blue':(n.tipo==='alerta_vencida'||n.tipo==='lote_vencimiento')?'red':'';
+    const icon=n.tipo==='completed'?'✅':n.tipo==='incident'?'⚠️':(n.tipo==='mant_respuesta'||n.tipo==='mant_nueva')?'🔧':n.tipo==='alerta_vencida'?'⏰':n.tipo==='lote_vencimiento'?'📦':'🔔';
     return`<div class="notif-item${n.leida?'':' unread'}" onclick="markNotifRead('${n.id}')">
       <div class="notif-dot ${dotCls}"></div>
       <div class="notif-item-body">
@@ -2610,7 +2817,7 @@ async function confirmarBootstrapAdmin(){
   const p2 = document.getElementById('bsAdminPass2').value;
   const msg = document.getElementById('bsAdminMsg');
   const mostrar = (t)=>{ msg.textContent=t; msg.style.display='block'; };
-  if(!p1 || p1.length<4){ mostrar('La contraseña debe tener al menos 4 caracteres.'); return; }
+  if(!p1 || p1.length<6){ mostrar('La contraseña debe tener al menos 6 caracteres (lo pide Firebase).'); return; }
   if(p1 !== p2){ mostrar('Las contraseñas no coinciden.'); return; }
   const adminUser = users.find(x=>x.user==='admin');
   if(!adminUser){ mostrar('No se encontró el usuario @admin en el sistema.'); return; }
@@ -2631,8 +2838,12 @@ async function confirmarBootstrapAdmin(){
     btn.disabled = false; btn.textContent = 'Configurar y entrar';
     if(e && e.code === 'auth/email-already-in-use'){
       mostrar('Esa cuenta ya está configurada. Probá ingresar normalmente con tu contraseña, o contactá para resolverlo.');
+    } else if(e && e.code === 'auth/weak-password'){
+      mostrar('La contraseña es muy débil para Firebase — usá al menos 6 caracteres.');
+    } else if(e && e.code === 'auth/operation-not-allowed'){
+      mostrar('El método "Correo electrónico/Contraseña" todavía no está habilitado en Firebase Authentication. Habilitalo en la consola y volvé a intentar.');
     } else {
-      mostrar('No se pudo configurar la cuenta. Verificá la conexión e intentá de nuevo.');
+      mostrar('No se pudo configurar la cuenta. '+(e&&e.code?'('+e.code+') ':'')+'Verificá la conexión e intentá de nuevo.');
     }
   }
 }
@@ -2729,7 +2940,7 @@ async function confirmarCambioPassObligatorio(){
   const n2 = document.getElementById('cambioPassConfirmar').value;
   const msg = document.getElementById('cambioPassMsg');
   const mostrar = (t)=>{ msg.textContent=t; msg.style.display='block'; };
-  if(!n1 || n1.length<4){ mostrar('La contraseña debe tener al menos 4 caracteres.'); return; }
+  if(!n1 || n1.length<6){ mostrar('La contraseña debe tener al menos 6 caracteres (lo pide Firebase).'); return; }
   if(n1 !== n2){ mostrar('Las contraseñas no coinciden.'); return; }
   const user = _pendingLoginUser;
   if(!user) return;
@@ -3486,7 +3697,7 @@ async function saveUserModal(){
   const rol    = document.getElementById('nuRol').value;
   const email  = document.getElementById('nuEmail').value.trim().toLowerCase();
   if(!nombre){ alert('Ingresá el nombre.'); return; }
-  if(pass && pass.length < 4){ alert('La contraseña debe tener al menos 4 caracteres.'); return; }
+  if(pass && pass.length < 6){ alert('La contraseña debe tener al menos 6 caracteres (lo pide Firebase).'); return; }
   const cambios = [];
   if(u.nombre !== nombre){ cambios.push('nombre'); u.nombre = nombre; }
   if(pass){
@@ -3505,9 +3716,9 @@ async function saveUserModal(){
 async function resetPass(i){
   const u = users[i];
   if(!u) return;
-  const nueva = prompt('Nueva contraseña para ' + u.nombre + ' (@' + u.user + '):\n(mínimo 4 caracteres)\n\nOjo: esto crea una credencial nueva en Firebase (no se puede "editar" la vieja sin backend propio). La cuenta anterior queda inutilizada.');
+  const nueva = prompt('Nueva contraseña para ' + u.nombre + ' (@' + u.user + '):\n(mínimo 6 caracteres)\n\nOjo: esto crea una credencial nueva en Firebase (no se puede "editar" la vieja sin backend propio). La cuenta anterior queda inutilizada.');
   if(nueva === null) return;
-  if(nueva.length < 4){ alert('Mínimo 4 caracteres.'); return; }
+  if(nueva.length < 6){ alert('Mínimo 6 caracteres (lo pide Firebase).'); return; }
   try{
     await recrearCuentaAuth(u, nueva);
   }catch(e){
@@ -3525,7 +3736,7 @@ async function saveNewUser(){
   const pass=document.getElementById('nuPass').value;
   const rol=document.getElementById('nuRol').value;
   if(!nombre||!user||!pass){alert('Completá todos los campos.');return;}
-  if(pass.length<4){alert('La contraseña debe tener al menos 4 caracteres.');return;}
+  if(pass.length<6){alert('La contraseña debe tener al menos 6 caracteres (lo pide Firebase).');return;}
   if(users.find(u=>u.user===user)){alert('Ese usuario ya existe.');return;}
   const email=document.getElementById('nuEmail').value.trim().toLowerCase();
   const nu={nombre,user,rol,email,sectores:[],authGen:1};
@@ -5109,6 +5320,417 @@ function printHaccp(){
 // ═══════════════════════════════════════════════════
 
 let mantSolicitudes = [];
+
+// ═══════════════════════════════════════════════════
+//  TRAZABILIDAD DE LOTE
+// ═══════════════════════════════════════════════════
+// traz.proveedores : [{id, nombre, cuit, habilitacion, habilitacionVence}]
+// traz.lotes        : [{id, codigo, insumo, proveedorId, loteProveedor, cantidad, unidad,
+//                        fechaRecepcion, fechaVencimiento, sector, observaciones, alertado}]
+// traz.producciones : [{id, fecha, turno, sector, preparacion, lotesUsados:[loteId,...],
+//                        responsable, observaciones}]
+let traz = {proveedores:[], lotes:[], producciones:[]};
+let trazActiveTab = 'lotes';
+let trazEditLoteId = null;
+let trazEditProveedorId = null;
+
+function loadTraz(){
+  traz = LS.get('fscc_traz') || {proveedores:[], lotes:[], producciones:[]};
+  if(!traz.proveedores) traz.proveedores=[];
+  if(!traz.lotes) traz.lotes=[];
+  if(!traz.producciones) traz.producciones=[];
+}
+
+function saveTraz(){
+  LS.set('fscc_traz', traz);
+  fbSave('fscc_traz', traz).catch(()=>{});
+}
+
+// Genera un código de lote interno único: L-AAAAMMDD-NNN
+function generarCodigoLote(){
+  const fecha = today().replace(/-/g,'');
+  const delDia = traz.lotes.filter(l=>l.codigo && l.codigo.startsWith('L-'+fecha)).length + 1;
+  return 'L-'+fecha+'-'+String(delDia).padStart(3,'0');
+}
+
+// ── Navegación entre sub-pestañas ──
+function switchTrazTab(tab, btn){
+  trazActiveTab = tab;
+  ['lotes','producciones','buscar','proveedores'].forEach(t=>{
+    document.getElementById('trazPanel'+t.charAt(0).toUpperCase()+t.slice(1)).style.display = (t===tab)?'block':'none';
+  });
+  document.querySelectorAll('#view-trazabilidad .haccp-subtab').forEach(el=>el.classList.remove('active'));
+  if(btn) btn.classList.add('active');
+  renderTraz();
+}
+
+function renderTraz(){
+  poblarTrazSelects();
+  if(trazActiveTab==='lotes') renderTrazLotes();
+  else if(trazActiveTab==='producciones') renderTrazProducciones();
+  else if(trazActiveTab==='proveedores') renderTrazProveedores();
+}
+
+function poblarTrazSelects(){
+  populateSel('loteSector', cfg.sectores);
+  populateSel('prodSector', cfg.sectores);
+  populateSel('prodTurno', cfg.turnos);
+  const selProv = document.getElementById('loteProveedor');
+  if(selProv){
+    const prev = selProv.value;
+    selProv.innerHTML = '<option value="">Seleccionar...</option>' +
+      traz.proveedores.map(p=>`<option value="${p.id}">${p.nombre}</option>`).join('');
+    if(prev) selProv.value = prev;
+  }
+  const selSectorProd = document.getElementById('trazFiltroSectorProd');
+  if(selSectorProd){
+    const prev = selSectorProd.value;
+    while(selSectorProd.options.length>1) selSectorProd.remove(1);
+    cfg.sectores.forEach(s=>{const o=document.createElement('option');o.value=s;o.textContent=s;selSectorProd.appendChild(o);});
+    if(prev) selSectorProd.value = prev;
+  }
+}
+
+// Devuelve 'vigente' | 'porVencer' (≤3 días) | 'vencido'
+function estadoLote(lote){
+  if(!lote.fechaVencimiento) return 'vigente';
+  const dias = Math.floor((new Date(lote.fechaVencimiento+'T00:00:00') - new Date(today()+'T00:00:00')) / 86400000);
+  if(dias < 0) return 'vencido';
+  if(dias <= 3) return 'porVencer';
+  return 'vigente';
+}
+function badgeEstadoLote(estado){
+  if(estado==='vencido') return '<span class="badge" style="background:#fde8e8;color:#b02020;border:1px solid #f0b8b8;">🔴 Vencido</span>';
+  if(estado==='porVencer') return '<span class="badge" style="background:#fff3cd;color:#8a6416;border:1px solid #f0d880;">🟡 Por vencer</span>';
+  return '<span class="badge" style="background:#e8f5ee;color:#1a7a4a;border:1px solid #a8dbb8;">🟢 Vigente</span>';
+}
+
+function updateTrazBadge(){
+  const criticos = traz.lotes.filter(l=>{const e=estadoLote(l);return e==='vencido'||e==='porVencer';}).length;
+  const badge = document.getElementById('trazBadge');
+  if(!badge) return;
+  if(criticos > 0){
+    badge.textContent = criticos > 9 ? '9+' : criticos;
+    badge.style.display = 'inline-flex';
+  } else {
+    badge.style.display = 'none';
+  }
+}
+
+// ═══ LOTES ═══
+function renderTrazLotes(){
+  const filtroEstado = (document.getElementById('trazFiltroEstadoLote')||{}).value || '';
+  const busq = ((document.getElementById('trazBuscarLote')||{}).value || '').toLowerCase();
+  let lista = [...traz.lotes].sort((a,b)=> (b.fechaRecepcion||'').localeCompare(a.fechaRecepcion||''));
+  if(filtroEstado) lista = lista.filter(l=>estadoLote(l)===filtroEstado);
+  if(busq) lista = lista.filter(l=>(l.insumo||'').toLowerCase().includes(busq) || (l.codigo||'').toLowerCase().includes(busq));
+  const el = document.getElementById('trazListadoLotes');
+  if(!lista.length){ el.innerHTML = '<div style="font-size:12px;color:var(--text3);padding:12px;">No hay lotes que coincidan con el filtro.</div>'; return; }
+  el.innerHTML = lista.map(l=>{
+    const prov = traz.proveedores.find(p=>p.id===l.proveedorId);
+    return `<div class="config-item" style="flex-wrap:wrap;gap:8px;">
+      <div style="flex:1;min-width:220px;">
+        <div style="font-weight:600;font-size:13px;">${l.insumo} <span style="font-family:var(--mono);font-size:11px;color:var(--text3);">${l.codigo}</span></div>
+        <div style="font-size:11px;color:var(--text3);margin-top:2px;">${prov?prov.nombre:'(proveedor no especificado)'} · lote prov. ${l.loteProveedor||'—'} · ${l.cantidad||'—'} ${l.unidad||''} · ${l.sector||'—'}</div>
+        <div style="font-size:11px;color:var(--text3);">Recibido: ${l.fechaRecepcion||'—'} · Vence: ${l.fechaVencimiento||'—'}</div>
+      </div>
+      ${badgeEstadoLote(estadoLote(l))}
+      <button class="btn btn-outline btn-sm" onclick="openLoteModal('${l.id}')">Editar</button>
+      <button class="btn btn-danger btn-sm" onclick="eliminarLote('${l.id}')">✕</button>
+    </div>`;
+  }).join('');
+}
+
+function openLoteModal(id){
+  trazEditLoteId = id || null;
+  document.getElementById('loteModalTitle').textContent = id ? '📥 Editar lote' : '📥 Nuevo lote recibido';
+  poblarTrazSelects();
+  if(id){
+    const l = traz.lotes.find(x=>x.id===id);
+    if(!l) return;
+    document.getElementById('loteInsumo').value = l.insumo||'';
+    document.getElementById('loteProveedor').value = l.proveedorId||'';
+    document.getElementById('loteNroProveedor').value = l.loteProveedor||'';
+    document.getElementById('loteSector').value = l.sector||'';
+    document.getElementById('loteCantidad').value = l.cantidad||'';
+    document.getElementById('loteUnidad').value = l.unidad||'kg';
+    document.getElementById('loteFechaRecepcion').value = l.fechaRecepcion||today();
+    document.getElementById('loteFechaVencimiento').value = l.fechaVencimiento||'';
+    document.getElementById('loteObs').value = l.observaciones||'';
+  } else {
+    document.getElementById('loteInsumo').value='';
+    document.getElementById('loteProveedor').value='';
+    document.getElementById('loteNroProveedor').value='';
+    document.getElementById('loteCantidad').value='';
+    document.getElementById('loteUnidad').value='kg';
+    document.getElementById('loteFechaRecepcion').value=today();
+    document.getElementById('loteFechaVencimiento').value='';
+    document.getElementById('loteObs').value='';
+  }
+  document.getElementById('modalLote').classList.add('open');
+}
+
+function guardarLote(){
+  const insumo = document.getElementById('loteInsumo').value.trim();
+  const proveedorId = document.getElementById('loteProveedor').value;
+  const loteProveedor = document.getElementById('loteNroProveedor').value.trim();
+  const sector = document.getElementById('loteSector').value;
+  const cantidad = document.getElementById('loteCantidad').value;
+  const unidad = document.getElementById('loteUnidad').value;
+  const fechaRecepcion = document.getElementById('loteFechaRecepcion').value || today();
+  const fechaVencimiento = document.getElementById('loteFechaVencimiento').value;
+  const observaciones = document.getElementById('loteObs').value.trim();
+  if(!insumo){ alert('Ingresá el insumo.'); return; }
+
+  if(trazEditLoteId){
+    const l = traz.lotes.find(x=>x.id===trazEditLoteId);
+    if(!l) return;
+    Object.assign(l, {insumo,proveedorId,loteProveedor,sector,cantidad,unidad,fechaRecepcion,fechaVencimiento,observaciones});
+    audit('Lote editado: '+l.codigo, insumo, 'trazabilidad');
+  } else {
+    const l = {
+      id: 'lt_'+Date.now()+'_'+Math.floor(Math.random()*1000),
+      codigo: generarCodigoLote(),
+      insumo, proveedorId, loteProveedor, sector, cantidad, unidad,
+      fechaRecepcion, fechaVencimiento, observaciones, alertado:false
+    };
+    traz.lotes.unshift(l);
+    audit('Lote recibido: '+l.codigo, insumo+' — '+sector, 'trazabilidad');
+  }
+  saveTraz();
+  closeModal('modalLote');
+  renderTraz();
+  updateTrazBadge();
+}
+
+function eliminarLote(id){
+  const l = traz.lotes.find(x=>x.id===id);
+  if(!l) return;
+  const usado = traz.producciones.some(p=>(p.lotesUsados||[]).includes(id));
+  if(usado && !confirm('Este lote ya está vinculado a una o más producciones. Si lo borrás, esas producciones van a perder esa referencia. ¿Borrar igual?')) return;
+  if(!usado && !confirm('¿Borrar el lote '+l.codigo+'?')) return;
+  traz.lotes = traz.lotes.filter(x=>x.id!==id);
+  audit('Lote eliminado: '+l.codigo, '', 'trazabilidad');
+  saveTraz();
+  renderTraz();
+  updateTrazBadge();
+}
+
+function exportLotesCSV(){
+  const h = ['Código','Insumo','Proveedor','Lote proveedor','Sector','Cantidad','Unidad','Fecha recepción','Fecha vencimiento','Estado','Observaciones'];
+  const rows = traz.lotes.map(l=>{
+    const prov = traz.proveedores.find(p=>p.id===l.proveedorId);
+    return [l.codigo,l.insumo,prov?prov.nombre:'',l.loteProveedor||'',l.sector||'',l.cantidad||'',l.unidad||'',l.fechaRecepcion||'',l.fechaVencimiento||'',estadoLote(l),l.observaciones||'']
+      .map(v=>'"'+(v+'').replace(/"/g,'""')+'"').join(',');
+  });
+  dlBlob('\uFEFF'+[h.join(','),...rows].join('\r\n'),'text/csv','Lotes_'+today()+'.csv');
+}
+
+// ═══ PRODUCCIONES ═══
+function renderTrazProducciones(){
+  const filtroFecha = (document.getElementById('trazFiltroFechaProd')||{}).value || '';
+  const filtroSector = (document.getElementById('trazFiltroSectorProd')||{}).value || '';
+  let lista = [...traz.producciones].sort((a,b)=> (b.fecha||'').localeCompare(a.fecha||''));
+  if(filtroFecha) lista = lista.filter(p=>p.fecha===filtroFecha);
+  if(filtroSector) lista = lista.filter(p=>p.sector===filtroSector);
+  const el = document.getElementById('trazListadoProducciones');
+  if(!lista.length){ el.innerHTML = '<div style="font-size:12px;color:var(--text3);padding:12px;">No hay producciones registradas con ese filtro.</div>'; return; }
+  el.innerHTML = lista.map(p=>{
+    const lotesTxt = (p.lotesUsados||[]).map(lid=>{
+      const l = traz.lotes.find(x=>x.id===lid);
+      return l ? l.codigo : '(lote eliminado)';
+    }).join(', ') || '(sin lotes vinculados)';
+    return `<div class="config-item" style="flex-wrap:wrap;gap:8px;">
+      <div style="flex:1;min-width:220px;">
+        <div style="font-weight:600;font-size:13px;">${p.preparacion}</div>
+        <div style="font-size:11px;color:var(--text3);margin-top:2px;">${p.sector} · ${p.fecha} · ${p.turno} · Resp: ${p.responsable||'—'}</div>
+        <div style="font-size:11px;color:var(--text3);font-family:var(--mono);">Lotes: ${lotesTxt}</div>
+      </div>
+      <button class="btn btn-outline btn-sm" onclick="eliminarProduccion('${p.id}')">✕</button>
+    </div>`;
+  }).join('');
+}
+
+function openProduccionModal(){
+  poblarTrazSelects();
+  document.getElementById('prodPreparacion').value='';
+  document.getElementById('prodFecha').value=today();
+  document.getElementById('prodResponsable').value= currentUser?currentUser.nombre:'';
+  document.getElementById('prodObs').value='';
+  // Checklist de lotes vigentes/por vencer (no listamos vencidos para no usarlos por error)
+  const vigentes = traz.lotes.filter(l=>estadoLote(l)!=='vencido').sort((a,b)=>(b.fechaRecepcion||'').localeCompare(a.fechaRecepcion||''));
+  const cont = document.getElementById('prodLotesCheck');
+  if(!vigentes.length){
+    cont.innerHTML = '<div style="font-size:12px;color:var(--text3);">No hay lotes vigentes cargados todavía. Cargá uno desde "Lotes recibidos".</div>';
+  } else {
+    cont.innerHTML = vigentes.map(l=>`
+      <label style="display:flex;align-items:center;gap:8px;font-size:12px;cursor:pointer;">
+        <input type="checkbox" class="prodLoteChk" value="${l.id}" style="width:14px;height:14px;" />
+        ${l.insumo} <span style="font-family:var(--mono);color:var(--text3);">(${l.codigo})</span> ${badgeEstadoLote(estadoLote(l))}
+      </label>`).join('');
+  }
+  document.getElementById('modalProduccion').classList.add('open');
+}
+
+function guardarProduccion(){
+  const preparacion = document.getElementById('prodPreparacion').value.trim();
+  const sector = document.getElementById('prodSector').value;
+  const fecha = document.getElementById('prodFecha').value || today();
+  const turno = document.getElementById('prodTurno').value;
+  const responsable = document.getElementById('prodResponsable').value.trim();
+  const observaciones = document.getElementById('prodObs').value.trim();
+  if(!preparacion){ alert('Ingresá qué se preparó.'); return; }
+  const lotesUsados = [...document.querySelectorAll('.prodLoteChk:checked')].map(c=>c.value);
+  const p = {
+    id: 'pr_'+Date.now()+'_'+Math.floor(Math.random()*1000),
+    fecha, turno, sector, preparacion, lotesUsados, responsable, observaciones
+  };
+  traz.producciones.unshift(p);
+  audit('Producción registrada: '+preparacion, sector+' — '+fecha+' — '+lotesUsados.length+' lote(s)', 'trazabilidad');
+  saveTraz();
+  closeModal('modalProduccion');
+  renderTraz();
+}
+
+function eliminarProduccion(id){
+  const p = traz.producciones.find(x=>x.id===id);
+  if(!p) return;
+  if(!confirm('¿Borrar el registro de producción "'+p.preparacion+'"?')) return;
+  traz.producciones = traz.producciones.filter(x=>x.id!==id);
+  audit('Producción eliminada: '+p.preparacion, '', 'trazabilidad');
+  saveTraz();
+  renderTraz();
+}
+
+function exportProduccionesCSV(){
+  const h = ['Fecha','Turno','Sector','Preparación','Responsable','Lotes usados','Observaciones'];
+  const rows = traz.producciones.map(p=>{
+    const lotesTxt = (p.lotesUsados||[]).map(lid=>{const l=traz.lotes.find(x=>x.id===lid);return l?l.codigo:'';}).filter(Boolean).join(' | ');
+    return [p.fecha,p.turno,p.sector,p.preparacion,p.responsable||'',lotesTxt,p.observaciones||'']
+      .map(v=>'"'+(v+'').replace(/"/g,'""')+'"').join(',');
+  });
+  dlBlob('\uFEFF'+[h.join(','),...rows].join('\r\n'),'text/csv','Producciones_'+today()+'.csv');
+}
+
+// ═══ BUSCAR TRAZABILIDAD (bidireccional) ═══
+function buscarTrazabilidad(){
+  const q = (document.getElementById('trazBuscarQuery').value||'').trim().toLowerCase();
+  const el = document.getElementById('trazResultadoBusqueda');
+  if(!q){ el.innerHTML = '<div style="font-size:12px;color:var(--text3);padding:12px;">Escribí un código de lote o un insumo para buscar.</div>'; return; }
+
+  // ¿Coincide con un código de lote exacto o parcial?
+  const lotesMatch = traz.lotes.filter(l=>(l.codigo||'').toLowerCase().includes(q) || (l.insumo||'').toLowerCase().includes(q));
+
+  if(!lotesMatch.length){
+    el.innerHTML = '<div style="font-size:12px;color:var(--text3);padding:12px;">No se encontraron lotes que coincidan con "'+q+'".</div>';
+    return;
+  }
+
+  el.innerHTML = lotesMatch.map(l=>{
+    const prov = traz.proveedores.find(p=>p.id===l.proveedorId);
+    const produccionesConEsteLote = traz.producciones.filter(p=>(p.lotesUsados||[]).includes(l.id));
+    return `<div class="config-section" style="margin-bottom:12px;">
+      <h3 style="margin-bottom:6px;">${l.insumo} — <span style="font-family:var(--mono);">${l.codigo}</span> ${badgeEstadoLote(estadoLote(l))}</h3>
+      <div style="font-size:12px;color:var(--text2);margin-bottom:8px;">
+        Proveedor: ${prov?prov.nombre:'—'} · Lote proveedor: ${l.loteProveedor||'—'} · Recibido: ${l.fechaRecepcion||'—'} · Vence: ${l.fechaVencimiento||'—'} · Cantidad: ${l.cantidad||'—'} ${l.unidad||''} · Sector: ${l.sector||'—'}
+      </div>
+      <div style="font-size:12px;font-weight:600;margin-bottom:4px;">🍽 Se usó en ${produccionesConEsteLote.length} producción(es):</div>
+      ${produccionesConEsteLote.length ? produccionesConEsteLote.map(p=>`
+        <div style="font-size:12px;padding:6px 10px;background:var(--bg2);border-radius:6px;margin-bottom:4px;">
+          ${p.preparacion} — ${p.sector} — ${p.fecha} (${p.turno}) — Resp: ${p.responsable||'—'}
+        </div>`).join('') : '<div style="font-size:12px;color:var(--text3);padding:4px 10px;">Todavía no se registró ninguna producción con este lote.</div>'}
+    </div>`;
+  }).join('');
+}
+
+// ═══ PROVEEDORES ═══
+function renderTrazProveedores(){
+  const el = document.getElementById('trazListadoProveedores');
+  if(!traz.proveedores.length){ el.innerHTML = '<div style="font-size:12px;color:var(--text3);padding:12px;">No hay proveedores cargados todavía.</div>'; return; }
+  el.innerHTML = traz.proveedores.map(p=>{
+    const vencida = p.habilitacionVence && p.habilitacionVence < today();
+    return `<div class="config-item" style="flex-wrap:wrap;gap:8px;">
+      <div style="flex:1;min-width:200px;">
+        <div style="font-weight:600;font-size:13px;">${p.nombre}</div>
+        <div style="font-size:11px;color:var(--text3);">CUIT: ${p.cuit||'—'} · Habilitación: ${p.habilitacion||'—'} · Vence: ${p.habilitacionVence||'—'}</div>
+      </div>
+      ${vencida?'<span class="badge" style="background:#fde8e8;color:#b02020;border:1px solid #f0b8b8;">⚠ Habilitación vencida</span>':''}
+      <button class="btn btn-outline btn-sm" onclick="openProveedorModal('${p.id}')">Editar</button>
+      <button class="btn btn-danger btn-sm" onclick="eliminarProveedor('${p.id}')">✕</button>
+    </div>`;
+  }).join('');
+}
+
+function openProveedorModal(id){
+  trazEditProveedorId = id || null;
+  document.getElementById('proveedorModalTitle').textContent = id ? '🏭 Editar proveedor' : '🏭 Nuevo proveedor';
+  if(id){
+    const p = traz.proveedores.find(x=>x.id===id);
+    if(!p) return;
+    document.getElementById('provNombre').value = p.nombre||'';
+    document.getElementById('provCuit').value = p.cuit||'';
+    document.getElementById('provHabilitacion').value = p.habilitacion||'';
+    document.getElementById('provHabilitacionVence').value = p.habilitacionVence||'';
+  } else {
+    document.getElementById('provNombre').value='';
+    document.getElementById('provCuit').value='';
+    document.getElementById('provHabilitacion').value='';
+    document.getElementById('provHabilitacionVence').value='';
+  }
+  document.getElementById('modalProveedor').classList.add('open');
+}
+
+function guardarProveedor(){
+  const nombre = document.getElementById('provNombre').value.trim();
+  const cuit = document.getElementById('provCuit').value.trim();
+  const habilitacion = document.getElementById('provHabilitacion').value.trim();
+  const habilitacionVence = document.getElementById('provHabilitacionVence').value;
+  if(!nombre){ alert('Ingresá el nombre del proveedor.'); return; }
+  if(trazEditProveedorId){
+    const p = traz.proveedores.find(x=>x.id===trazEditProveedorId);
+    if(!p) return;
+    Object.assign(p, {nombre,cuit,habilitacion,habilitacionVence});
+    audit('Proveedor editado: '+nombre, '', 'trazabilidad');
+  } else {
+    traz.proveedores.push({id:'pv_'+Date.now()+'_'+Math.floor(Math.random()*1000), nombre,cuit,habilitacion,habilitacionVence});
+    audit('Proveedor creado: '+nombre, '', 'trazabilidad');
+  }
+  saveTraz();
+  closeModal('modalProveedor');
+  renderTraz();
+}
+
+function eliminarProveedor(id){
+  const p = traz.proveedores.find(x=>x.id===id);
+  if(!p) return;
+  if(!confirm('¿Borrar el proveedor "'+p.nombre+'"? Los lotes ya cargados con este proveedor no se borran.')) return;
+  traz.proveedores = traz.proveedores.filter(x=>x.id!==id);
+  audit('Proveedor eliminado: '+p.nombre, '', 'trazabilidad');
+  saveTraz();
+  renderTraz();
+}
+
+// ═══ ALERTAS DE VENCIMIENTO (se revisa una vez por día, junto con las tareas) ═══
+function chequearVencimientosLotes(){
+  const t = today();
+  const ultima = LS.get('fscc_ultimaChequeoLotes');
+  if(ultima === t) return;
+  let huboAlertas = false;
+  traz.lotes.forEach(l=>{
+    const estado = estadoLote(l);
+    if((estado==='porVencer' || estado==='vencido') && !l.alertado){
+      const texto = estado==='vencido'
+        ? `El lote ${l.codigo} (${l.insumo}) venció el ${l.fechaVencimiento}.`
+        : `El lote ${l.codigo} (${l.insumo}) vence el ${l.fechaVencimiento}.`;
+      pushNotif('lote_vencimiento', estado==='vencido'?'⚠ Lote vencido':'🟡 Lote por vencer', texto, null);
+      l.alertado = true;
+      huboAlertas = true;
+    }
+  });
+  LS.set('fscc_ultimaChequeoLotes', t);
+  if(huboAlertas) saveTraz();
+}
+
 let mantEditId = null;
 
 function loadMant(){
@@ -5884,6 +6506,7 @@ function switchView(v,btn){
   if(v==='dashboard'){renderMetrics();renderBars();renderAlert();renderTable();initHistoricoSelects();renderHistorico();}
   if(v==='haccp'){renderHaccpActive();}
   if(v==='mantenimiento'){renderMant();}
+  if(v==='trazabilidad'){renderTraz();}
   if(v==='capacitaciones'){renderCapacitaciones();}
 }
 
@@ -5911,6 +6534,7 @@ function setDate(){
 
 function renderAll(){
   updateMantBadge();
+  updateTrazBadge();
   populateSelects();
   if(currentUser){
     if(currentUser.rol==='admin'){
@@ -6051,7 +6675,7 @@ loadData();
     <div style="margin:16px 0;">
       <div class="fg">
         <label>Contraseña nueva</label>
-        <input type="password" id="cambioPassNueva" placeholder="mínimo 4 caracteres" onkeydown="if(event.key==='Enter')confirmarCambioPassObligatorio()" />
+        <input type="password" id="cambioPassNueva" placeholder="mínimo 6 caracteres" onkeydown="if(event.key==='Enter')confirmarCambioPassObligatorio()" />
       </div>
       <div class="fg">
         <label>Confirmar contraseña</label>
