@@ -504,6 +504,7 @@ tbody td{padding:8px 10px;vertical-align:middle;}
 <nav class="nav-tabs" id="navTabs">
   <!-- Visible para todos -->
   <button class="nav-tab active" id="tabMisTareas" onclick="switchView('mis-tareas',this)">Mis Tareas</button>
+  <button class="nav-tab" id="tabRondas" onclick="switchView('rondas',this)">📋 Rondas <span id="rondasBadge" style="display:none;" class="badge-mant-count">0</span></button>
   <button class="nav-tab" id="tabCapacitaciones" onclick="switchView('capacitaciones',this)">📚 Capacitaciones</button>
   <!-- Solo supervisor y admin -->
   <button class="nav-tab sv-admin-only" id="tabSupervisor" onclick="switchView('supervisor',this)">Supervisión</button>
@@ -1111,6 +1112,7 @@ tbody td{padding:8px 10px;vertical-align:middle;}
         </div>
         <div class="toolbar-r">
           <button class="btn btn-outline" onclick="exportLotesCSV()">⬇ Exportar CSV</button>
+          <button class="btn btn-outline" onclick="imprimirLotes()">🖨 Imprimir</button>
           <button class="btn btn-primary" onclick="openLoteModal()">+ Nuevo lote recibido</button>
         </div>
       </div>
@@ -1126,6 +1128,7 @@ tbody td{padding:8px 10px;vertical-align:middle;}
         </div>
         <div class="toolbar-r">
           <button class="btn btn-outline" onclick="exportProduccionesCSV()">⬇ Exportar CSV</button>
+          <button class="btn btn-outline" onclick="imprimirProducciones()">🖨 Imprimir</button>
           <button class="btn btn-primary" onclick="openProduccionModal()">+ Nueva producción</button>
         </div>
       </div>
@@ -1278,6 +1281,96 @@ tbody td{padding:8px 10px;vertical-align:middle;}
     <div class="form-actions">
       <button class="btn btn-ghost" onclick="closeModal('modalProveedor')">Cancelar</button>
       <button class="btn btn-primary" onclick="guardarProveedor()">Guardar proveedor</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ VISTA: RONDAS DE CONTROL ══ -->
+<div class="view" id="view-rondas">
+
+  <!-- Para Operario/Cubre: la ronda de hoy -->
+  <div id="rondaOperarioPanel"></div>
+
+  <!-- Para Supervisor/Admin: historial -->
+  <div id="rondaHistorialPanel" style="display:none;">
+    <div class="toolbar" style="margin-bottom:1rem;flex-wrap:wrap;gap:6px;">
+      <div class="toolbar-l" style="flex-wrap:wrap;gap:6px;">
+        <input type="date" class="flt" id="rondaFiltroFecha" onchange="renderRondasHistorial()" />
+        <select class="flt" id="rondaFiltroEstado" onchange="renderRondasHistorial()">
+          <option value="">Todos los estados</option>
+          <option value="pendiente">🟡 Pendiente de aprobación</option>
+          <option value="aprobada">🟢 Aprobada</option>
+        </select>
+      </div>
+    </div>
+    <div id="rondaListado"></div>
+  </div>
+</div>
+
+<!-- ══ MODAL: CHECKLIST DE RONDA (ejecutar) ══ -->
+<div class="modal-bg" id="modalRonda">
+  <div class="modal-box" style="max-width:460px;">
+    <button class="modal-close" onclick="cerrarModalRondaSinGuardar()">✕</button>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px;">
+      <div class="modal-title" id="rondaModalTitulo" style="margin-bottom:0;">📋 Ronda</div>
+      <div id="rondaReloj" style="font-size:12px;color:var(--text3);font-family:var(--mono);"></div>
+    </div>
+    <div class="modal-sub" id="rondaModalSub" style="margin-bottom:10px;"></div>
+    <div style="height:6px;background:var(--bg2);border-radius:99px;overflow:hidden;margin-bottom:12px;">
+      <div id="rondaBarra" style="height:100%;width:0%;background:var(--green);transition:width .2s;"></div>
+    </div>
+    <div id="rondaItemsCont" style="display:flex;flex-direction:column;gap:8px;max-height:50vh;overflow-y:auto;"></div>
+    <button id="rondaBtnFirmar" disabled style="width:100%;margin-top:14px;height:44px;border-radius:var(--r);border:.5px solid var(--border);background:var(--bg2);color:var(--text3);font-size:14px;font-weight:600;" onclick="abrirFirmaRonda()">Completá los ítems para firmar</button>
+  </div>
+</div>
+
+<!-- ══ MODAL: FIRMA DE RONDA (re-autenticación) ══ -->
+<div class="modal-bg" id="modalFirmaRonda" onclick="handleModalClick(event,'modalFirmaRonda')">
+  <div class="modal-box" style="max-width:360px;">
+    <button class="modal-close" onclick="closeModal('modalFirmaRonda')">✕</button>
+    <div class="modal-title">✍ Firmar y cerrar ronda</div>
+    <div class="modal-sub" style="margin-bottom:12px;">Ingresá tu contraseña para confirmar que vos completaste esta ronda ahora.</div>
+    <div class="fg" style="margin-bottom:10px;">
+      <label>Tu contraseña</label>
+      <input type="password" id="rondaFirmaPass" placeholder="Contraseña" onkeydown="if(event.key==='Enter')confirmarFirmaRonda()" />
+    </div>
+    <div id="rondaFirmaMsg" style="display:none;font-size:12px;padding:8px 10px;border-radius:6px;margin-bottom:8px;background:#fde8e8;color:#b02020;"></div>
+    <div class="form-actions">
+      <button class="btn btn-ghost" onclick="closeModal('modalFirmaRonda')">Cancelar</button>
+      <button class="btn btn-primary" onclick="confirmarFirmaRonda()">Firmar y cerrar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ MODAL: DETALLE DE RONDA CERRADA (Supervisor/Admin) ══ -->
+<div class="modal-bg" id="modalRondaDetalle" onclick="handleModalClick(event,'modalRondaDetalle')">
+  <div class="modal-box" style="max-width:480px;">
+    <button class="modal-close" onclick="closeModal('modalRondaDetalle')">✕</button>
+    <div class="modal-title" id="rondaDetalleTitulo" style="margin-bottom:2px;">📋 Ronda</div>
+    <div class="modal-sub" id="rondaDetalleSub" style="margin-bottom:12px;"></div>
+    <div id="rondaDetalleItems" style="display:flex;flex-direction:column;gap:6px;max-height:40vh;overflow-y:auto;margin-bottom:12px;"></div>
+    <div id="rondaDetalleFirma" style="font-size:12px;color:var(--text3);border-top:.5px solid var(--border);padding-top:10px;margin-bottom:12px;"></div>
+    <div class="form-actions">
+      <button class="btn btn-outline" onclick="imprimirRonda(_rondaDetalleId)">🖨 Imprimir</button>
+      <button class="btn btn-primary" id="rondaBtnAprobar" onclick="abrirFirmaSupervisorRonda()">✓ Aprobar como Supervisor</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ MODAL: FIRMA DE SUPERVISOR (segunda firma) ══ -->
+<div class="modal-bg" id="modalFirmaSupervisorRonda" onclick="handleModalClick(event,'modalFirmaSupervisorRonda')">
+  <div class="modal-box" style="max-width:360px;">
+    <button class="modal-close" onclick="closeModal('modalFirmaSupervisorRonda')">✕</button>
+    <div class="modal-title">✍ Aprobar ronda (Supervisor)</div>
+    <div class="modal-sub" style="margin-bottom:12px;">Ingresá tu contraseña para dejar constancia de que supervisaste esta ronda.</div>
+    <div class="fg" style="margin-bottom:10px;">
+      <label>Tu contraseña</label>
+      <input type="password" id="rondaFirmaSupervisorPass" placeholder="Contraseña" onkeydown="if(event.key==='Enter')confirmarFirmaSupervisorRonda()" />
+    </div>
+    <div id="rondaFirmaSupervisorMsg" style="display:none;font-size:12px;padding:8px 10px;border-radius:6px;margin-bottom:8px;background:#fde8e8;color:#b02020;"></div>
+    <div class="form-actions">
+      <button class="btn btn-ghost" onclick="closeModal('modalFirmaSupervisorRonda')">Cancelar</button>
+      <button class="btn btn-primary" onclick="confirmarFirmaSupervisorRonda()">Aprobar</button>
     </div>
   </div>
 </div>
@@ -1758,10 +1851,10 @@ async function loadDataFromFirebase(){
   try{
     showSyncStatus('⏳ Sincronizando...','amber');
     // Carga inicial: traer todos los datos de Firebase de una vez
-    const [fbUsers,fbCfg,fbTasks,fbAudit,fbNotif,fbHaccp,fbMant,fbTraz]=await Promise.all([
+    const [fbUsers,fbCfg,fbTasks,fbAudit,fbNotif,fbHaccp,fbMant,fbTraz,fbRondas]=await Promise.all([
       fbLoad('fscc_users'), fbLoad('fscc_cfg'), fbLoad('fscc_tasks'),
       fbLoad('fscc_audit'), fbLoad('fscc_notif'), fbLoad('fscc_haccp'), fbLoad('fscc_mant'),
-      fbLoad('fscc_traz')
+      fbLoad('fscc_traz'), fbLoad('fscc_rondas')
     ]);
 
     // Regla: si Firebase tiene datos, SIEMPRE ganan sobre localStorage
@@ -1795,6 +1888,7 @@ async function loadDataFromFirebase(){
     if(fbHaccp){haccpLogs=fbHaccp;LS.set('fscc_haccp',haccpLogs);}
     if(fbMant){mantSolicitudes=fbMant;LS.set('fscc_mant',mantSolicitudes);}
     if(fbTraz){traz=fbTraz;if(!traz.proveedores)traz.proveedores=[];if(!traz.lotes)traz.lotes=[];if(!traz.producciones)traz.producciones=[];LS.set('fscc_traz',traz);}
+    if(fbRondas){rondas=fbRondas;if(!rondas.plantillas||!rondas.plantillas.length)rondas.plantillas=seedPlantillasRondas();if(!rondas.registros)rondas.registros=[];LS.set('fscc_rondas',rondas);}
 
     // Capacitaciones
     const fbCap = await fbLoad('fscc_cap');
@@ -1843,6 +1937,11 @@ async function loadDataFromFirebase(){
       if(_localSaveInProgress)return;
       traz=val||{proveedores:[],lotes:[],producciones:[]};LS.set('fscc_traz',traz);
       if(currentUser && document.getElementById('view-trazabilidad') && document.getElementById('view-trazabilidad').classList.contains('active')) renderTraz();
+    });
+    fbWatch('fscc_rondas',(val)=>{
+      if(_localSaveInProgress)return;
+      rondas=val||{plantillas:seedPlantillasRondas(),registros:[]};LS.set('fscc_rondas',rondas);
+      if(currentUser && document.getElementById('view-rondas') && document.getElementById('view-rondas').classList.contains('active')) renderRondas();
     });
     fbWatch('fscc_cap',(val)=>{
       if(_localSaveInProgress)return;
@@ -2193,6 +2292,7 @@ function loadData(){
   loadHaccp();
   loadMant();
   loadTraz();
+  loadRondas();
   // Sincronizar con Firebase
   if(window._fbReady){
     loadDataFromFirebase();
@@ -2205,7 +2305,7 @@ async function saveAll(){
   // Guardar local primero (inmediato)
   LS.set('fscc_cfg',cfg);LS.set('fscc_tasks',tasks);
   LS.set('fscc_users',users);LS.set('fscc_audit',auditLog);
-  LS.set('fscc_notif',notifications);saveHaccp();saveMant();saveTraz();
+  LS.set('fscc_notif',notifications);saveHaccp();saveMant();saveTraz();saveRondas();
   // Luego sincronizar con Firebase
   showSyncStatus('⏳ Guardando...','amber');
   // Flag: bloquear listeners entrantes mientras guardamos
@@ -2217,7 +2317,7 @@ async function saveAll(){
       fbSave('fscc_users',users), fbSave('fscc_audit',auditLog),
       fbSave('fscc_notif',notifications),
       fbSave('fscc_haccp',haccpLogs), fbSave('fscc_mant',mantSolicitudes),
-      fbSave('fscc_traz',traz)
+      fbSave('fscc_traz',traz), fbSave('fscc_rondas',rondas)
     ]);
     showSyncStatus('☁ Guardado','green');
   }catch(e){
@@ -2595,8 +2695,8 @@ function renderNotifPanel(){
   const mine=getMyNotifs();
   if(!mine.length){el.innerHTML='<div class="notif-empty">Sin notificaciones.</div>';return;}
   el.innerHTML=mine.map(n=>{
-    const dotCls=n.tipo==='completed'?'green':n.tipo==='incident'?'red':(n.tipo==='mant_respuesta'||n.tipo==='mant_nueva')?'blue':(n.tipo==='alerta_vencida'||n.tipo==='lote_vencimiento')?'red':'';
-    const icon=n.tipo==='completed'?'✅':n.tipo==='incident'?'⚠️':(n.tipo==='mant_respuesta'||n.tipo==='mant_nueva')?'🔧':n.tipo==='alerta_vencida'?'⏰':n.tipo==='lote_vencimiento'?'📦':'🔔';
+    const dotCls=n.tipo==='completed'?'green':n.tipo==='incident'?'red':(n.tipo==='mant_respuesta'||n.tipo==='mant_nueva')?'blue':(n.tipo==='alerta_vencida'||n.tipo==='lote_vencimiento')?'red':n.tipo==='ronda_pendiente'?'blue':'';
+    const icon=n.tipo==='completed'?'✅':n.tipo==='incident'?'⚠️':(n.tipo==='mant_respuesta'||n.tipo==='mant_nueva')?'🔧':n.tipo==='alerta_vencida'?'⏰':n.tipo==='lote_vencimiento'?'📦':n.tipo==='ronda_pendiente'?'📋':'🔔';
     return`<div class="notif-item${n.leida?'':' unread'}" onclick="markNotifRead('${n.id}')">
       <div class="notif-dot ${dotCls}"></div>
       <div class="notif-item-body">
@@ -5428,6 +5528,15 @@ function renderTrazLotes(){
   if(!lista.length){ el.innerHTML = '<div style="font-size:12px;color:var(--text3);padding:12px;">No hay lotes que coincidan con el filtro.</div>'; return; }
   el.innerHTML = lista.map(l=>{
     const prov = traz.proveedores.find(p=>p.id===l.proveedorId);
+    if(l.anulado){
+      return `<div class="config-item" style="flex-wrap:wrap;gap:8px;opacity:.55;">
+        <div style="flex:1;min-width:220px;">
+          <div style="font-weight:600;font-size:13px;text-decoration:line-through;">${l.insumo} <span style="font-family:var(--mono);font-size:11px;color:var(--text3);">${l.codigo}</span></div>
+          <div style="font-size:11px;color:var(--text3);margin-top:2px;">${prov?prov.nombre:'(proveedor no especificado)'} · lote prov. ${l.loteProveedor||'—'} · ${l.sector||'—'}</div>
+          <div style="font-size:11px;color:#b02020;">🚫 Anulado por ${l.anuladoPor} el ${fmtDatetime(l.anuladoTs)} — ${l.anuladoMotivo}</div>
+        </div>
+      </div>`;
+    }
     return `<div class="config-item" style="flex-wrap:wrap;gap:8px;">
       <div style="flex:1;min-width:220px;">
         <div style="font-weight:600;font-size:13px;">${l.insumo} <span style="font-family:var(--mono);font-size:11px;color:var(--text3);">${l.codigo}</span></div>
@@ -5436,7 +5545,7 @@ function renderTrazLotes(){
       </div>
       ${badgeEstadoLote(estadoLote(l))}
       <button class="btn btn-outline btn-sm" onclick="openLoteModal('${l.id}')">Editar</button>
-      <button class="btn btn-danger btn-sm" onclick="eliminarLote('${l.id}')">✕</button>
+      <button class="btn btn-danger btn-sm" onclick="anularLote('${l.id}')">🚫 Anular</button>
     </div>`;
   }).join('');
 }
@@ -5503,27 +5612,74 @@ function guardarLote(){
   updateTrazBadge();
 }
 
-function eliminarLote(id){
+function anularLote(id){
   const l = traz.lotes.find(x=>x.id===id);
   if(!l) return;
-  const usado = traz.producciones.some(p=>(p.lotesUsados||[]).includes(id));
-  if(usado && !confirm('Este lote ya está vinculado a una o más producciones. Si lo borrás, esas producciones van a perder esa referencia. ¿Borrar igual?')) return;
-  if(!usado && !confirm('¿Borrar el lote '+l.codigo+'?')) return;
-  traz.lotes = traz.lotes.filter(x=>x.id!==id);
-  audit('Lote eliminado: '+l.codigo, '', 'trazabilidad');
+  const motivo = prompt('Motivo de la anulación del lote '+l.codigo+' (queda registrado, no se puede deshacer):');
+  if(motivo === null) return;
+  if(!motivo.trim()){ alert('Tenés que indicar un motivo.'); return; }
+  l.anulado = true;
+  l.anuladoPor = currentUser.nombre;
+  l.anuladoTs = nowISO();
+  l.anuladoMotivo = motivo.trim();
+  audit('Lote anulado: '+l.codigo, motivo.trim(), 'trazabilidad');
   saveTraz();
   renderTraz();
   updateTrazBadge();
 }
 
 function exportLotesCSV(){
-  const h = ['Código','Insumo','Proveedor','Lote proveedor','Sector','Cantidad','Unidad','Fecha recepción','Fecha vencimiento','Estado','Observaciones'];
+  const h = ['Código','Insumo','Proveedor','Lote proveedor','Sector','Cantidad','Unidad','Fecha recepción','Fecha vencimiento','Estado','Anulado','Motivo anulación','Observaciones'];
   const rows = traz.lotes.map(l=>{
     const prov = traz.proveedores.find(p=>p.id===l.proveedorId);
-    return [l.codigo,l.insumo,prov?prov.nombre:'',l.loteProveedor||'',l.sector||'',l.cantidad||'',l.unidad||'',l.fechaRecepcion||'',l.fechaVencimiento||'',estadoLote(l),l.observaciones||'']
+    return [l.codigo,l.insumo,prov?prov.nombre:'',l.loteProveedor||'',l.sector||'',l.cantidad||'',l.unidad||'',l.fechaRecepcion||'',l.fechaVencimiento||'',estadoLote(l),l.anulado?'Sí':'No',l.anuladoMotivo||'',l.observaciones||'']
       .map(v=>'"'+(v+'').replace(/"/g,'""')+'"').join(',');
   });
   dlBlob('\uFEFF'+[h.join(','),...rows].join('\r\n'),'text/csv','Lotes_'+today()+'.csv');
+}
+
+function imprimirLotes(){
+  const filtroEstado = (document.getElementById('trazFiltroEstadoLote')||{}).value || '';
+  const busq = ((document.getElementById('trazBuscarLote')||{}).value || '').toLowerCase();
+  let lista = [...traz.lotes].sort((a,b)=> (b.fechaRecepcion||'').localeCompare(a.fechaRecepcion||''));
+  if(filtroEstado) lista = lista.filter(l=>estadoLote(l)===filtroEstado);
+  if(busq) lista = lista.filter(l=>(l.insumo||'').toLowerCase().includes(busq) || (l.codigo||'').toLowerCase().includes(busq));
+  const fecha = new Date().toLocaleDateString('es-AR',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
+  const w = window.open('','_blank','width=900,height=700');
+  if(!w) return;
+  w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Lotes recibidos — ${fecha}</title>
+  <style>
+    body{font-family:Arial,sans-serif;font-size:12px;margin:20px;color:#222;}
+    h1{font-size:16px;border-bottom:2px solid #1a2744;padding-bottom:6px;color:#1a2744;}
+    .sub{font-size:11px;color:#666;margin-bottom:14px;}
+    table{width:100%;border-collapse:collapse;margin-top:10px;}
+    th{background:#1a2744;color:#fff;font-size:10px;text-transform:uppercase;padding:6px 8px;text-align:left;}
+    td{padding:6px 8px;border-bottom:.5px solid #eee;vertical-align:top;}
+    .anulado{opacity:.5;text-decoration:line-through;}
+    .vencido{color:#b02020;font-weight:700;}
+    .porVencer{color:#8a6416;font-weight:700;}
+    .vigente{color:#1a7a4a;}
+    .foot{margin-top:16px;font-size:9px;color:#999;border-top:1px solid #eee;padding-top:8px;}
+  </style></head><body>
+  <h1>📦 Lotes recibidos — Sanatorio Parque</h1>
+  <div class="sub">${fecha} · Generado por: ${currentUser?currentUser.nombre:'—'} · ${lista.length} lote(s)</div>
+  <table><thead><tr><th>Código</th><th>Insumo</th><th>Proveedor</th><th>Lote prov.</th><th>Sector</th><th>Cant.</th><th>Recepción</th><th>Vencimiento</th><th>Estado</th></tr></thead>
+  <tbody>${lista.map(l=>{
+    const prov = traz.proveedores.find(p=>p.id===l.proveedorId);
+    const est = estadoLote(l);
+    const estClase = est==='vencido'?'vencido':est==='porVencer'?'porVencer':'vigente';
+    const estTexto = l.anulado ? 'Anulado' : est==='vencido'?'Vencido':est==='porVencer'?'Por vencer':'Vigente';
+    return `<tr${l.anulado?' class="anulado"':''}>
+      <td>${l.codigo}</td><td>${l.insumo}</td><td>${prov?prov.nombre:'—'}</td><td>${l.loteProveedor||'—'}</td>
+      <td>${l.sector||'—'}</td><td>${l.cantidad||'—'} ${l.unidad||''}</td>
+      <td>${l.fechaRecepcion||'—'}</td><td>${l.fechaVencimiento||'—'}</td>
+      <td class="${l.anulado?'':estClase}">${estTexto}</td>
+    </tr>`;
+  }).join('')}</tbody></table>
+  <div class="foot">Food Service Control Center · Sanatorio Parque — ${fecha}</div>
+  <script>window.onload=()=>{window.print();}<\/script>
+  </body></html>`);
+  w.document.close();
 }
 
 // ═══ PRODUCCIONES ═══
@@ -5540,13 +5696,22 @@ function renderTrazProducciones(){
       const l = traz.lotes.find(x=>x.id===lid);
       return l ? l.codigo : '(lote eliminado)';
     }).join(', ') || '(sin lotes vinculados)';
+    if(p.anulado){
+      return `<div class="config-item" style="flex-wrap:wrap;gap:8px;opacity:.55;">
+        <div style="flex:1;min-width:220px;">
+          <div style="font-weight:600;font-size:13px;text-decoration:line-through;">${p.preparacion}</div>
+          <div style="font-size:11px;color:var(--text3);margin-top:2px;">${p.sector} · ${p.fecha} · ${p.turno} · Resp: ${p.responsable||'—'}</div>
+          <div style="font-size:11px;color:#b02020;">🚫 Anulada por ${p.anuladoPor} el ${fmtDatetime(p.anuladoTs)} — ${p.anuladoMotivo}</div>
+        </div>
+      </div>`;
+    }
     return `<div class="config-item" style="flex-wrap:wrap;gap:8px;">
       <div style="flex:1;min-width:220px;">
         <div style="font-weight:600;font-size:13px;">${p.preparacion}</div>
         <div style="font-size:11px;color:var(--text3);margin-top:2px;">${p.sector} · ${p.fecha} · ${p.turno} · Resp: ${p.responsable||'—'}</div>
         <div style="font-size:11px;color:var(--text3);font-family:var(--mono);">Lotes: ${lotesTxt}</div>
       </div>
-      <button class="btn btn-outline btn-sm" onclick="eliminarProduccion('${p.id}')">✕</button>
+      <button class="btn btn-outline btn-sm" onclick="anularProduccion('${p.id}')">🚫 Anular</button>
     </div>`;
   }).join('');
 }
@@ -5557,8 +5722,8 @@ function openProduccionModal(){
   document.getElementById('prodFecha').value=today();
   document.getElementById('prodResponsable').value= currentUser?currentUser.nombre:'';
   document.getElementById('prodObs').value='';
-  // Checklist de lotes vigentes/por vencer (no listamos vencidos para no usarlos por error)
-  const vigentes = traz.lotes.filter(l=>estadoLote(l)!=='vencido').sort((a,b)=>(b.fechaRecepcion||'').localeCompare(a.fechaRecepcion||''));
+  // Checklist de lotes vigentes (ni vencidos ni anulados, para no usarlos por error)
+  const vigentes = traz.lotes.filter(l=>estadoLote(l)!=='vencido' && !l.anulado).sort((a,b)=>(b.fechaRecepcion||'').localeCompare(a.fechaRecepcion||''));
   const cont = document.getElementById('prodLotesCheck');
   if(!vigentes.length){
     cont.innerHTML = '<div style="font-size:12px;color:var(--text3);">No hay lotes vigentes cargados todavía. Cargá uno desde "Lotes recibidos".</div>';
@@ -5592,24 +5757,65 @@ function guardarProduccion(){
   renderTraz();
 }
 
-function eliminarProduccion(id){
+function anularProduccion(id){
   const p = traz.producciones.find(x=>x.id===id);
   if(!p) return;
-  if(!confirm('¿Borrar el registro de producción "'+p.preparacion+'"?')) return;
-  traz.producciones = traz.producciones.filter(x=>x.id!==id);
-  audit('Producción eliminada: '+p.preparacion, '', 'trazabilidad');
+  const motivo = prompt('Motivo de la anulación de "'+p.preparacion+'" (queda registrado, no se puede deshacer):');
+  if(motivo === null) return;
+  if(!motivo.trim()){ alert('Tenés que indicar un motivo.'); return; }
+  p.anulado = true;
+  p.anuladoPor = currentUser.nombre;
+  p.anuladoTs = nowISO();
+  p.anuladoMotivo = motivo.trim();
+  audit('Producción anulada: '+p.preparacion, motivo.trim(), 'trazabilidad');
   saveTraz();
   renderTraz();
 }
 
 function exportProduccionesCSV(){
-  const h = ['Fecha','Turno','Sector','Preparación','Responsable','Lotes usados','Observaciones'];
+  const h = ['Fecha','Turno','Sector','Preparación','Responsable','Lotes usados','Anulada','Motivo anulación','Observaciones'];
   const rows = traz.producciones.map(p=>{
     const lotesTxt = (p.lotesUsados||[]).map(lid=>{const l=traz.lotes.find(x=>x.id===lid);return l?l.codigo:'';}).filter(Boolean).join(' | ');
-    return [p.fecha,p.turno,p.sector,p.preparacion,p.responsable||'',lotesTxt,p.observaciones||'']
+    return [p.fecha,p.turno,p.sector,p.preparacion,p.responsable||'',lotesTxt,p.anulado?'Sí':'No',p.anuladoMotivo||'',p.observaciones||'']
       .map(v=>'"'+(v+'').replace(/"/g,'""')+'"').join(',');
   });
   dlBlob('\uFEFF'+[h.join(','),...rows].join('\r\n'),'text/csv','Producciones_'+today()+'.csv');
+}
+
+function imprimirProducciones(){
+  const filtroFecha = (document.getElementById('trazFiltroFechaProd')||{}).value || '';
+  const filtroSector = (document.getElementById('trazFiltroSectorProd')||{}).value || '';
+  let lista = [...traz.producciones].sort((a,b)=> (b.fecha||'').localeCompare(a.fecha||''));
+  if(filtroFecha) lista = lista.filter(p=>p.fecha===filtroFecha);
+  if(filtroSector) lista = lista.filter(p=>p.sector===filtroSector);
+  const fecha = new Date().toLocaleDateString('es-AR',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
+  const w = window.open('','_blank','width=900,height=700');
+  if(!w) return;
+  w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Producciones — ${fecha}</title>
+  <style>
+    body{font-family:Arial,sans-serif;font-size:12px;margin:20px;color:#222;}
+    h1{font-size:16px;border-bottom:2px solid #1a2744;padding-bottom:6px;color:#1a2744;}
+    .sub{font-size:11px;color:#666;margin-bottom:14px;}
+    table{width:100%;border-collapse:collapse;margin-top:10px;}
+    th{background:#1a2744;color:#fff;font-size:10px;text-transform:uppercase;padding:6px 8px;text-align:left;}
+    td{padding:6px 8px;border-bottom:.5px solid #eee;vertical-align:top;}
+    .anulado{opacity:.5;text-decoration:line-through;}
+    .foot{margin-top:16px;font-size:9px;color:#999;border-top:1px solid #eee;padding-top:8px;}
+  </style></head><body>
+  <h1>🍽 Producciones — Sanatorio Parque</h1>
+  <div class="sub">${fecha} · Generado por: ${currentUser?currentUser.nombre:'—'} · ${lista.length} registro(s)</div>
+  <table><thead><tr><th>Fecha</th><th>Turno</th><th>Sector</th><th>Preparación</th><th>Responsable</th><th>Lotes usados</th></tr></thead>
+  <tbody>${lista.map(p=>{
+    const lotesTxt = (p.lotesUsados||[]).map(lid=>{const l=traz.lotes.find(x=>x.id===lid);return l?l.codigo:'';}).filter(Boolean).join(', ') || '—';
+    return `<tr${p.anulado?' class="anulado"':''}>
+      <td>${p.fecha}</td><td>${p.turno}</td><td>${p.sector}</td><td>${p.preparacion}${p.anulado?' (ANULADA — '+p.anuladoMotivo+')':''}</td>
+      <td>${p.responsable||'—'}</td><td style="font-family:monospace;">${lotesTxt}</td>
+    </tr>`;
+  }).join('')}</tbody></table>
+  <div class="foot">Food Service Control Center · Sanatorio Parque — ${fecha}</div>
+  <script>window.onload=()=>{window.print();}<\/script>
+  </body></html>`);
+  w.document.close();
 }
 
 // ═══ BUSCAR TRAZABILIDAD (bidireccional) ═══
@@ -5629,15 +5835,16 @@ function buscarTrazabilidad(){
   el.innerHTML = lotesMatch.map(l=>{
     const prov = traz.proveedores.find(p=>p.id===l.proveedorId);
     const produccionesConEsteLote = traz.producciones.filter(p=>(p.lotesUsados||[]).includes(l.id));
-    return `<div class="config-section" style="margin-bottom:12px;">
-      <h3 style="margin-bottom:6px;">${l.insumo} — <span style="font-family:var(--mono);">${l.codigo}</span> ${badgeEstadoLote(estadoLote(l))}</h3>
+    return `<div class="config-section" style="margin-bottom:12px;${l.anulado?'opacity:.6;':''}">
+      <h3 style="margin-bottom:6px;">${l.insumo} — <span style="font-family:var(--mono);">${l.codigo}</span> ${l.anulado?'<span class="badge" style="background:#fde8e8;color:#b02020;border:1px solid #f0b8b8;">🚫 Anulado</span>':badgeEstadoLote(estadoLote(l))}</h3>
       <div style="font-size:12px;color:var(--text2);margin-bottom:8px;">
         Proveedor: ${prov?prov.nombre:'—'} · Lote proveedor: ${l.loteProveedor||'—'} · Recibido: ${l.fechaRecepcion||'—'} · Vence: ${l.fechaVencimiento||'—'} · Cantidad: ${l.cantidad||'—'} ${l.unidad||''} · Sector: ${l.sector||'—'}
       </div>
+      ${l.anulado?`<div style="font-size:12px;color:#b02020;margin-bottom:8px;">🚫 Anulado por ${l.anuladoPor} el ${fmtDatetime(l.anuladoTs)} — ${l.anuladoMotivo}</div>`:''}
       <div style="font-size:12px;font-weight:600;margin-bottom:4px;">🍽 Se usó en ${produccionesConEsteLote.length} producción(es):</div>
       ${produccionesConEsteLote.length ? produccionesConEsteLote.map(p=>`
-        <div style="font-size:12px;padding:6px 10px;background:var(--bg2);border-radius:6px;margin-bottom:4px;">
-          ${p.preparacion} — ${p.sector} — ${p.fecha} (${p.turno}) — Resp: ${p.responsable||'—'}
+        <div style="font-size:12px;padding:6px 10px;background:var(--bg2);border-radius:6px;margin-bottom:4px;${p.anulado?'opacity:.6;text-decoration:line-through;':''}">
+          ${p.preparacion} — ${p.sector} — ${p.fecha} (${p.turno}) — Resp: ${p.responsable||'—'}${p.anulado?' — 🚫 ANULADA':''}
         </div>`).join('') : '<div style="font-size:12px;color:var(--text3);padding:4px 10px;">Todavía no se registró ninguna producción con este lote.</div>'}
     </div>`;
   }).join('');
@@ -5729,6 +5936,398 @@ function chequearVencimientosLotes(){
   });
   LS.set('fscc_ultimaChequeoLotes', t);
   if(huboAlertas) saveTraz();
+}
+
+// ═══════════════════════════════════════════════════
+//  RONDAS DE CONTROL (checklist rápido, tipo "ronda")
+// ═══════════════════════════════════════════════════
+// Reemplaza planillas de papel (POES) por un flujo de un toque, con hora
+// real capturada por ítem y firma digital al cierre. Las rondas cerradas
+// NUNCA se editan ni se borran — es la garantía de inviolabilidad.
+//
+// rondas.plantillas: [{id, codigo, nombre, sector, items:[{id,texto,turno?,dia?}]}]
+//   - item.turno ausente = aplica a ambos turnos; 'Mañana'|'Tarde' = solo ese turno
+//   - item.dia ausente = todos los días; 'lunes' = solo ese día de la semana
+// rondas.registros: [{id, plantillaId, codigo, nombre, fecha, turno, sector,
+//   items:[{itemId,texto,estado,motivo,hora}], responsable, responsableUser, firmaTs,
+//   estado:'cerrada', supervisorNombre, supervisorTs}]
+let rondas = {plantillas:[], registros:[]};
+let _rondaEnCurso = null; // registro en edición (antes de firmar)
+let _rondaRelojInterval = null;
+let _rondaDetalleId = null;
+
+function seedPlantillasRondas(){
+  return [{
+    id: 'pl_fo_co_36',
+    codigo: 'FO-CO-36',
+    nombre: 'Limpieza de Comedor',
+    sector: 'Comedor',
+    items: [
+      {id:'i1', texto:'Pisos y zócalos'},
+      {id:'i2', texto:'Mesas y sillas'},
+      {id:'i3', texto:'Estantes y superficies de apoyo'},
+      {id:'i4', texto:'Vajilla'},
+      {id:'i5', texto:'Utensilios'},
+      {id:'i6', texto:'Paños y repasadores'},
+      {id:'i7', texto:'Carlitera', turno:'Mañana'},
+      {id:'i8', texto:'Cafetera', turno:'Mañana'},
+      {id:'i9', texto:'Recipiente para residuos', turno:'Mañana'},
+      {id:'i10', texto:'Heladera visora', turno:'Mañana'},
+      {id:'i11', texto:'Salad bar', turno:'Tarde'},
+      {id:'i12', texto:'Microondas', turno:'Tarde'},
+      {id:'i13', texto:'Heladera baja', turno:'Tarde'},
+      {id:'i14', texto:'Extintores (control semanal)', dia:'lunes'},
+      {id:'i15', texto:'Llaves de luz (control semanal)', dia:'lunes'},
+      {id:'i16', texto:'Cables canal y luces de emergencia (semanal)', dia:'lunes', turno:'Tarde'},
+    ]
+  }];
+}
+
+function loadRondas(){
+  rondas = LS.get('fscc_rondas') || {plantillas:seedPlantillasRondas(), registros:[]};
+  if(!rondas.plantillas || !rondas.plantillas.length) rondas.plantillas = seedPlantillasRondas();
+  if(!rondas.registros) rondas.registros = [];
+}
+
+function saveRondas(){
+  LS.set('fscc_rondas', rondas);
+  fbSave('fscc_rondas', rondas).catch(()=>{});
+}
+
+const DIAS_SEMANA = ['domingo','lunes','martes','miercoles','miércoles','jueves','viernes','sabado','sábado'];
+function nombreDiaHoy(){
+  return ['domingo','lunes','martes','miércoles','jueves','viernes','sábado'][new Date().getDay()];
+}
+
+// Ítems de una plantilla que corresponden a HOY + al turno dado
+function itemsDelDia(plantilla, turno){
+  const hoy = nombreDiaHoy();
+  return plantilla.items.filter(it=>{
+    if(it.turno && it.turno !== turno) return false;
+    if(it.dia && it.dia.replace('á','a') !== hoy.replace('á','a')) return false;
+    return true;
+  });
+}
+
+function renderRondas(){
+  updateRondasBadge();
+  if(!currentUser) return;
+  // Operario y Cubre solo hacen rondas. Supervisor hace rondas Y aprueba las de todos.
+  // Admin solo ve el historial/aprobación (no está asignado a un sector fijo para "hacer" una ronda).
+  const puedeHacerRondas = ['operario','cubre','supervisor'].includes(currentUser.rol);
+  const puedeAprobar = ['supervisor','admin'].includes(currentUser.rol);
+  document.getElementById('rondaOperarioPanel').style.display = puedeHacerRondas ? 'block' : 'none';
+  document.getElementById('rondaHistorialPanel').style.display = puedeAprobar ? 'block' : 'none';
+  if(puedeHacerRondas) renderRondaOperarioPanel();
+  if(puedeAprobar) renderRondasHistorial();
+}
+
+function updateRondasBadge(){
+  const badge = document.getElementById('rondasBadge');
+  if(!badge) return;
+  if(!currentUser){ badge.style.display='none'; return; }
+  let count = 0;
+  if(['operario','cubre','supervisor'].includes(currentUser.rol)){
+    count += rondasAplicablesHoy().filter(p=>!rondaYaHechaHoy(p.id)).length;
+  }
+  if(['supervisor','admin'].includes(currentUser.rol)){
+    count += rondas.registros.filter(r=>!r.supervisorTs).length;
+  }
+  if(count>0){ badge.textContent = count>9?'9+':count; badge.style.display='inline-flex'; }
+  else badge.style.display='none';
+}
+
+function sectorDeUsuario(u){
+  if(u.rol==='cubre') return u.cubreSector||'';
+  return (u.sectores && u.sectores[0]) || '';
+}
+
+function rondasAplicablesHoy(){
+  const turno = getTurnoActivoNombre();
+  const sector = sectorDeUsuario(currentUser);
+  return rondas.plantillas.filter(p=> !sector || p.sector===sector);
+}
+
+function rondaYaHechaHoy(plantillaId){
+  const t = today();
+  return rondas.registros.some(r=>r.plantillaId===plantillaId && r.fecha===t && r.turno===getTurnoActivoNombre());
+}
+
+function renderRondaOperarioPanel(){
+  const cont = document.getElementById('rondaOperarioPanel');
+  const turno = getTurnoActivoNombre();
+  const plantillas = rondasAplicablesHoy();
+  if(!plantillas.length){
+    cont.innerHTML = '<div class="info-panel" style="font-size:12px;">No hay ninguna ronda de control configurada para tu sector todavía.</div>';
+    return;
+  }
+  cont.innerHTML = plantillas.map(p=>{
+    const t = today();
+    const registro = rondas.registros.find(r=>r.plantillaId===p.id && r.fecha===t && r.turno===turno);
+    if(registro){
+      return `<div class="config-item" style="flex-direction:column;align-items:flex-start;gap:6px;">
+        <div style="display:flex;justify-content:space-between;width:100%;align-items:center;">
+          <div>
+            <div style="font-weight:600;font-size:14px;">✅ ${p.nombre}</div>
+            <div style="font-size:11px;color:var(--text3);">${p.codigo} · ${turno||'—'} · Completada a las ${fmtDatetime(registro.firmaTs).split(' ')[1]||''}</div>
+          </div>
+          <button class="btn btn-outline btn-sm" onclick="verDetalleRonda('${registro.id}')">Ver</button>
+        </div>
+      </div>`;
+    }
+    const items = itemsDelDia(p, turno);
+    return `<div class="config-item" style="flex-direction:column;align-items:flex-start;gap:6px;">
+      <div style="display:flex;justify-content:space-between;width:100%;align-items:center;">
+        <div>
+          <div style="font-weight:600;font-size:14px;">📋 ${p.nombre}</div>
+          <div style="font-size:11px;color:var(--text3);">${p.codigo} · ${p.sector} · ${turno||'Sin turno activo'} · ${items.length} ítem(s)</div>
+        </div>
+        <button class="btn btn-primary btn-sm" onclick="iniciarRonda('${p.id}')" ${turno?'':'disabled'}>Iniciar ronda</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// ── Ejecutar la ronda ──
+function iniciarRonda(plantillaId){
+  const p = rondas.plantillas.find(x=>x.id===plantillaId);
+  if(!p) return;
+  const turno = getTurnoActivoNombre();
+  const items = itemsDelDia(p, turno);
+  _rondaEnCurso = {
+    id: 'rd_'+Date.now()+'_'+Math.floor(Math.random()*1000),
+    plantillaId: p.id, codigo: p.codigo, nombre: p.nombre,
+    fecha: today(), turno, sector: p.sector,
+    items: items.map(it=>({itemId:it.id, texto:it.texto, estado:null, motivo:'', hora:null})),
+    responsable: currentUser.nombre, responsableUser: currentUser.user,
+  };
+  document.getElementById('rondaModalTitulo').textContent = '📋 '+p.nombre;
+  document.getElementById('rondaModalSub').textContent = p.codigo+' · '+p.sector+' · '+turno;
+  renderRondaItemsModal();
+  document.getElementById('modalRonda').classList.add('open');
+  if(_rondaRelojInterval) clearInterval(_rondaRelojInterval);
+  const tickReloj = ()=>{ document.getElementById('rondaReloj').textContent = new Date().toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit',second:'2-digit'}); };
+  tickReloj(); _rondaRelojInterval = setInterval(tickReloj, 1000);
+}
+
+function cerrarModalRondaSinGuardar(){
+  if(_rondaEnCurso && _rondaEnCurso.items.some(i=>i.estado)){
+    if(!confirm('Tenés ítems marcados sin firmar. Si salís ahora se pierden. ¿Salir igual?')) return;
+  }
+  if(_rondaRelojInterval) clearInterval(_rondaRelojInterval);
+  _rondaEnCurso = null;
+  closeModal('modalRonda');
+}
+
+function renderRondaItemsModal(){
+  const cont = document.getElementById('rondaItemsCont');
+  cont.innerHTML = _rondaEnCurso.items.map((it,i)=>{
+    const bg = it.estado==='ok' ? 'var(--green-bg,#e8f5ee)' : it.estado==='mal' ? 'var(--red-bg,#fde8e8)' : 'var(--bg2)';
+    return `<div style="background:${bg};border-radius:var(--r);padding:10px 12px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
+        <div style="font-size:13px;flex:1;">${it.texto}</div>
+        <div style="display:flex;gap:6px;flex-shrink:0;">
+          <button aria-label="Aceptable" onclick="marcarItemRonda(${i},'ok')" style="width:36px;height:36px;border-radius:50%;border:.5px solid var(--border);background:${it.estado==='ok'?'#1a7a4a':'#fff'};color:${it.estado==='ok'?'#fff':'#888'};font-size:16px;">✓</button>
+          <button aria-label="Deficiente" onclick="marcarItemRonda(${i},'mal')" style="width:36px;height:36px;border-radius:50%;border:.5px solid var(--border);background:${it.estado==='mal'?'#b02020':'#fff'};color:${it.estado==='mal'?'#fff':'#888'};font-size:16px;">✕</button>
+        </div>
+      </div>
+      ${it.estado==='mal' ? `<select style="margin-top:8px;width:100%;" onchange="_rondaEnCurso.items[${i}].motivo=this.value">
+        <option value="">Elegí un motivo...</option>
+        <option>Restos de comida</option>
+        <option>Falta desinfección</option>
+        <option>Manchas / suciedad visible</option>
+        <option>Elemento roto o en mal estado</option>
+        <option>Faltante de insumo de limpieza</option>
+        <option>Otro (ver observación)</option>
+      </select>` : ''}
+      ${it.hora ? `<div style="font-size:10px;color:var(--text3);margin-top:4px;">Marcado a las ${it.hora}</div>` : ''}
+    </div>`;
+  }).join('');
+
+  const done = _rondaEnCurso.items.filter(i=>i.estado).length;
+  const total = _rondaEnCurso.items.length;
+  document.getElementById('rondaBarra').style.width = (total?done/total*100:0)+'%';
+  const btn = document.getElementById('rondaBtnFirmar');
+  if(done===total && total>0){
+    btn.disabled=false;
+    btn.style.background='var(--navy,#1a2744)'; btn.style.color='#fff'; btn.style.border='none';
+    btn.textContent='Firmar y cerrar ronda';
+  } else {
+    btn.disabled=true;
+    btn.style.background='var(--bg2)'; btn.style.color='var(--text3)'; btn.style.border='.5px solid var(--border)';
+    btn.textContent='Completá los ítems para firmar ('+done+'/'+total+')';
+  }
+}
+
+function marcarItemRonda(i, val){
+  const it = _rondaEnCurso.items[i];
+  const yaEstaba = it.estado===val;
+  it.estado = yaEstaba ? null : val;
+  it.hora = it.estado ? new Date().toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'}) : null;
+  if(!it.estado) it.motivo='';
+  renderRondaItemsModal();
+}
+
+function abrirFirmaRonda(){
+  if(document.getElementById('rondaBtnFirmar').disabled) return;
+  document.getElementById('rondaFirmaPass').value='';
+  document.getElementById('rondaFirmaMsg').style.display='none';
+  document.getElementById('modalFirmaRonda').classList.add('open');
+}
+
+async function confirmarFirmaRonda(){
+  const pass = document.getElementById('rondaFirmaPass').value;
+  const msg = document.getElementById('rondaFirmaMsg');
+  if(!pass){ msg.textContent='Ingresá tu contraseña.'; msg.style.display='block'; return; }
+  const ok = await verificarPasswordActual(pass);
+  if(!ok){ msg.textContent='Contraseña incorrecta.'; msg.style.display='block'; return; }
+  _rondaEnCurso.firmaTs = nowISO();
+  _rondaEnCurso.estado = 'cerrada';
+  rondas.registros.unshift(_rondaEnCurso);
+  audit('Ronda completada: '+_rondaEnCurso.nombre, _rondaEnCurso.codigo+' — '+_rondaEnCurso.sector+' — '+_rondaEnCurso.turno, 'trazabilidad');
+  saveRondas();
+  if(_rondaRelojInterval) clearInterval(_rondaRelojInterval);
+  closeModal('modalFirmaRonda');
+  closeModal('modalRonda');
+  const rondaId = _rondaEnCurso.id;
+  _rondaEnCurso = null;
+  renderRondas();
+  // Avisar a Supervisor/Admin que hay una ronda para aprobar
+  pushNotif('ronda_pendiente', '📋 Ronda para aprobar', (rondas.registros.find(r=>r.id===rondaId)||{}).nombre+' — lista para revisar', null);
+}
+
+// ── Historial (Supervisor / Admin) ──
+function renderRondasHistorial(){
+  const filtroFecha = (document.getElementById('rondaFiltroFecha')||{}).value || '';
+  const filtroEstado = (document.getElementById('rondaFiltroEstado')||{}).value || '';
+  let lista = [...rondas.registros].sort((a,b)=>(b.firmaTs||'').localeCompare(a.firmaTs||''));
+  if(filtroFecha) lista = lista.filter(r=>r.fecha===filtroFecha);
+  if(filtroEstado==='pendiente') lista = lista.filter(r=>!r.supervisorTs);
+  if(filtroEstado==='aprobada') lista = lista.filter(r=>r.supervisorTs);
+  const el = document.getElementById('rondaListado');
+  if(!lista.length){ el.innerHTML = '<div style="font-size:12px;color:var(--text3);padding:12px;">No hay rondas registradas con ese filtro.</div>'; return; }
+  el.innerHTML = lista.map(r=>`
+    <div class="config-item" style="flex-wrap:wrap;gap:8px;">
+      <div style="flex:1;min-width:200px;">
+        <div style="font-weight:600;font-size:13px;">${r.nombre} <span style="font-family:var(--mono);font-size:11px;color:var(--text3);">${r.codigo}</span></div>
+        <div style="font-size:11px;color:var(--text3);">${r.sector} · ${r.fecha} · ${r.turno} · Responsable: ${r.responsable}</div>
+      </div>
+      ${r.supervisorTs ? '<span class="badge" style="background:#e8f5ee;color:#1a7a4a;border:1px solid #a8dbb8;">🟢 Aprobada</span>' : '<span class="badge" style="background:#fff3cd;color:#8a6416;border:1px solid #f0d880;">🟡 Pendiente</span>'}
+      <button class="btn btn-outline btn-sm" onclick="verDetalleRonda('${r.id}')">Ver</button>
+    </div>`).join('');
+}
+
+function verDetalleRonda(id){
+  const r = rondas.registros.find(x=>x.id===id);
+  if(!r) return;
+  _rondaDetalleId = id;
+  document.getElementById('rondaDetalleTitulo').textContent = '📋 '+r.nombre;
+  document.getElementById('rondaDetalleSub').textContent = r.codigo+' · '+r.sector+' · '+r.fecha+' · '+r.turno;
+  document.getElementById('rondaDetalleItems').innerHTML = r.items.map(it=>`
+    <div style="display:flex;justify-content:space-between;gap:8px;font-size:12px;padding:6px 10px;background:var(--bg2);border-radius:6px;">
+      <div>${it.estado==='ok'?'✅':'⚠️'} ${it.texto}${it.motivo?' — <em style="color:var(--text3)">'+it.motivo+'</em>':''}</div>
+      <div style="color:var(--text3);flex-shrink:0;">${it.hora||''}</div>
+    </div>`).join('');
+  let firmaHtml = `Firmado por <strong>${r.responsable}</strong> (@${r.responsableUser}) el ${fmtDatetime(r.firmaTs)}.`;
+  if(r.supervisorTs) firmaHtml += `<br/>Aprobado por <strong>${r.supervisorNombre}</strong> el ${fmtDatetime(r.supervisorTs)}.`;
+  document.getElementById('rondaDetalleFirma').innerHTML = firmaHtml;
+  const btnAprobar = document.getElementById('rondaBtnAprobar');
+  if(r.supervisorTs || !(currentUser.rol==='admin'||currentUser.rol==='supervisor')){
+    btnAprobar.style.display='none';
+  } else {
+    btnAprobar.style.display='inline-flex';
+  }
+  document.getElementById('modalRondaDetalle').classList.add('open');
+}
+
+function abrirFirmaSupervisorRonda(){
+  document.getElementById('rondaFirmaSupervisorPass').value='';
+  document.getElementById('rondaFirmaSupervisorMsg').style.display='none';
+  document.getElementById('modalFirmaSupervisorRonda').classList.add('open');
+}
+
+async function confirmarFirmaSupervisorRonda(){
+  const pass = document.getElementById('rondaFirmaSupervisorPass').value;
+  const msg = document.getElementById('rondaFirmaSupervisorMsg');
+  if(!pass){ msg.textContent='Ingresá tu contraseña.'; msg.style.display='block'; return; }
+  const ok = await verificarPasswordActual(pass);
+  if(!ok){ msg.textContent='Contraseña incorrecta.'; msg.style.display='block'; return; }
+  const r = rondas.registros.find(x=>x.id===_rondaDetalleId);
+  if(!r) return;
+  r.supervisorNombre = currentUser.nombre;
+  r.supervisorTs = nowISO();
+  audit('Ronda aprobada por supervisor: '+r.nombre, r.codigo+' — '+r.fecha, 'trazabilidad');
+  saveRondas();
+  closeModal('modalFirmaSupervisorRonda');
+  closeModal('modalRondaDetalle');
+  renderRondas();
+}
+
+// ── Impresión (diseño propio del sistema, con referencia al código POES original) ──
+function imprimirRonda(id){
+  const r = rondas.registros.find(x=>x.id===id);
+  if(!r) return;
+  const fechaLarga = new Date(r.fecha+'T00:00:00').toLocaleDateString('es-AR',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
+  const w = window.open('','_blank','width=800,height=900');
+  if(!w) return;
+  w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${r.codigo} — ${r.fecha}</title>
+  <style>
+    body{font-family:Arial,sans-serif;font-size:12px;margin:24px;color:#222;}
+    .hdr{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #1a2744;padding-bottom:10px;margin-bottom:14px;}
+    .hdr h1{font-size:17px;margin:0 0 3px;color:#1a2744;}
+    .hdr .sub{font-size:11px;color:#666;}
+    .code{font-size:10px;color:#999;text-align:right;line-height:1.5;}
+    .meta{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:16px;font-size:11px;}
+    .meta div{background:#f5f4f0;border-radius:5px;padding:6px 10px;}
+    .meta b{display:block;color:#1a2744;font-size:10px;text-transform:uppercase;letter-spacing:.03em;margin-bottom:2px;}
+    table{width:100%;border-collapse:collapse;margin-bottom:16px;}
+    th{background:#1a2744;color:#fff;font-size:10px;text-transform:uppercase;padding:6px 8px;text-align:left;}
+    td{padding:6px 8px;border-bottom:1px solid #eee;font-size:11px;}
+    .ok{color:#1a7a4a;font-weight:700;}
+    .bad{color:#b02020;font-weight:700;}
+    .firmas{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:24px;}
+    .firma-box{border:1px solid #ddd;border-radius:6px;padding:12px;}
+    .firma-box .tag{font-size:9px;text-transform:uppercase;color:#999;letter-spacing:.04em;}
+    .firma-box .nombre{font-size:13px;font-weight:700;color:#1a2744;margin:4px 0 2px;}
+    .firma-box .ts{font-size:10px;color:#666;}
+    .foot{margin-top:20px;font-size:9px;color:#999;border-top:1px solid #eee;padding-top:8px;}
+    @media print{.no-print{display:none;}}
+  </style></head><body>
+  <div class="hdr">
+    <div>
+      <h1>Food Service Control Center — Registro de control</h1>
+      <div class="sub">${r.nombre} · Sanatorio Parque</div>
+    </div>
+    <div class="code">Equivalente a planilla oficial<br/><strong>${r.codigo}</strong></div>
+  </div>
+  <div class="meta">
+    <div><b>Fecha</b>${fechaLarga}</div>
+    <div><b>Turno</b>${r.turno}</div>
+    <div><b>Sector</b>${r.sector}</div>
+  </div>
+  <table><thead><tr><th>Ítem</th><th>Hora</th><th>Estado</th><th>Observación</th></tr></thead>
+  <tbody>${r.items.map(it=>`<tr>
+    <td>${it.texto}</td>
+    <td>${it.hora||'—'}</td>
+    <td class="${it.estado==='ok'?'ok':'bad'}">${it.estado==='ok'?'✓ Aceptable':'✗ Deficiente'}</td>
+    <td>${it.motivo||'—'}</td>
+  </tr>`).join('')}</tbody></table>
+  <div class="firmas">
+    <div class="firma-box">
+      <div class="tag">Realizó el control</div>
+      <div class="nombre">${r.responsable}</div>
+      <div class="ts">Firmado digitalmente el ${fmtDatetime(r.firmaTs)}</div>
+    </div>
+    <div class="firma-box">
+      <div class="tag">Supervisión</div>
+      <div class="nombre">${r.supervisorNombre||'— Pendiente de aprobación —'}</div>
+      <div class="ts">${r.supervisorTs?('Firmado digitalmente el '+fmtDatetime(r.supervisorTs)):''}</div>
+    </div>
+  </div>
+  <div class="foot">Registro generado electrónicamente por el Food Service Control Center. Cada hora fue capturada automáticamente al momento del control — este documento no puede editarse una vez firmado.</div>
+  <script>window.onload=()=>{window.print();}<\/script>
+  </body></html>`);
+  w.document.close();
 }
 
 let mantEditId = null;
@@ -6507,6 +7106,7 @@ function switchView(v,btn){
   if(v==='haccp'){renderHaccpActive();}
   if(v==='mantenimiento'){renderMant();}
   if(v==='trazabilidad'){renderTraz();}
+  if(v==='rondas'){renderRondas();}
   if(v==='capacitaciones'){renderCapacitaciones();}
 }
 
@@ -6535,6 +7135,7 @@ function setDate(){
 function renderAll(){
   updateMantBadge();
   updateTrazBadge();
+  updateRondasBadge();
   populateSelects();
   if(currentUser){
     if(currentUser.rol==='admin'){
