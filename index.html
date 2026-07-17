@@ -514,8 +514,8 @@ tbody td{padding:8px 10px;vertical-align:middle;}
   <button class="nav-tab admin-only sv-admin-only" onclick="switchView('haccp',this)">🌡 HACCP/CAA</button>
   <button class="nav-tab sv-admin-only" id="tabMant" onclick="switchView('mantenimiento',this)">🔧 Mantenimiento <span id="mantBadge" style="display:none;" class="badge-mant-count">0</span></button>
   <button class="nav-tab sv-admin-only" id="tabTraz" onclick="switchView('trazabilidad',this)">📦 Trazabilidad <span id="trazBadge" style="display:none;" class="badge-mant-count">0</span></button>
-  <button class="nav-tab admin-only" onclick="switchView('auditoria',this)">Auditoría</button>
-  <button class="nav-tab admin-only" onclick="switchView('config',this)">Configuración</button>
+  <button class="nav-tab admin-strict-only" onclick="switchView('auditoria',this)">Auditoría</button>
+  <button class="nav-tab admin-strict-only" onclick="switchView('config',this)">Configuración</button>
 </nav>
 
 <main class="main">
@@ -942,8 +942,8 @@ tbody td{padding:8px 10px;vertical-align:middle;}
       <div class="toolbar-l" style="flex-wrap:wrap;gap:6px;">
         <select class="flt" id="haccpFiltroPCC" onchange="renderHaccpActive()">
           <option value="">Todos los PCC</option>
-          <option>Cocción</option><option>Enfriamiento</option><option>Conservación en frío</option>
-          <option>Conservación en caliente</option><option>Distribución</option>
+          <option>Cocción / Recalentamiento</option><option>Enfriamiento</option><option>Conservación en frío</option>
+          <option>Mantenimiento en caliente</option><option>Temperatura de servicio</option><option>Distribución</option>
           <option>Higiene personal</option><option>Higiene de superficies</option>
           <option>Control de plagas</option><option>Recepción de MP</option>
         </select>
@@ -1098,6 +1098,7 @@ tbody td{padding:8px 10px;vertical-align:middle;}
     <button class="haccp-subtab active" id="trazTabLotes" onclick="switchTrazTab('lotes',this)">📥 Lotes recibidos</button>
     <button class="haccp-subtab" id="trazTabProducciones" onclick="switchTrazTab('producciones',this)">🍽 Producciones</button>
     <button class="haccp-subtab" id="trazTabBuscar" onclick="switchTrazTab('buscar',this)">🔎 Buscar trazabilidad</button>
+    <button class="haccp-subtab" id="trazTabNC" onclick="switchTrazTab('nc',this)">⚠ No Conformidades</button>
     <button class="haccp-subtab" id="trazTabProveedores" onclick="switchTrazTab('proveedores',this)">🏭 Proveedores</button>
   </div>
   <div style="background:var(--surface);border:.5px solid var(--border-light);border-top:none;border-radius:0 0 var(--rl) var(--rl);padding:0.85rem 1.25rem 1rem;margin-bottom:1rem;">
@@ -1148,6 +1149,25 @@ tbody td{padding:8px 10px;vertical-align:middle;}
         </div>
       </div>
       <div id="trazResultadoBusqueda"><div style="font-size:12px;color:var(--text3);padding:12px;">Buscá un lote por su código o por el nombre del insumo para ver en qué producciones se usó — o al revés.</div></div>
+    </div>
+
+    <!-- NO CONFORMIDADES -->
+    <div id="trazPanelNC" style="display:none;">
+      <div class="toolbar" style="margin-bottom:1rem;flex-wrap:wrap;gap:6px;">
+        <div class="toolbar-l" style="flex-wrap:wrap;gap:6px;">
+          <select class="flt" id="ncFiltroEstado" onchange="renderTrazNC()">
+            <option value="">Todos los estados</option>
+            <option value="abierta">🟡 Abierta</option>
+            <option value="cerrada">🟢 Cerrada</option>
+          </select>
+        </div>
+        <div class="toolbar-r">
+          <button class="btn btn-outline" onclick="exportNCCSV()">⬇ Exportar CSV</button>
+          <button class="btn btn-outline" onclick="imprimirNC()">🖨 Imprimir</button>
+          <button class="btn btn-primary" onclick="openNCModal()">+ Nueva No Conformidad</button>
+        </div>
+      </div>
+      <div id="trazListadoNC"></div>
     </div>
 
     <!-- PROVEEDORES -->
@@ -1285,6 +1305,84 @@ tbody td{padding:8px 10px;vertical-align:middle;}
     <div class="form-actions">
       <button class="btn btn-ghost" onclick="closeModal('modalProveedor')">Cancelar</button>
       <button class="btn btn-primary" onclick="guardarProveedor()">Guardar proveedor</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ MODAL: NUEVA NO CONFORMIDAD (FO-CAL-10) ══ -->
+<div class="modal-bg" id="modalNC" onclick="handleModalClick(event,'modalNC')">
+  <div class="modal-box wide">
+    <button class="modal-close" onclick="closeModal('modalNC')">✕</button>
+    <div class="modal-title" style="margin-bottom:4px;">⚠ Registro de producto No Conforme</div>
+    <div class="modal-sub" style="margin-bottom:14px;font-size:11px;">Equivalente a la planilla oficial FO-CAL-10.</div>
+    <div class="form-grid" style="margin-bottom:10px;">
+      <div class="fg">
+        <label>Fecha</label>
+        <input type="date" id="ncFecha" />
+      </div>
+      <div class="fg">
+        <label>Producto no conforme</label>
+        <input type="text" id="ncProducto" placeholder="Marca y tipo de producto" />
+      </div>
+      <div class="fg">
+        <label>Proveedor (si aplica)</label>
+        <select id="ncProveedor"><option value="">Seleccionar...</option></select>
+      </div>
+      <div class="fg">
+        <label>Cantidad</label>
+        <input type="text" id="ncCantidad" placeholder="Ej: 5 kg" />
+      </div>
+      <div class="fg">
+        <label>Lote vinculado (opcional)</label>
+        <select id="ncLote"><option value="">Sin vincular a un lote</option></select>
+      </div>
+    </div>
+    <div class="fg" style="margin-bottom:10px;">
+      <label>Motivos / Causas</label>
+      <textarea id="ncMotivo" placeholder="¿Por qué no es conforme?"></textarea>
+    </div>
+    <div class="fg" style="margin-bottom:10px;">
+      <label>Seguimiento del destino del producto</label>
+      <textarea id="ncDestino" placeholder="¿Qué se hizo con el producto y quién dio la orden?"></textarea>
+    </div>
+    <div class="fg" style="margin-bottom:10px;">
+      <label>Observaciones</label>
+      <textarea id="ncObs" placeholder="Opcional..."></textarea>
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-ghost" onclick="closeModal('modalNC')">Cancelar</button>
+      <button class="btn btn-primary" onclick="guardarNC()">Registrar No Conformidad</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ MODAL: DETALLE / CIERRE DE NO CONFORMIDAD ══ -->
+<div class="modal-bg" id="modalNCDetalle" onclick="handleModalClick(event,'modalNCDetalle')">
+  <div class="modal-box" style="max-width:480px;">
+    <button class="modal-close" onclick="closeModal('modalNCDetalle')">✕</button>
+    <div class="modal-title" style="margin-bottom:2px;">⚠ No Conformidad</div>
+    <div id="ncDetalleBody" style="font-size:13px;line-height:1.6;margin-bottom:14px;"></div>
+    <div class="form-actions">
+      <button class="btn btn-outline" onclick="imprimirUnaNC(_ncDetalleId)">🖨 Imprimir</button>
+      <button class="btn btn-primary" id="ncBtnCerrar" onclick="abrirFirmaCierreNC()">✓ Cerrar (firma de superior responsable)</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ MODAL: FIRMA DE CIERRE DE NO CONFORMIDAD ══ -->
+<div class="modal-bg" id="modalFirmaCierreNC" onclick="handleModalClick(event,'modalFirmaCierreNC')">
+  <div class="modal-box" style="max-width:360px;">
+    <button class="modal-close" onclick="closeModal('modalFirmaCierreNC')">✕</button>
+    <div class="modal-title">✍ Cerrar No Conformidad</div>
+    <div class="modal-sub" style="margin-bottom:12px;">Como superior responsable, ingresá tu contraseña para cerrar este caso.</div>
+    <div class="fg" style="margin-bottom:10px;">
+      <label>Tu contraseña</label>
+      <input type="password" id="ncFirmaPass" placeholder="Contraseña" onkeydown="if(event.key==='Enter')confirmarCierreNC()" />
+    </div>
+    <div id="ncFirmaMsg" style="display:none;font-size:12px;padding:8px 10px;border-radius:6px;margin-bottom:8px;background:#fde8e8;color:#b02020;"></div>
+    <div class="form-actions">
+      <button class="btn btn-ghost" onclick="closeModal('modalFirmaCierreNC')">Cancelar</button>
+      <button class="btn btn-primary" onclick="confirmarCierreNC()">Cerrar caso</button>
     </div>
   </div>
 </div>
@@ -1692,10 +1790,11 @@ tbody td{padding:8px 10px;vertical-align:middle;}
         <label>Punto de Control Crítico (PCC)</label>
         <select id="hPCC" onchange="onHaccpPCCChange()">
           <option value="">— Seleccionar —</option>
-          <option>Cocción</option>
+          <option>Cocción / Recalentamiento</option>
           <option>Enfriamiento</option>
           <option>Conservación en frío</option>
-          <option>Conservación en caliente</option>
+          <option>Mantenimiento en caliente</option>
+          <option>Temperatura de servicio</option>
           <option>Distribución</option>
           <option>Higiene personal</option>
           <option>Higiene de superficies</option>
@@ -1886,6 +1985,9 @@ let cfg, tasks, users, auditLog, notifications, currentUser=null, editingId, cub
 // puede todo lo que Admin), más las funciones operativas de Supervisor.
 // 'coordinadora' se mantiene por compatibilidad con datos viejos.
 function esAdmin(u){ return !!u && (u.rol==='admin' || u.rol==='coordinador' || u.rol==='coordinadora'); }
+// Estricto: SOLO Admin real. Coordinador NO entra acá — se usa para Configuración
+// y Auditoría, que quedan exclusivas del Admin (el Coordinador tiene que pedírselo).
+function esAdminEstricto(u){ return !!u && u.rol==='admin'; }
 function esSupervisorOSuperior(u){ return !!u && (esAdmin(u) || u.rol==='supervisor'); }
 // Nivel numérico para decidir a quién le puede asignar tareas cada rol
 // (uno puede asignarle solo a alguien de nivel estrictamente menor al suyo)
@@ -1941,7 +2043,7 @@ async function loadDataFromFirebase(){
     if(fbNotif){notifications=fbNotif;LS.set('fscc_notif',notifications);}
     if(fbHaccp){haccpLogs=fbHaccp;LS.set('fscc_haccp',haccpLogs);}
     if(fbMant){mantSolicitudes=fbMant;LS.set('fscc_mant',mantSolicitudes);}
-    if(fbTraz){traz=fbTraz;if(!traz.proveedores)traz.proveedores=[];if(!traz.lotes)traz.lotes=[];if(!traz.producciones)traz.producciones=[];LS.set('fscc_traz',traz);}
+    if(fbTraz){traz=fbTraz;if(!traz.proveedores)traz.proveedores=[];if(!traz.lotes)traz.lotes=[];if(!traz.producciones)traz.producciones=[];if(!traz.noConformidades)traz.noConformidades=[];LS.set('fscc_traz',traz);}
     if(fbRondas){rondas=fbRondas;if(!rondas.plantillas||!rondas.plantillas.length)rondas.plantillas=seedPlantillasRondas();if(!rondas.registros)rondas.registros=[];if(!rondas.asignaciones)rondas.asignaciones=[];LS.set('fscc_rondas',rondas);}
 
     // Capacitaciones
@@ -1989,7 +2091,9 @@ async function loadDataFromFirebase(){
     });
     fbWatch('fscc_traz',(val)=>{
       if(_localSaveInProgress)return;
-      traz=val||{proveedores:[],lotes:[],producciones:[]};LS.set('fscc_traz',traz);
+      traz=val||{proveedores:[],lotes:[],producciones:[],noConformidades:[]};
+      if(!traz.noConformidades)traz.noConformidades=[];
+      LS.set('fscc_traz',traz);
       if(currentUser && document.getElementById('view-trazabilidad') && document.getElementById('view-trazabilidad').classList.contains('active')) renderTraz();
     });
     fbWatch('fscc_rondas',(val)=>{
@@ -2765,8 +2869,8 @@ function renderNotifPanel(){
   const mine=getMyNotifs();
   if(!mine.length){el.innerHTML='<div class="notif-empty">Sin notificaciones.</div>';return;}
   el.innerHTML=mine.map(n=>{
-    const dotCls=n.tipo==='completed'?'green':n.tipo==='incident'?'red':(n.tipo==='mant_respuesta'||n.tipo==='mant_nueva')?'blue':(n.tipo==='alerta_vencida'||n.tipo==='lote_vencimiento')?'red':n.tipo==='ronda_pendiente'?'blue':'';
-    const icon=n.tipo==='completed'?'✅':n.tipo==='incident'?'⚠️':(n.tipo==='mant_respuesta'||n.tipo==='mant_nueva')?'🔧':n.tipo==='alerta_vencida'?'⏰':n.tipo==='lote_vencimiento'?'📦':n.tipo==='ronda_pendiente'?'📋':'🔔';
+    const dotCls=n.tipo==='completed'?'green':n.tipo==='incident'?'red':(n.tipo==='mant_respuesta'||n.tipo==='mant_nueva')?'blue':(n.tipo==='alerta_vencida'||n.tipo==='lote_vencimiento'||n.tipo==='nc_pendiente')?'red':n.tipo==='ronda_pendiente'?'blue':'';
+    const icon=n.tipo==='completed'?'✅':n.tipo==='incident'?'⚠️':(n.tipo==='mant_respuesta'||n.tipo==='mant_nueva')?'🔧':n.tipo==='alerta_vencida'?'⏰':n.tipo==='lote_vencimiento'?'📦':n.tipo==='ronda_pendiente'?'📋':n.tipo==='nc_pendiente'?'⚠':'🔔';
     return`<div class="notif-item${n.leida?'':' unread'}" onclick="markNotifRead('${n.id}')">
       <div class="notif-dot ${dotCls}"></div>
       <div class="notif-item-body">
@@ -3057,11 +3161,15 @@ function _completarLogin(found){
   } else stag.style.display='none';
 
   // Tabs por rol
-  // admin: todo visible
+  // admin y coordinador: mismo acceso operativo (dashboard, HACCP, mantenimiento, trazabilidad, rondas)
+  // admin-strict-only: SOLO admin real (Configuración, Auditoría) — coordinador debe pedírselo
   // supervisor: Mis Tareas (oculta para sv), Supervisión, Planillas
   // operario/cubre: solo Mis Tareas
   document.querySelectorAll('.admin-only').forEach(el=>{
     el.style.display=esAdmin(found)?'':'none';
+  });
+  document.querySelectorAll('.admin-strict-only').forEach(el=>{
+    el.style.display=esAdminEstricto(found)?'':'none';
   });
   document.querySelectorAll('.sv-admin-only').forEach(el=>{
     el.style.display=esSupervisorOSuperior(found)?'':'none';
@@ -5024,34 +5132,40 @@ function addCfgItem(key,inputId){
 
 // Límites críticos CAA por tipo de PCC
 const HACCP_PCC_CONFIG = {
-  'Cocción': {
-    limite: '≥ 75°C en el centro del alimento',
-    unidad: '°C', tipo: 'temp', minOk: 75, limiteLow: null,
-    referencia: 'CAA Art. 1209 / HACCP P2',
+  'Cocción / Recalentamiento': {
+    limite: '≥ 74°C en el centro del alimento',
+    unidad: '°C', tipo: 'temp', minOk: 74, limiteLow: null,
+    referencia: 'Codex Alimentarius 1993 · CAA',
     icono: '🔥'
   },
   'Enfriamiento': {
     limite: 'De 60°C a 10°C en ≤ 2 hs',
     unidad: '°C', tipo: 'temp', maxOk: 10, limiteLow: null,
-    referencia: 'CAA Art. 1209',
+    referencia: 'CAA Art. 1209 · Reg. (CE) 852/2004',
     icono: '❄️'
   },
   'Conservación en frío': {
-    limite: '≤ 8°C (óptimo ≤ 4°C)',
+    limite: '≤ 8°C (óptimo ≤ 5°C)',
     unidad: '°C', tipo: 'temp', maxOk: 8,
-    referencia: 'CAA Art. 1209 / Res. SENASA',
+    referencia: 'Codex Alimentarius · CAA Art. 1209',
     icono: '🧊'
   },
-  'Conservación en caliente': {
-    limite: '≥ 60°C',
+  'Mantenimiento en caliente': {
+    limite: '≥ 60°C sostenido (bandeja térmica / buffet)',
     unidad: '°C', tipo: 'temp', minOk: 60,
-    referencia: 'CAA Art. 1209',
+    referencia: 'Codex Alimentarius · CAA Art. 1209',
     icono: '♨️'
+  },
+  'Temperatura de servicio': {
+    limite: '≥ 65°C al momento de emplatar (margen de seguridad por encima del mínimo de mantenimiento)',
+    unidad: '°C', tipo: 'temp', minOk: 65,
+    referencia: 'Práctica institucional — a confirmar valor final con Calidad (FO-CO-10 histórico: 74°C)',
+    icono: '🍽'
   },
   'Distribución': {
     limite: 'Frío ≤ 8°C · Caliente ≥ 60°C',
     unidad: '°C', tipo: 'temp',
-    referencia: 'CAA Art. 1209',
+    referencia: 'Codex Alimentarius · CAA Art. 1209',
     icono: '🚚'
   },
   'Higiene personal': {
@@ -5104,9 +5218,10 @@ function seedHaccpDemoData(){
     const conformidad=ctr%5===0?'no-conforme':'conforme';
     let valor=null;
     if(cfg2.tipo==='temp'){
-      if(pcc==='Cocción')valor=(conformidad==='conforme'?77:68)+Math.random().toFixed(1)*1;
+      if(pcc==='Cocción / Recalentamiento')valor=(conformidad==='conforme'?77:68)+Math.random().toFixed(1)*1;
       else if(pcc==='Conservación en frío')valor=conformidad==='conforme'?4+Math.random():9+Math.random();
-      else if(pcc==='Conservación en caliente')valor=conformidad==='conforme'?63+Math.random()*3:55+Math.random();
+      else if(pcc==='Mantenimiento en caliente')valor=conformidad==='conforme'?63+Math.random()*3:55+Math.random();
+      else if(pcc==='Temperatura de servicio')valor=conformidad==='conforme'?67+Math.random()*3:58+Math.random();
       else if(pcc==='Enfriamiento')valor=conformidad==='conforme'?8+Math.random():12+Math.random();
       else if(pcc==='Distribución')valor=conformidad==='conforme'?5:10;
       else valor=conformidad==='conforme'?4:9;
@@ -5503,16 +5618,21 @@ let mantSolicitudes = [];
 //                        fechaRecepcion, fechaVencimiento, sector, observaciones, alertado}]
 // traz.producciones : [{id, fecha, turno, sector, preparacion, lotesUsados:[loteId,...],
 //                        responsable, observaciones}]
-let traz = {proveedores:[], lotes:[], producciones:[]};
+// traz.noConformidades : [{id, fecha, producto, proveedorId, cantidad, loteId, motivo,
+//                        destino, observaciones, reportadoPor, reportadoTs,
+//                        cerrado, cerradoPor, cerradoTs}]
+let traz = {proveedores:[], lotes:[], producciones:[], noConformidades:[]};
 let trazActiveTab = 'lotes';
 let trazEditLoteId = null;
 let trazEditProveedorId = null;
+let _ncDetalleId = null;
 
 function loadTraz(){
-  traz = LS.get('fscc_traz') || {proveedores:[], lotes:[], producciones:[]};
+  traz = LS.get('fscc_traz') || {proveedores:[], lotes:[], producciones:[], noConformidades:[]};
   if(!traz.proveedores) traz.proveedores=[];
   if(!traz.lotes) traz.lotes=[];
   if(!traz.producciones) traz.producciones=[];
+  if(!traz.noConformidades) traz.noConformidades=[];
 }
 
 function saveTraz(){
@@ -5530,8 +5650,9 @@ function generarCodigoLote(){
 // ── Navegación entre sub-pestañas ──
 function switchTrazTab(tab, btn){
   trazActiveTab = tab;
-  ['lotes','producciones','buscar','proveedores'].forEach(t=>{
-    document.getElementById('trazPanel'+t.charAt(0).toUpperCase()+t.slice(1)).style.display = (t===tab)?'block':'none';
+  const panelIds = {lotes:'trazPanelLotes', producciones:'trazPanelProducciones', buscar:'trazPanelBuscar', nc:'trazPanelNC', proveedores:'trazPanelProveedores'};
+  Object.keys(panelIds).forEach(t=>{
+    document.getElementById(panelIds[t]).style.display = (t===tab)?'block':'none';
   });
   document.querySelectorAll('#view-trazabilidad .haccp-subtab').forEach(el=>el.classList.remove('active'));
   if(btn) btn.classList.add('active');
@@ -5542,6 +5663,7 @@ function renderTraz(){
   poblarTrazSelects();
   if(trazActiveTab==='lotes') renderTrazLotes();
   else if(trazActiveTab==='producciones') renderTrazProducciones();
+  else if(trazActiveTab==='nc') renderTrazNC();
   else if(trazActiveTab==='proveedores') renderTrazProveedores();
 }
 
@@ -5562,6 +5684,20 @@ function poblarTrazSelects(){
     while(selSectorProd.options.length>1) selSectorProd.remove(1);
     cfg.sectores.forEach(s=>{const o=document.createElement('option');o.value=s;o.textContent=s;selSectorProd.appendChild(o);});
     if(prev) selSectorProd.value = prev;
+  }
+  const selNcProv = document.getElementById('ncProveedor');
+  if(selNcProv){
+    const prev = selNcProv.value;
+    selNcProv.innerHTML = '<option value="">Seleccionar...</option>' +
+      traz.proveedores.map(p=>`<option value="${p.id}">${p.nombre}</option>`).join('');
+    if(prev) selNcProv.value = prev;
+  }
+  const selNcLote = document.getElementById('ncLote');
+  if(selNcLote){
+    const prev = selNcLote.value;
+    selNcLote.innerHTML = '<option value="">Sin vincular a un lote</option>' +
+      traz.lotes.map(l=>`<option value="${l.id}">${l.codigo} — ${l.insumo}</option>`).join('');
+    if(prev) selNcLote.value = prev;
   }
 }
 
@@ -5609,15 +5745,18 @@ function renderTrazLotes(){
           <div style="font-size:11px;color:var(--text3);margin-top:2px;">${prov?prov.nombre:'(proveedor no especificado)'} · lote prov. ${l.loteProveedor||'—'} · ${l.sector||'—'}</div>
           <div style="font-size:11px;color:#b02020;">🚫 Anulado por ${l.anuladoPor} el ${fmtDatetime(l.anuladoTs)} — ${l.anuladoMotivo}</div>
         </div>
+        <button class="btn btn-outline btn-sm" style="opacity:1;" onclick="openNCModal('${l.id}')">⚠ Generar No Conformidad</button>
       </div>`;
     }
+    const estL = estadoLote(l);
     return `<div class="config-item" style="flex-wrap:wrap;gap:8px;">
       <div style="flex:1;min-width:220px;">
         <div style="font-weight:600;font-size:13px;">${l.insumo} <span style="font-family:var(--mono);font-size:11px;color:var(--text3);">${l.codigo}</span></div>
         <div style="font-size:11px;color:var(--text3);margin-top:2px;">${prov?prov.nombre:'(proveedor no especificado)'} · lote prov. ${l.loteProveedor||'—'} · ${l.cantidad||'—'} ${l.unidad||''} · ${l.sector||'—'}</div>
         <div style="font-size:11px;color:var(--text3);">Recibido: ${l.fechaRecepcion||'—'} · Vence: ${l.fechaVencimiento||'—'}</div>
       </div>
-      ${badgeEstadoLote(estadoLote(l))}
+      ${badgeEstadoLote(estL)}
+      ${estL==='vencido'?`<button class="btn btn-outline btn-sm" onclick="openNCModal('${l.id}')">⚠ Generar No Conformidad</button>`:''}
       <button class="btn btn-outline btn-sm" onclick="openLoteModal('${l.id}')">Editar</button>
       <button class="btn btn-danger btn-sm" onclick="anularLote('${l.id}')">🚫 Anular</button>
     </div>`;
@@ -6015,6 +6154,200 @@ function chequearVencimientosLotes(){
   });
   LS.set('fscc_ultimaChequeoLotes', t);
   if(huboAlertas) saveTraz();
+}
+
+// ═══════════════════════════════════════════════════
+//  NO CONFORMIDADES (FO-CAL-10)
+// ═══════════════════════════════════════════════════
+function renderTrazNC(){
+  const filtroEstado = (document.getElementById('ncFiltroEstado')||{}).value || '';
+  let lista = [...traz.noConformidades].sort((a,b)=>(b.reportadoTs||'').localeCompare(a.reportadoTs||''));
+  if(filtroEstado==='abierta') lista = lista.filter(n=>!n.cerrado);
+  if(filtroEstado==='cerrada') lista = lista.filter(n=>n.cerrado);
+  const el = document.getElementById('trazListadoNC');
+  if(!lista.length){ el.innerHTML = '<div style="font-size:12px;color:var(--text3);padding:12px;">No hay No Conformidades registradas con ese filtro.</div>'; return; }
+  el.innerHTML = lista.map(n=>{
+    const prov = traz.proveedores.find(p=>p.id===n.proveedorId);
+    return `<div class="config-item" style="flex-wrap:wrap;gap:8px;">
+      <div style="flex:1;min-width:220px;">
+        <div style="font-weight:600;font-size:13px;">${n.producto}</div>
+        <div style="font-size:11px;color:var(--text3);margin-top:2px;">${n.fecha} · ${prov?prov.nombre:'—'} · ${n.cantidad||'—'} · Reportado por ${n.reportadoPor}</div>
+      </div>
+      ${n.cerrado ? '<span class="badge" style="background:#e8f5ee;color:#1a7a4a;border:1px solid #a8dbb8;">🟢 Cerrada</span>' : '<span class="badge" style="background:#fff3cd;color:#8a6416;border:1px solid #f0d880;">🟡 Abierta</span>'}
+      <button class="btn btn-outline btn-sm" onclick="verDetalleNC('${n.id}')">Ver</button>
+    </div>`;
+  }).join('');
+}
+
+function openNCModal(loteIdPrellenado){
+  poblarTrazSelects();
+  document.getElementById('ncFecha').value = today();
+  document.getElementById('ncProducto').value='';
+  document.getElementById('ncProveedor').value='';
+  document.getElementById('ncCantidad').value='';
+  document.getElementById('ncLote').value='';
+  document.getElementById('ncMotivo').value='';
+  document.getElementById('ncDestino').value='';
+  document.getElementById('ncObs').value='';
+  // Si viene desde un lote (vencido/anulado), pre-completar
+  if(loteIdPrellenado){
+    const l = traz.lotes.find(x=>x.id===loteIdPrellenado);
+    if(l){
+      document.getElementById('ncProducto').value = l.insumo;
+      document.getElementById('ncProveedor').value = l.proveedorId||'';
+      document.getElementById('ncCantidad').value = (l.cantidad||'')+' '+(l.unidad||'');
+      document.getElementById('ncLote').value = l.id;
+      if(l.anulado) document.getElementById('ncMotivo').value = 'Lote anulado: '+l.anuladoMotivo;
+      else if(estadoLote(l)==='vencido') document.getElementById('ncMotivo').value = 'Lote vencido el '+l.fechaVencimiento;
+    }
+  }
+  document.getElementById('modalNC').classList.add('open');
+}
+
+function guardarNC(){
+  const fecha = document.getElementById('ncFecha').value || today();
+  const producto = document.getElementById('ncProducto').value.trim();
+  const proveedorId = document.getElementById('ncProveedor').value;
+  const cantidad = document.getElementById('ncCantidad').value.trim();
+  const loteId = document.getElementById('ncLote').value;
+  const motivo = document.getElementById('ncMotivo').value.trim();
+  const destino = document.getElementById('ncDestino').value.trim();
+  const observaciones = document.getElementById('ncObs').value.trim();
+  if(!producto){ alert('Ingresá el producto no conforme.'); return; }
+  if(!motivo){ alert('Ingresá el motivo/causa.'); return; }
+  const n = {
+    id: 'nc_'+Date.now()+'_'+Math.floor(Math.random()*1000),
+    fecha, producto, proveedorId, cantidad, loteId, motivo, destino, observaciones,
+    reportadoPor: currentUser.nombre, reportadoTs: nowISO(),
+    cerrado: false, cerradoPor: null, cerradoTs: null
+  };
+  traz.noConformidades.unshift(n);
+  audit('No Conformidad registrada: '+producto, motivo, 'trazabilidad');
+  saveTraz();
+  closeModal('modalNC');
+  renderTraz();
+  pushNotif('nc_pendiente', '⚠ Nueva No Conformidad', producto+' — '+motivo, null);
+}
+
+function verDetalleNC(id){
+  const n = traz.noConformidades.find(x=>x.id===id);
+  if(!n) return;
+  _ncDetalleId = id;
+  const prov = traz.proveedores.find(p=>p.id===n.proveedorId);
+  const lote = traz.lotes.find(l=>l.id===n.loteId);
+  document.getElementById('ncDetalleBody').innerHTML = `
+    <div style="margin-bottom:8px;"><strong>${n.producto}</strong> ${n.cerrado?'<span class="badge" style="background:#e8f5ee;color:#1a7a4a;border:1px solid #a8dbb8;">🟢 Cerrada</span>':'<span class="badge" style="background:#fff3cd;color:#8a6416;border:1px solid #f0d880;">🟡 Abierta</span>'}</div>
+    <div style="font-size:12px;color:var(--text2);">
+      <div><strong>Fecha:</strong> ${n.fecha}</div>
+      <div><strong>Proveedor:</strong> ${prov?prov.nombre:'—'}</div>
+      <div><strong>Cantidad:</strong> ${n.cantidad||'—'}</div>
+      ${lote?`<div><strong>Lote vinculado:</strong> ${lote.codigo}</div>`:''}
+      <div style="margin-top:6px;"><strong>Motivo/Causa:</strong><br/>${n.motivo}</div>
+      <div style="margin-top:6px;"><strong>Seguimiento del destino:</strong><br/>${n.destino||'—'}</div>
+      ${n.observaciones?`<div style="margin-top:6px;"><strong>Observaciones:</strong><br/>${n.observaciones}</div>`:''}
+      <div style="margin-top:10px;border-top:.5px solid var(--border);padding-top:8px;color:var(--text3);">
+        Reportado por ${n.reportadoPor} el ${fmtDatetime(n.reportadoTs)}.
+        ${n.cerrado?`<br/>Cerrado por ${n.cerradoPor} el ${fmtDatetime(n.cerradoTs)}.`:''}
+      </div>
+    </div>`;
+  const btn = document.getElementById('ncBtnCerrar');
+  btn.style.display = (n.cerrado || !esSupervisorOSuperior(currentUser)) ? 'none' : 'inline-flex';
+  document.getElementById('modalNCDetalle').classList.add('open');
+}
+
+function abrirFirmaCierreNC(){
+  document.getElementById('ncFirmaPass').value='';
+  document.getElementById('ncFirmaMsg').style.display='none';
+  document.getElementById('modalFirmaCierreNC').classList.add('open');
+}
+
+async function confirmarCierreNC(){
+  const pass = document.getElementById('ncFirmaPass').value;
+  const msg = document.getElementById('ncFirmaMsg');
+  if(!pass){ msg.textContent='Ingresá tu contraseña.'; msg.style.display='block'; return; }
+  const ok = await verificarPasswordActual(pass);
+  if(!ok){ msg.textContent='Contraseña incorrecta.'; msg.style.display='block'; return; }
+  const n = traz.noConformidades.find(x=>x.id===_ncDetalleId);
+  if(!n) return;
+  n.cerrado = true;
+  n.cerradoPor = currentUser.nombre;
+  n.cerradoTs = nowISO();
+  audit('No Conformidad cerrada: '+n.producto, '', 'trazabilidad');
+  saveTraz();
+  closeModal('modalFirmaCierreNC');
+  closeModal('modalNCDetalle');
+  renderTraz();
+}
+
+function exportNCCSV(){
+  const h = ['Fecha','Producto','Proveedor','Cantidad','Lote','Motivo','Seguimiento del destino','Reportado por','Estado','Cerrado por'];
+  const rows = traz.noConformidades.map(n=>{
+    const prov = traz.proveedores.find(p=>p.id===n.proveedorId);
+    const lote = traz.lotes.find(l=>l.id===n.loteId);
+    return [n.fecha,n.producto,prov?prov.nombre:'',n.cantidad||'',lote?lote.codigo:'',n.motivo,n.destino||'',n.reportadoPor,n.cerrado?'Cerrada':'Abierta',n.cerradoPor||'']
+      .map(v=>'"'+(v+'').replace(/"/g,'""')+'"').join(',');
+  });
+  dlBlob('\uFEFF'+[h.join(','),...rows].join('\r\n'),'text/csv','NoConformidades_'+today()+'.csv');
+}
+
+function imprimirNC(){
+  const filtroEstado = (document.getElementById('ncFiltroEstado')||{}).value || '';
+  let lista = [...traz.noConformidades].sort((a,b)=>(b.reportadoTs||'').localeCompare(a.reportadoTs||''));
+  if(filtroEstado==='abierta') lista = lista.filter(n=>!n.cerrado);
+  if(filtroEstado==='cerrada') lista = lista.filter(n=>n.cerrado);
+  _imprimirListaNC(lista, 'No Conformidades — Sanatorio Parque');
+}
+
+function imprimirUnaNC(id){
+  const n = traz.noConformidades.find(x=>x.id===id);
+  if(!n) return;
+  _imprimirListaNC([n], 'No Conformidad — '+n.producto);
+}
+
+function _imprimirListaNC(lista, titulo){
+  const fecha = new Date().toLocaleDateString('es-AR',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
+  const w = window.open('','_blank','width=900,height=700');
+  if(!w) return;
+  w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${titulo}</title>
+  <style>
+    body{font-family:Arial,sans-serif;font-size:12px;margin:20px;color:#222;}
+    .hdr{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #1a2744;padding-bottom:10px;margin-bottom:14px;}
+    .hdr h1{font-size:16px;margin:0 0 3px;color:#1a2744;}
+    .hdr .sub{font-size:11px;color:#666;}
+    .code{font-size:10px;color:#999;text-align:right;line-height:1.5;}
+    .caso{border:1px solid #ddd;border-radius:6px;padding:12px;margin-bottom:14px;page-break-inside:avoid;}
+    .caso h2{font-size:13px;margin:0 0 8px;color:#1a2744;}
+    .fila{display:grid;grid-template-columns:140px 1fr;gap:4px;font-size:11px;margin-bottom:4px;}
+    .fila b{color:#666;}
+    .estado{display:inline-block;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700;}
+    .abierta{background:#fff3cd;color:#8a6416;}
+    .cerrada{background:#e8f5ee;color:#1a7a4a;}
+    .foot{margin-top:16px;font-size:9px;color:#999;border-top:1px solid #eee;padding-top:8px;}
+  </style></head><body>
+  <div class="hdr">
+    <div><h1>⚠ ${titulo}</h1><div class="sub">Sanatorio Parque · ${fecha}</div></div>
+    <div class="code">Equivalente a planilla oficial<br/><strong>FO-CAL-10</strong></div>
+  </div>
+  ${lista.map(n=>{
+    const prov = traz.proveedores.find(p=>p.id===n.proveedorId);
+    const lote = traz.lotes.find(l=>l.id===n.loteId);
+    return `<div class="caso">
+      <h2>${n.producto} <span class="estado ${n.cerrado?'cerrada':'abierta'}">${n.cerrado?'CERRADA':'ABIERTA'}</span></h2>
+      <div class="fila"><b>Fecha</b><span>${n.fecha}</span></div>
+      <div class="fila"><b>Proveedor</b><span>${prov?prov.nombre:'—'}</span></div>
+      <div class="fila"><b>Cantidad</b><span>${n.cantidad||'—'}</span></div>
+      ${lote?`<div class="fila"><b>Lote vinculado</b><span>${lote.codigo}</span></div>`:''}
+      <div class="fila"><b>Motivos/Causas</b><span>${n.motivo}</span></div>
+      <div class="fila"><b>Seguimiento del destino</b><span>${n.destino||'—'}</span></div>
+      ${n.observaciones?`<div class="fila"><b>Observaciones</b><span>${n.observaciones}</span></div>`:''}
+      <div class="fila"><b>Reportado por</b><span>${n.reportadoPor} — ${fmtDatetime(n.reportadoTs)}</span></div>
+      ${n.cerrado?`<div class="fila"><b>Superior responsable</b><span>${n.cerradoPor} — ${fmtDatetime(n.cerradoTs)}</span></div>`:'<div class="fila"><b>Superior responsable</b><span>— Pendiente de cierre —</span></div>'}
+    </div>`;
+  }).join('')}
+  <div class="foot">Food Service Control Center · Sanatorio Parque — ${fecha}. Registro electrónico — no editable una vez cerrado.</div>
+  <script>window.onload=()=>{window.print();}<\/script>
+  </body></html>`);
+  w.document.close();
 }
 
 // ═══════════════════════════════════════════════════
@@ -7245,6 +7578,10 @@ function volverInicio(){
 }
 
 function switchView(v,btn){
+  if((v==='config'||v==='auditoria') && !esAdminEstricto(currentUser)){
+    alert('Esta sección es exclusiva del Administrador. Si necesitás un cambio acá, pedíselo directamente al Admin.');
+    return;
+  }
   document.querySelectorAll('.view').forEach(el=>el.classList.remove('active'));
   document.querySelectorAll('.nav-tab').forEach(el=>el.classList.remove('active'));
   document.getElementById('view-'+v).classList.add('active');
