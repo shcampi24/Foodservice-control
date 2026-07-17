@@ -887,6 +887,17 @@ tbody td{padding:8px 10px;vertical-align:middle;}
   </div>
 
 
+  <!-- RONDAS: plantillas -->
+  <div class="config-section" style="margin-top:1rem;">
+    <h3>📋 Plantillas de ronda</h3>
+    <div class="info-panel" style="font-size:11px;padding:7px 10px;margin-bottom:12px;">
+      Cada plantilla queda enganchada a un sector (los mismos que ya tenés cargados arriba). Cuando alguien de ese sector entra a "Rondas", el sistema le muestra automáticamente la que le corresponde.
+    </div>
+    <div id="cfgPlantillasRonda" style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px;"></div>
+    <button class="btn btn-primary btn-sm" onclick="openPlantillaModal()">+ Nueva plantilla de ronda</button>
+  </div>
+
+
   <!-- RESPALDO: botones de backup -->
   <div class="config-section" style="margin-top:1rem;">
     <h3>💾 Respaldo de datos</h3>
@@ -1383,6 +1394,44 @@ tbody td{padding:8px 10px;vertical-align:middle;}
     <div class="form-actions">
       <button class="btn btn-ghost" onclick="closeModal('modalFirmaCierreNC')">Cancelar</button>
       <button class="btn btn-primary" onclick="confirmarCierreNC()">Cerrar caso</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ MODAL: CREAR / EDITAR PLANTILLA DE RONDA ══ -->
+<div class="modal-bg" id="modalPlantilla" onclick="handleModalClick(event,'modalPlantilla')">
+  <div class="modal-box wide">
+    <button class="modal-close" onclick="closeModal('modalPlantilla')">✕</button>
+    <div class="modal-title" id="plantillaModalTitle" style="margin-bottom:14px;">📋 Nueva plantilla de ronda</div>
+    <div class="form-grid" style="margin-bottom:10px;">
+      <div class="fg">
+        <label>Nombre</label>
+        <input type="text" id="plNombre" placeholder="Ej: Limpieza de Cocina" />
+      </div>
+      <div class="fg">
+        <label>Código (referencia a la planilla oficial, opcional)</label>
+        <input type="text" id="plCodigo" placeholder="Ej: FO-CO-03" />
+      </div>
+      <div class="fg">
+        <label>Sector</label>
+        <select id="plSector"></select>
+      </div>
+    </div>
+
+    <div class="fg" style="margin-bottom:8px;">
+      <label>Pegá los ítems acá (uno por línea — podés copiar directo la columna del Excel/PDF)</label>
+      <textarea id="plItemsTexto" rows="4" placeholder="Pisos y zócalos&#10;Mesas y sillas&#10;Cámara frigorífica&#10;..."></textarea>
+    </div>
+    <button class="btn btn-outline btn-sm" style="margin-bottom:14px;" onclick="agregarItemsDesdeTexto()">⬇ Agregar a la lista</button>
+
+    <label style="font-size:12px;font-weight:600;color:var(--text2);display:block;margin-bottom:6px;">Ítems de esta plantilla</label>
+    <div id="plItemsLista" style="display:flex;flex-direction:column;gap:6px;max-height:280px;overflow-y:auto;margin-bottom:14px;padding:8px;background:var(--bg);border:.5px solid var(--border);border-radius:var(--r);">
+      <div style="font-size:12px;color:var(--text3);">Todavía no agregaste ítems.</div>
+    </div>
+
+    <div class="form-actions">
+      <button class="btn btn-ghost" onclick="closeModal('modalPlantilla')">Cancelar</button>
+      <button class="btn btn-primary" onclick="guardarPlantillaRonda()">Guardar plantilla</button>
     </div>
   </div>
 </div>
@@ -5015,6 +5064,7 @@ function renderConfig(){
   renderRecurrentesCfg();
   renderMantConfig();
   renderTurnosHorarios();
+  renderPlantillasRondaConfig();
 }
 
 // ── Equipo CRUD ──
@@ -6393,6 +6443,132 @@ function seedPlantillasRondas(){
       {id:'i16', texto:'Cables canal y luces de emergencia (semanal)', dia:'lunes', turno:'Tarde'},
     ]
   }];
+}
+
+// ═══════════════════════════════════════════════════
+//  CONFIGURACIÓN DE PLANTILLAS DE RONDA (creadas por el Admin/Coordinador)
+// ═══════════════════════════════════════════════════
+let plantillaEditId = null;
+let _plantillaItemsEdit = []; // items en edición dentro del modal, antes de guardar
+
+function renderPlantillasRondaConfig(){
+  const el = document.getElementById('cfgPlantillasRonda');
+  if(!el) return;
+  if(!rondas.plantillas.length){
+    el.innerHTML = '<div style="font-size:12px;color:var(--text3);">No hay ninguna plantilla creada todavía.</div>';
+    return;
+  }
+  el.innerHTML = rondas.plantillas.map(p=>{
+    const cantRegistros = rondas.registros.filter(r=>r.plantillaId===p.id).length;
+    return `<div class="config-item" style="flex-wrap:wrap;gap:8px;">
+      <div style="flex:1;min-width:220px;">
+        <div style="font-weight:600;font-size:13px;">${p.nombre} ${p.codigo?`<span style="font-family:var(--mono);font-size:11px;color:var(--text3);">${p.codigo}</span>`:''}</div>
+        <div style="font-size:11px;color:var(--text3);margin-top:2px;">${p.sector} · ${p.items.length} ítem(s) · ${cantRegistros} ronda(s) registrada(s)</div>
+      </div>
+      <button class="btn btn-outline btn-sm" onclick="openPlantillaModal('${p.id}')">Editar</button>
+      <button class="btn btn-danger btn-sm" onclick="eliminarPlantillaRonda('${p.id}')">✕</button>
+    </div>`;
+  }).join('');
+}
+
+function openPlantillaModal(id){
+  plantillaEditId = id || null;
+  document.getElementById('plantillaModalTitle').textContent = id ? '📋 Editar plantilla de ronda' : '📋 Nueva plantilla de ronda';
+  populateSel('plSector', cfg.sectores);
+  document.getElementById('plItemsTexto').value = '';
+  if(id){
+    const p = rondas.plantillas.find(x=>x.id===id);
+    if(!p) return;
+    document.getElementById('plNombre').value = p.nombre;
+    document.getElementById('plCodigo').value = p.codigo||'';
+    document.getElementById('plSector').value = p.sector;
+    _plantillaItemsEdit = p.items.map(it=>({...it}));
+  } else {
+    document.getElementById('plNombre').value = '';
+    document.getElementById('plCodigo').value = '';
+    _plantillaItemsEdit = [];
+  }
+  renderPlItemsLista();
+  document.getElementById('modalPlantilla').classList.add('open');
+}
+
+function agregarItemsDesdeTexto(){
+  const texto = document.getElementById('plItemsTexto').value;
+  const lineas = texto.split('\n').map(l=>l.trim()).filter(Boolean);
+  lineas.forEach(linea=>{
+    _plantillaItemsEdit.push({ id:'it_'+Date.now()+'_'+Math.floor(Math.random()*10000), texto:linea, turno:'', dia:'' });
+  });
+  document.getElementById('plItemsTexto').value = '';
+  renderPlItemsLista();
+}
+
+function renderPlItemsLista(){
+  const el = document.getElementById('plItemsLista');
+  if(!_plantillaItemsEdit.length){
+    el.innerHTML = '<div style="font-size:12px;color:var(--text3);">Todavía no agregaste ítems.</div>';
+    return;
+  }
+  el.innerHTML = _plantillaItemsEdit.map((it,i)=>`
+    <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;background:var(--surface);border:.5px solid var(--border);border-radius:6px;padding:6px 8px;">
+      <input type="text" value="${it.texto.replace(/"/g,'&quot;')}" style="flex:1;min-width:140px;font-size:12px;border:none;background:transparent;" oninput="_plantillaItemsEdit[${i}].texto=this.value" />
+      <select style="font-size:11px;" onchange="_plantillaItemsEdit[${i}].turno=this.value">
+        <option value="" ${!it.turno?'selected':''}>Ambos turnos</option>
+        <option value="Mañana" ${it.turno==='Mañana'?'selected':''}>Solo Mañana</option>
+        <option value="Tarde" ${it.turno==='Tarde'?'selected':''}>Solo Tarde</option>
+      </select>
+      <select style="font-size:11px;" onchange="_plantillaItemsEdit[${i}].dia=this.value; renderPlItemsLista();">
+        <option value="" ${!it.dia?'selected':''}>Diario</option>
+        <option value="lunes" ${it.dia==='lunes'?'selected':''}>Solo lunes</option>
+        <option value="martes" ${it.dia==='martes'?'selected':''}>Solo martes</option>
+        <option value="miércoles" ${it.dia==='miércoles'?'selected':''}>Solo miércoles</option>
+        <option value="jueves" ${it.dia==='jueves'?'selected':''}>Solo jueves</option>
+        <option value="viernes" ${it.dia==='viernes'?'selected':''}>Solo viernes</option>
+        <option value="sábado" ${it.dia==='sábado'?'selected':''}>Solo sábado</option>
+        <option value="domingo" ${it.dia==='domingo'?'selected':''}>Solo domingo</option>
+      </select>
+      <button class="btn btn-ghost btn-sm" onclick="_plantillaItemsEdit.splice(${i},1); renderPlItemsLista();">✕</button>
+    </div>`).join('');
+}
+
+function guardarPlantillaRonda(){
+  const nombre = document.getElementById('plNombre').value.trim();
+  const codigo = document.getElementById('plCodigo').value.trim();
+  const sector = document.getElementById('plSector').value;
+  if(!nombre){ alert('Ingresá un nombre para la plantilla.'); return; }
+  if(!sector){ alert('Elegí un sector.'); return; }
+  if(!_plantillaItemsEdit.length){ alert('Agregá al menos un ítem.'); return; }
+  // Limpiar campos turno/dia vacíos (undefined en vez de "") para que itemsDelDia los trate como "aplica siempre"
+  const items = _plantillaItemsEdit.map(it=>({
+    id: it.id, texto: it.texto,
+    ...(it.turno ? {turno: it.turno} : {}),
+    ...(it.dia ? {dia: it.dia} : {}),
+  }));
+  if(plantillaEditId){
+    const p = rondas.plantillas.find(x=>x.id===plantillaEditId);
+    if(!p){ return; }
+    Object.assign(p, {nombre, codigo, sector, items});
+    audit('Plantilla de ronda editada: '+nombre, sector, 'trazabilidad');
+  } else {
+    rondas.plantillas.push({ id:'pl_'+Date.now()+'_'+Math.floor(Math.random()*10000), nombre, codigo, sector, items });
+    audit('Plantilla de ronda creada: '+nombre, sector+' — '+items.length+' ítem(s)', 'trazabilidad');
+  }
+  saveRondas();
+  closeModal('modalPlantilla');
+  renderPlantillasRondaConfig();
+}
+
+function eliminarPlantillaRonda(id){
+  const p = rondas.plantillas.find(x=>x.id===id);
+  if(!p) return;
+  const cantRegistros = rondas.registros.filter(r=>r.plantillaId===id).length;
+  const aviso = cantRegistros
+    ? `Esta plantilla ya tiene ${cantRegistros} ronda(s) registrada(s) en el historial — esas quedan intactas (nunca se borran), pero dejarán de poder repetirse. ¿Borrar la plantilla "${p.nombre}"?`
+    : `¿Borrar la plantilla "${p.nombre}"?`;
+  if(!confirm(aviso)) return;
+  rondas.plantillas = rondas.plantillas.filter(x=>x.id!==id);
+  audit('Plantilla de ronda eliminada: '+p.nombre, '', 'trazabilidad');
+  saveRondas();
+  renderPlantillasRondaConfig();
 }
 
 function loadRondas(){
