@@ -665,7 +665,11 @@ tbody td{padding:8px 10px;vertical-align:middle;}
       <select class="flt" id="histPeriodo" onchange="renderHistorico()">
         <option value="7">Últimos 7 días</option>
         <option value="14">Últimos 14 días</option>
-        <option value="30" selected>Últimos 30 días</option>
+        <option value="30" selected>Último mes (30 días)</option>
+        <option value="90">Últimos 3 meses (90 días)</option>
+        <option value="180">Últimos 6 meses (180 días)</option>
+        <option value="270">Últimos 9 meses (270 días)</option>
+        <option value="365">Último año (365 días)</option>
       </select>
       <select class="flt" id="histSector" onchange="renderHistorico()">
         <option value="">Todos los sectores</option>
@@ -1288,6 +1292,11 @@ tbody td{padding:8px 10px;vertical-align:middle;}
 <!-- ══ VISTA: RONDAS DE CONTROL ══ -->
 <div class="view" id="view-rondas">
 
+  <!-- Botón para Supervisor/Coordinador/Admin: asignar una ronda a alguien -->
+  <div id="rondaAsignarBtnWrap" style="display:none;margin-bottom:12px;text-align:right;">
+    <button class="btn btn-primary" onclick="openAsignarRondaModal()">+ Asignar ronda a un operario</button>
+  </div>
+
   <!-- Para Operario/Cubre: la ronda de hoy -->
   <div id="rondaOperarioPanel"></div>
 
@@ -1304,6 +1313,34 @@ tbody td{padding:8px 10px;vertical-align:middle;}
       </div>
     </div>
     <div id="rondaListado"></div>
+  </div>
+</div>
+
+<!-- ══ MODAL: ASIGNAR RONDA A UN OPERARIO ══ -->
+<div class="modal-bg" id="modalAsignarRonda" onclick="handleModalClick(event,'modalAsignarRonda')">
+  <div class="modal-box">
+    <button class="modal-close" onclick="closeModal('modalAsignarRonda')">✕</button>
+    <div class="modal-title" style="margin-bottom:14px;">+ Asignar ronda</div>
+    <div class="fg" style="margin-bottom:10px;">
+      <label>Operario / Cubre</label>
+      <select id="asigRondaOperario"></select>
+    </div>
+    <div class="fg" style="margin-bottom:10px;">
+      <label>Ronda</label>
+      <select id="asigRondaPlantilla" onchange="onAsigRondaPlantillaChange()"></select>
+    </div>
+    <div class="fg" style="margin-bottom:10px;">
+      <label>Fecha</label>
+      <input type="date" id="asigRondaFecha" />
+    </div>
+    <div class="fg" style="margin-bottom:10px;">
+      <label>Turno</label>
+      <select id="asigRondaTurno"></select>
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-ghost" onclick="closeModal('modalAsignarRonda')">Cancelar</button>
+      <button class="btn btn-primary" onclick="guardarAsignacionRonda()">Asignar</button>
+    </div>
   </div>
 </div>
 
@@ -1580,6 +1617,7 @@ tbody td{padding:8px 10px;vertical-align:middle;}
       <div class="fg"><label>Email <span style="font-size:10px;color:var(--text3)">(para recupero de contraseña)</span></label><input type="email" id="nuEmail" placeholder="mail@ejemplo.com" /></div>
       <div class="fg"><label>Rol</label>
         <select id="nuRol" onchange="toggleUserFields()">
+          <option value="coordinador">Coordinador — mismo acceso que Admin + funciones de Supervisor</option>
           <option value="admin">Admin — acceso total + configuración</option>
           <option value="supervisor">Supervisor — asigna tareas, supervisa todos los sectores</option>
           <option value="operario">Operario — sector asignado</option>
@@ -1841,6 +1879,22 @@ const DEFAULT_CFG={
 // ═══════════════════════════════════════════════════
 let cfg, tasks, users, auditLog, notifications, currentUser=null, editingId, cubreEditIdx=null;
 
+// ═══════════════════════════════════════════════════
+//  JERARQUÍA DE ROLES
+// ═══════════════════════════════════════════════════
+// Coordinador tiene exactamente el mismo nivel de acceso que Admin (ve y
+// puede todo lo que Admin), más las funciones operativas de Supervisor.
+// 'coordinadora' se mantiene por compatibilidad con datos viejos.
+function esAdmin(u){ return !!u && (u.rol==='admin' || u.rol==='coordinador' || u.rol==='coordinadora'); }
+function esSupervisorOSuperior(u){ return !!u && (esAdmin(u) || u.rol==='supervisor'); }
+// Nivel numérico para decidir a quién le puede asignar tareas cada rol
+// (uno puede asignarle solo a alguien de nivel estrictamente menor al suyo)
+function nivelRol(rol){
+  if(rol==='admin'||rol==='coordinador'||rol==='coordinadora') return 3;
+  if(rol==='supervisor') return 2;
+  return 1; // operario, cubre
+}
+
 // ── loadData: primero LS local, luego Firebase ──
 // Flag para evitar que listeners remotos pisen un save local en curso
 let _localSaveInProgress = false;
@@ -1888,7 +1942,7 @@ async function loadDataFromFirebase(){
     if(fbHaccp){haccpLogs=fbHaccp;LS.set('fscc_haccp',haccpLogs);}
     if(fbMant){mantSolicitudes=fbMant;LS.set('fscc_mant',mantSolicitudes);}
     if(fbTraz){traz=fbTraz;if(!traz.proveedores)traz.proveedores=[];if(!traz.lotes)traz.lotes=[];if(!traz.producciones)traz.producciones=[];LS.set('fscc_traz',traz);}
-    if(fbRondas){rondas=fbRondas;if(!rondas.plantillas||!rondas.plantillas.length)rondas.plantillas=seedPlantillasRondas();if(!rondas.registros)rondas.registros=[];LS.set('fscc_rondas',rondas);}
+    if(fbRondas){rondas=fbRondas;if(!rondas.plantillas||!rondas.plantillas.length)rondas.plantillas=seedPlantillasRondas();if(!rondas.registros)rondas.registros=[];if(!rondas.asignaciones)rondas.asignaciones=[];LS.set('fscc_rondas',rondas);}
 
     // Capacitaciones
     const fbCap = await fbLoad('fscc_cap');
@@ -1940,7 +1994,9 @@ async function loadDataFromFirebase(){
     });
     fbWatch('fscc_rondas',(val)=>{
       if(_localSaveInProgress)return;
-      rondas=val||{plantillas:seedPlantillasRondas(),registros:[]};LS.set('fscc_rondas',rondas);
+      rondas=val||{plantillas:seedPlantillasRondas(),registros:[],asignaciones:[]};
+      if(!rondas.asignaciones)rondas.asignaciones=[];
+      LS.set('fscc_rondas',rondas);
       if(currentUser && document.getElementById('view-rondas') && document.getElementById('view-rondas').classList.contains('active')) renderRondas();
     });
     fbWatch('fscc_cap',(val)=>{
@@ -2669,10 +2725,24 @@ function pushNotifMantNueva(titulo, detalle, mantId){
 
 function getMyNotifs(){
   if(!currentUser)return[];
-  if(currentUser.rol==='admin'||currentUser.rol==='supervisor'){
-    return notifications.filter(n=>n.targets.includes(currentUser.rol));
-  }
-  return[];
+  return notifications.filter(n => (n.targets && n.targets.includes(currentUser.rol)) || n.paraUser===currentUser.user);
+}
+
+// Notificación dirigida a UN usuario puntual (no por rol) — ej. "te asignaron una ronda"
+function pushNotifPersonal(username, tipo, titulo, detalle, taskId){
+  const notif={
+    id:Date.now()+Math.random(),
+    tipo, titulo, detalle, taskId,
+    ts:nowISO(),
+    leida:false,
+    targets:[],
+    paraUser: username
+  };
+  notifications.unshift(notif);
+  if(notifications.length>100)notifications=notifications.slice(0,100);
+  LS.set('fscc_notif',notifications);
+  updateBell();
+  renderNotifPanel();
 }
 
 function updateBell(){
@@ -2685,7 +2755,7 @@ function updateBell(){
   // Bell visible solo para admin/supervisor
   const bellWrap=document.getElementById('bellWrap');
   if(bellWrap){
-    const show=currentUser&&(currentUser.rol==='admin'||currentUser.rol==='supervisor');
+    const show=esSupervisorOSuperior(currentUser);
     bellWrap.style.display=show?'':'none';
   }
 }
@@ -2982,7 +3052,7 @@ function _completarLogin(found){
   // Sector tag en header
   const stag=document.getElementById('hdrSectorTag');
   const myS=getMySectors();
-  if(myS.length&&found.rol!=='admin'&&found.rol!=='supervisor'){
+  if(myS.length&&!esSupervisorOSuperior(found)){
     stag.textContent=myS.join(', ');stag.style.display='';
   } else stag.style.display='none';
 
@@ -2991,10 +3061,10 @@ function _completarLogin(found){
   // supervisor: Mis Tareas (oculta para sv), Supervisión, Planillas
   // operario/cubre: solo Mis Tareas
   document.querySelectorAll('.admin-only').forEach(el=>{
-    el.style.display=found.rol==='admin'?'':'none';
+    el.style.display=esAdmin(found)?'':'none';
   });
   document.querySelectorAll('.sv-admin-only').forEach(el=>{
-    el.style.display=(found.rol==='admin'||found.rol==='supervisor')?'':'none';
+    el.style.display=esSupervisorOSuperior(found)?'':'none';
   });
 
   // Supervisor no necesita "Mis Tareas" (no tiene sector propio)
@@ -3014,7 +3084,7 @@ function _completarLogin(found){
   // NO llamar saveAll() al login — evita pisar datos de Firebase con LS local
 
   // Vista inicial por rol
-  if(found.rol==='admin'){
+  if(esAdmin(found)){
     switchViewById('dashboard');
   } else if(found.rol==='supervisor'){
     switchViewById('supervisor');
@@ -3062,7 +3132,7 @@ async function confirmarCambioPassObligatorio(){
 function doLogout(){
   audit('Cierre de sesión','','sistema');saveAll();
   // Auto-backup al cerrar sesión (solo admin)
-  if(currentUser&&currentUser.rol==='admin')autoBackupJSON();
+  if(esAdmin(currentUser))autoBackupJSON();
   if(window._auth) window._fbSignOut(window._auth).catch(()=>{});
   currentUser=null;
   document.getElementById('appWrap').classList.remove('active');
@@ -3078,7 +3148,7 @@ function doLogout(){
 // ═══════════════════════════════════════════════════
 function getMySectors(){
   if(!currentUser)return[];
-  if(currentUser.rol==='admin'||currentUser.rol==='supervisor')return cfg.sectores;
+  if(esSupervisorOSuperior(currentUser))return cfg.sectores;
   if(currentUser.rol==='operario')return Array.isArray(currentUser.sectores)?currentUser.sectores.filter(s=>cfg.sectores.includes(s)):[];
   if(currentUser.rol==='cubre')return currentUser.cubreSector&&cfg.sectores.includes(currentUser.cubreSector)?[currentUser.cubreSector]:[];
   return[];
@@ -3722,7 +3792,7 @@ function openIncidFotoModal(id){
 function renderUsersConfig(){
   const el=document.getElementById('cfgUsers');
   el.innerHTML=users.map((u,i)=>{
-    const rolBadge=u.rol==='admin'?'b-admin':u.rol==='supervisor'?'b-sv':u.rol==='cubre'?'b-cubre':'b-op';
+    const rolBadge=(u.rol==='admin'||u.rol==='coordinador')?'b-admin':u.rol==='supervisor'?'b-sv':u.rol==='cubre'?'b-cubre':'b-op';
     const sectorInfo=u.rol==='operario'&&u.sectores&&u.sectores.length?
       `<span style="font-size:11px;color:var(--text3)">📍 ${u.sectores.join(', ')}</span>`:'';
     const cubreInfo=u.rol==='cubre'?
@@ -3924,13 +3994,17 @@ function populateSel(id,arr){
 }
 
 function populateSelects(){
-  const respNames=users.filter(u=>u.rol!=='admin').map(u=>u.nombre);
+  // Jerarquía: Coordinador/Admin le pueden asignar tareas a Supervisor, Operario y Cubre
+  // (no a otro Coordinador/Admin). Supervisor solo le puede asignar a Operario y Cubre
+  // (nunca a Coordinador ni a Admin).
+  const respNamesAdmin = users.filter(u=>nivelRol(u.rol)<3).map(u=>u.nombre);
+  const respNamesSupervisor = users.filter(u=>nivelRol(u.rol)<2).map(u=>u.nombre);
 
   // Admin form — sector (equipo se carga en cascade)
   populateSel('fSectorF',cfg.sectores);
   populateSel('fTipoF',cfg.tipos);
   populateSel('fTurnoF',cfg.turnos);
-  populateSel('fRespF',respNames.length?respNames:['Sin asignar']);
+  populateSel('fRespF',respNamesAdmin.length?respNamesAdmin:['Sin asignar']);
   // trigger cascade for equipo
   adminOnSectorChange();
 
@@ -3943,13 +4017,13 @@ function populateSelects(){
   // Edit modal
   populateSel('eTurno',cfg.turnos);populateSel('eSector',cfg.sectores);populateSel('eTipo',cfg.tipos);
   const eR=document.getElementById('eResp');
-  if(eR){eR.innerHTML='';respNames.forEach(n=>{const o=document.createElement('option');o.value=n;o.textContent=n;eR.appendChild(o);});}
+  if(eR){eR.innerHTML='';respNamesAdmin.forEach(n=>{const o=document.createElement('option');o.value=n;o.textContent=n;eR.appendChild(o);});}
 
   // Supervisor form
   populateSel('svSectorF',cfg.sectores);
   populateSel('svTipoF',cfg.tipos);
   populateSel('svTurnoF',cfg.turnos);
-  populateSel('svRespF',respNames.length?respNames:['Sin asignar']);
+  populateSel('svRespF',respNamesSupervisor.length?respNamesSupervisor:['Sin asignar']);
   svOnSectorChange();
 
   // Supervisor filtros
@@ -5989,9 +6063,10 @@ function seedPlantillasRondas(){
 }
 
 function loadRondas(){
-  rondas = LS.get('fscc_rondas') || {plantillas:seedPlantillasRondas(), registros:[]};
+  rondas = LS.get('fscc_rondas') || {plantillas:seedPlantillasRondas(), registros:[], asignaciones:[]};
   if(!rondas.plantillas || !rondas.plantillas.length) rondas.plantillas = seedPlantillasRondas();
   if(!rondas.registros) rondas.registros = [];
+  if(!rondas.asignaciones) rondas.asignaciones = [];
 }
 
 function saveRondas(){
@@ -6017,12 +6092,14 @@ function itemsDelDia(plantilla, turno){
 function renderRondas(){
   updateRondasBadge();
   if(!currentUser) return;
-  // Operario, Cubre y Supervisor hacen rondas de campo. Admin también puede
-  // (para poder probarlas sin necesitar otro usuario), aunque no es su uso principal.
-  const puedeHacerRondas = ['operario','cubre','supervisor','admin'].includes(currentUser.rol);
-  const puedeAprobar = ['supervisor','admin'].includes(currentUser.rol);
+  // Operario, Cubre, Supervisor y Coordinador/Admin hacen rondas de campo
+  // (Admin/Coordinador también pueden, para poder probarlas sin necesitar otro usuario).
+  const puedeHacerRondas = ['operario','cubre','supervisor'].includes(currentUser.rol) || esAdmin(currentUser);
+  const puedeAprobar = esSupervisorOSuperior(currentUser);
+  const puedeAsignar = esSupervisorOSuperior(currentUser);
   document.getElementById('rondaOperarioPanel').style.display = puedeHacerRondas ? 'block' : 'none';
   document.getElementById('rondaHistorialPanel').style.display = puedeAprobar ? 'block' : 'none';
+  document.getElementById('rondaAsignarBtnWrap').style.display = puedeAsignar ? 'block' : 'none';
   if(puedeHacerRondas) renderRondaOperarioPanel();
   if(puedeAprobar) renderRondasHistorial();
 }
@@ -6035,7 +6112,7 @@ function updateRondasBadge(){
   if(['operario','cubre','supervisor'].includes(currentUser.rol)){
     count += rondasAplicablesHoy().filter(p=>!rondaYaHechaHoy(p.id)).length;
   }
-  if(['supervisor','admin'].includes(currentUser.rol)){
+  if(esSupervisorOSuperior(currentUser)){
     count += rondas.registros.filter(r=>!r.supervisorTs).length;
   }
   if(count>0){ badge.textContent = count>9?'9+':count; badge.style.display='inline-flex'; }
@@ -6061,13 +6138,34 @@ function rondaYaHechaHoy(plantillaId){
 function renderRondaOperarioPanel(){
   const cont = document.getElementById('rondaOperarioPanel');
   const turno = getTurnoActivoNombre();
+  const t = today();
+
+  // Rondas asignadas explícitamente a este usuario por un Supervisor/Coordinador/Admin
+  const asignadasPendientes = rondas.asignaciones.filter(a=>a.operarioUser===currentUser.user && a.fecha===t && !a.cumplida);
+  let htmlAsignadas = '';
+  if(asignadasPendientes.length){
+    htmlAsignadas = '<div style="font-size:12px;font-weight:600;color:var(--text3);margin:4px 0 8px;">📌 Rondas asignadas a vos</div>' +
+      asignadasPendientes.map(a=>{
+        const p = rondas.plantillas.find(x=>x.id===a.plantillaId);
+        if(!p) return '';
+        return `<div class="config-item" style="flex-direction:column;align-items:flex-start;gap:6px;border:1px solid var(--gold,#c4922a);">
+          <div style="display:flex;justify-content:space-between;width:100%;align-items:center;">
+            <div>
+              <div style="font-weight:600;font-size:14px;">📌 ${p.nombre}</div>
+              <div style="font-size:11px;color:var(--text3);">${p.codigo} · ${p.sector} · ${a.turno} · Asignada por ${a.asignadoPor}</div>
+            </div>
+            <button class="btn btn-primary btn-sm" onclick="iniciarRonda('${p.id}','${a.id}')">Iniciar ronda</button>
+          </div>
+        </div>`;
+      }).join('') + '<div style="height:8px;"></div>';
+  }
+
   const plantillas = rondasAplicablesHoy();
-  if(!plantillas.length){
+  if(!plantillas.length && !asignadasPendientes.length){
     cont.innerHTML = '<div class="info-panel" style="font-size:12px;">No hay ninguna ronda de control configurada para tu sector todavía.</div>';
     return;
   }
-  cont.innerHTML = plantillas.map(p=>{
-    const t = today();
+  cont.innerHTML = htmlAsignadas + plantillas.map(p=>{
     const registro = rondas.registros.find(r=>r.plantillaId===p.id && r.fecha===t && r.turno===turno);
     if(registro){
       return `<div class="config-item" style="flex-direction:column;align-items:flex-start;gap:6px;">
@@ -6094,7 +6192,7 @@ function renderRondaOperarioPanel(){
 }
 
 // ── Ejecutar la ronda ──
-function iniciarRonda(plantillaId){
+function iniciarRonda(plantillaId, asignacionId){
   const p = rondas.plantillas.find(x=>x.id===plantillaId);
   if(!p) return;
   const turno = getTurnoActivoNombre();
@@ -6105,6 +6203,7 @@ function iniciarRonda(plantillaId){
     fecha: today(), turno, sector: p.sector,
     items: items.map(it=>({itemId:it.id, texto:it.texto, estado:null, motivo:'', hora:null})),
     responsable: currentUser.nombre, responsableUser: currentUser.user,
+    asignacionId: asignacionId || null,
   };
   document.getElementById('rondaModalTitulo').textContent = '📋 '+p.nombre;
   document.getElementById('rondaModalSub').textContent = p.codigo+' · '+p.sector+' · '+turno;
@@ -6188,6 +6287,10 @@ async function confirmarFirmaRonda(){
   if(!ok){ msg.textContent='Contraseña incorrecta.'; msg.style.display='block'; return; }
   _rondaEnCurso.firmaTs = nowISO();
   _rondaEnCurso.estado = 'cerrada';
+  if(_rondaEnCurso.asignacionId){
+    const asig = rondas.asignaciones.find(a=>a.id===_rondaEnCurso.asignacionId);
+    if(asig){ asig.cumplida = true; asig.registroId = _rondaEnCurso.id; }
+  }
   rondas.registros.unshift(_rondaEnCurso);
   audit('Ronda completada: '+_rondaEnCurso.nombre, _rondaEnCurso.codigo+' — '+_rondaEnCurso.sector+' — '+_rondaEnCurso.turno, 'trazabilidad');
   saveRondas();
@@ -6199,6 +6302,50 @@ async function confirmarFirmaRonda(){
   renderRondas();
   // Avisar a Supervisor/Admin que hay una ronda para aprobar
   pushNotif('ronda_pendiente', '📋 Ronda para aprobar', (rondas.registros.find(r=>r.id===rondaId)||{}).nombre+' — lista para revisar', null);
+}
+
+// ── Asignar una ronda a un operario/cubre (Supervisor/Coordinador/Admin) ──
+function openAsignarRondaModal(){
+  const selOp = document.getElementById('asigRondaOperario');
+  const operarios = users.filter(u=>u.rol==='operario'||u.rol==='cubre');
+  selOp.innerHTML = operarios.length
+    ? operarios.map(u=>`<option value="${u.user}">${u.nombre} (@${u.user})</option>`).join('')
+    : '<option value="">No hay operarios cargados</option>';
+
+  const selPl = document.getElementById('asigRondaPlantilla');
+  selPl.innerHTML = rondas.plantillas.map(p=>`<option value="${p.id}">${p.nombre} (${p.codigo})</option>`).join('');
+
+  document.getElementById('asigRondaFecha').value = today();
+  onAsigRondaPlantillaChange();
+  document.getElementById('modalAsignarRonda').classList.add('open');
+}
+
+function onAsigRondaPlantillaChange(){
+  const plantillaId = document.getElementById('asigRondaPlantilla').value;
+  const p = rondas.plantillas.find(x=>x.id===plantillaId);
+  populateSel('asigRondaTurno', cfg.turnos);
+}
+
+function guardarAsignacionRonda(){
+  const operarioUser = document.getElementById('asigRondaOperario').value;
+  const plantillaId = document.getElementById('asigRondaPlantilla').value;
+  const fecha = document.getElementById('asigRondaFecha').value || today();
+  const turno = document.getElementById('asigRondaTurno').value;
+  if(!operarioUser){ alert('Elegí un operario.'); return; }
+  if(!plantillaId){ alert('Elegí una ronda.'); return; }
+  const u = users.find(x=>x.user===operarioUser);
+  const p = rondas.plantillas.find(x=>x.id===plantillaId);
+  const a = {
+    id: 'as_'+Date.now()+'_'+Math.floor(Math.random()*1000),
+    plantillaId, operarioUser, operarioNombre: u?u.nombre:operarioUser,
+    fecha, turno, asignadoPor: currentUser.nombre, ts: nowISO(), cumplida:false
+  };
+  rondas.asignaciones.push(a);
+  audit('Ronda asignada a @'+operarioUser, (p?p.nombre:plantillaId)+' — '+fecha+' — '+turno, 'trazabilidad');
+  saveRondas();
+  closeModal('modalAsignarRonda');
+  pushNotifPersonal(operarioUser, 'ronda_pendiente', '📌 Te asignaron una ronda', (p?p.nombre:'')+' para hoy ('+turno+')', null);
+  alert('Ronda asignada a '+(u?u.nombre:operarioUser)+'.');
 }
 
 // ── Historial (Supervisor / Admin) ──
@@ -6237,7 +6384,7 @@ function verDetalleRonda(id){
   if(r.supervisorTs) firmaHtml += `<br/>Aprobado por <strong>${r.supervisorNombre}</strong> el ${fmtDatetime(r.supervisorTs)}.`;
   document.getElementById('rondaDetalleFirma').innerHTML = firmaHtml;
   const btnAprobar = document.getElementById('rondaBtnAprobar');
-  if(r.supervisorTs || !(currentUser.rol==='admin'||currentUser.rol==='supervisor')){
+  if(r.supervisorTs || !esSupervisorOSuperior(currentUser)){
     btnAprobar.style.display='none';
   } else {
     btnAprobar.style.display='inline-flex';
@@ -6376,7 +6523,7 @@ function renderMant(){
   if(filtroEstado) lista = lista.filter(s => s.estado === filtroEstado);
   if(filtroSector) lista = lista.filter(s => s.sector === filtroSector);
 
-  const isAdmin = currentUser && currentUser.rol === 'admin';
+  const isAdmin = esAdmin(currentUser);
   const el = document.getElementById('mantListado');
 
   if(!lista.length){
@@ -6388,7 +6535,7 @@ function renderMant(){
   const estadoLabel = {pendiente:'⏳ Pendiente admin', enviado:'✅ Enviado', resuelto:'🔒 Resuelto'};
 
   el.innerHTML = lista.map(s => {
-    const isAdmin2 = currentUser && currentUser.rol === 'admin';
+    const isAdmin2 = esAdmin(currentUser);
     const ticketTag = s.nroTicket
       ? `<span class="badge" style="background:#e8edf7;color:#1a2744;font-family:var(--mono);font-size:10px;">🎫 ${s.nroTicket}</span>`
       : '';
@@ -6413,7 +6560,7 @@ function renderMant(){
         ${isAdmin2
           ? `<button class="btn btn-primary btn-sm" onclick="openMantAdminModal('${s.id}')">📋 Gestionar / Enviar ticket</button>`
           : ''}
-        ${(currentUser&&(currentUser.rol==='supervisor'||currentUser.rol==='admin'))&&s.estado==='pendiente'
+        ${esSupervisorOSuperior(currentUser)&&s.estado==='pendiente'
           ? `<button class="btn btn-ghost btn-sm" onclick="editMantSolicitud('${s.id}')">✏ Editar</button>`
           : ''}
         ${isAdmin2 ? `<button class="btn btn-danger btn-sm" onclick="deleteMantSolicitud('${s.id}')">🗑</button>` : ''}
@@ -6865,7 +7012,7 @@ function saveCapacitaciones(){
 }
 
 function renderCapacitaciones(){
-  const esSvAdmin = currentUser && (currentUser.rol==='admin'||currentUser.rol==='supervisor');
+  const esSvAdmin = esSupervisorOSuperior(currentUser);
 
   // Mostrar/ocultar botones de admin
   const adminBtns = document.getElementById('capAdminBtns');
@@ -7088,7 +7235,7 @@ function eliminarCapacitacion(id){
 function volverInicio(){
   if(!currentUser) return;
   const rol = currentUser.rol;
-  if(rol==='admin'||rol==='coordinadora'){
+  if(rol==='admin'||rol==='coordinador'||rol==='coordinadora'){
     switchViewById('dashboard');
   } else if(rol==='supervisor'){
     switchViewById('supervisor');
@@ -7143,7 +7290,7 @@ function renderAll(){
   updateRondasBadge();
   populateSelects();
   if(currentUser){
-    if(currentUser.rol==='admin'){
+    if(esAdmin(currentUser)){
       renderMetrics();renderBars();renderAlert();renderTable();
       renderSvActive();
     }
