@@ -897,6 +897,14 @@ tbody td{padding:8px 10px;vertical-align:middle;}
     <button class="btn btn-primary btn-sm" onclick="openPlantillaModal()">+ Nueva plantilla de ronda</button>
   </div>
 
+  <div class="config-section" style="margin-top:1rem;">
+    <h3>🔁 Rondas fijas asignadas</h3>
+    <div class="info-panel" style="font-size:11px;padding:7px 10px;margin-bottom:10px;">
+      Estas son las rondas que se le asignaron a una persona "para todos los días" desde el botón 🔁 al asignar una ronda. Le van a seguir apareciendo automáticamente hasta que la desactives acá.
+    </div>
+    <div id="cfgRondasFijas" style="display:flex;flex-direction:column;gap:6px;"></div>
+  </div>
+
 
   <!-- RESPALDO: botones de backup -->
   <div class="config-section" style="margin-top:1rem;">
@@ -1483,6 +1491,12 @@ tbody td{padding:8px 10px;vertical-align:middle;}
     <div class="fg" style="margin-bottom:10px;">
       <label>Turno</label>
       <select id="asigRondaTurno"></select>
+    </div>
+    <div class="fg" style="margin-bottom:10px;">
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;">
+        <input type="checkbox" id="asigRondaRecurrente" style="width:15px;height:15px;" />
+        🔁 Que se repita todos los días (queda fija hasta que la desactives)
+      </label>
     </div>
     <div class="form-actions">
       <button class="btn btn-ghost" onclick="closeModal('modalAsignarRonda')">Cancelar</button>
@@ -2093,7 +2107,7 @@ async function loadDataFromFirebase(){
     if(fbHaccp){haccpLogs=fbHaccp;LS.set('fscc_haccp',haccpLogs);}
     if(fbMant){mantSolicitudes=fbMant;LS.set('fscc_mant',mantSolicitudes);}
     if(fbTraz){traz=fbTraz;if(!traz.proveedores)traz.proveedores=[];if(!traz.lotes)traz.lotes=[];if(!traz.producciones)traz.producciones=[];if(!traz.noConformidades)traz.noConformidades=[];LS.set('fscc_traz',traz);}
-    if(fbRondas){rondas=fbRondas;if(!rondas.plantillas||!rondas.plantillas.length)rondas.plantillas=seedPlantillasRondas();if(!rondas.registros)rondas.registros=[];if(!rondas.asignaciones)rondas.asignaciones=[];LS.set('fscc_rondas',rondas);}
+    if(fbRondas){rondas=fbRondas;if(!rondas.plantillas||!rondas.plantillas.length)rondas.plantillas=seedPlantillasRondas();if(!rondas.registros)rondas.registros=[];if(!rondas.asignaciones)rondas.asignaciones=[];if(!rondas.asignacionesRecurrentes)rondas.asignacionesRecurrentes=[];LS.set('fscc_rondas',rondas);}
 
     // Capacitaciones
     const fbCap = await fbLoad('fscc_cap');
@@ -2147,8 +2161,9 @@ async function loadDataFromFirebase(){
     });
     fbWatch('fscc_rondas',(val)=>{
       if(_localSaveInProgress)return;
-      rondas=val||{plantillas:seedPlantillasRondas(),registros:[],asignaciones:[]};
+      rondas=val||{plantillas:seedPlantillasRondas(),registros:[],asignaciones:[],asignacionesRecurrentes:[]};
       if(!rondas.asignaciones)rondas.asignaciones=[];
+      if(!rondas.asignacionesRecurrentes)rondas.asignacionesRecurrentes=[];
       LS.set('fscc_rondas',rondas);
       if(currentUser && document.getElementById('view-rondas') && document.getElementById('view-rondas').classList.contains('active')) renderRondas();
     });
@@ -5065,6 +5080,7 @@ function renderConfig(){
   renderMantConfig();
   renderTurnosHorarios();
   renderPlantillasRondaConfig();
+  renderRondasFijasConfig();
 }
 
 // ── Equipo CRUD ──
@@ -6571,11 +6587,39 @@ function eliminarPlantillaRonda(id){
   renderPlantillasRondaConfig();
 }
 
+function renderRondasFijasConfig(){
+  const el = document.getElementById('cfgRondasFijas');
+  if(!el) return;
+  const activas = rondas.asignacionesRecurrentes.filter(a=>a.activo);
+  if(!activas.length){
+    el.innerHTML = '<div style="font-size:12px;color:var(--text3);">Ninguna. Todas las rondas se asignan manualmente día a día, salvo que uses el 🔁 al asignar una.</div>';
+    return;
+  }
+  el.innerHTML = activas.map(a=>{
+    const p = rondas.plantillas.find(x=>x.id===a.plantillaId);
+    return `<div class="config-item" style="flex-wrap:wrap;gap:6px;">
+      <div style="flex:1;min-width:200px;font-size:12px;">🔁 ${a.operarioNombre} — <span style="color:var(--text2);">${p?p.nombre:'(plantilla eliminada)'}</span> <span style="color:var(--text3);">(${a.turno})</span></div>
+      <button class="btn btn-danger btn-sm" onclick="desactivarRondaFija('${a.id}')">✕ Desactivar</button>
+    </div>`;
+  }).join('');
+}
+
+function desactivarRondaFija(id){
+  const a = rondas.asignacionesRecurrentes.find(x=>x.id===id);
+  if(!a) return;
+  if(!confirm('¿Dejar de asignarle "'+(rondas.plantillas.find(p=>p.id===a.plantillaId)||{}).nombre+'" a '+a.operarioNombre+' todos los días?')) return;
+  a.activo = false;
+  audit('Ronda fija desactivada: '+a.operarioNombre, '', 'trazabilidad');
+  saveRondas();
+  renderRondasFijasConfig();
+}
+
 function loadRondas(){
-  rondas = LS.get('fscc_rondas') || {plantillas:seedPlantillasRondas(), registros:[], asignaciones:[]};
+  rondas = LS.get('fscc_rondas') || {plantillas:seedPlantillasRondas(), registros:[], asignaciones:[], asignacionesRecurrentes:[]};
   if(!rondas.plantillas || !rondas.plantillas.length) rondas.plantillas = seedPlantillasRondas();
   if(!rondas.registros) rondas.registros = [];
   if(!rondas.asignaciones) rondas.asignaciones = [];
+  if(!rondas.asignacionesRecurrentes) rondas.asignacionesRecurrentes = [];
 }
 
 function saveRondas(){
@@ -6648,12 +6692,14 @@ function renderRondaOperarioPanel(){
   const cont = document.getElementById('rondaOperarioPanel');
   const turno = getTurnoActivoNombre();
   const t = today();
+  const plantillas = rondasAplicablesHoy();
+  const idsYaCubiertos = new Set(plantillas.map(p=>p.id));
 
-  // Rondas asignadas explícitamente a este usuario por un Supervisor/Coordinador/Admin
+  // Rondas asignadas explícitamente a este usuario, una vez, por un Supervisor/Coordinador/Admin
   const asignadasPendientes = rondas.asignaciones.filter(a=>a.operarioUser===currentUser.user && a.fecha===t && !a.cumplida);
   let htmlAsignadas = '';
   if(asignadasPendientes.length){
-    htmlAsignadas = '<div style="font-size:12px;font-weight:600;color:var(--text3);margin:4px 0 8px;">📌 Rondas asignadas a vos</div>' +
+    htmlAsignadas = '<div style="font-size:12px;font-weight:600;color:var(--text3);margin:4px 0 8px;">📌 Rondas asignadas a vos hoy</div>' +
       asignadasPendientes.map(a=>{
         const p = rondas.plantillas.find(x=>x.id===a.plantillaId);
         if(!p) return '';
@@ -6669,12 +6715,45 @@ function renderRondaOperarioPanel(){
       }).join('') + '<div style="height:8px;"></div>';
   }
 
-  const plantillas = rondasAplicablesHoy();
-  if(!plantillas.length && !asignadasPendientes.length){
+  // Rondas fijas (se repiten todos los días) — no duplicar si ya está por sector
+  const recurrentesActivas = rondas.asignacionesRecurrentes.filter(a=>
+    a.operarioUser===currentUser.user && a.activo && !idsYaCubiertos.has(a.plantillaId)
+  );
+  let htmlRecurrentes = '';
+  if(recurrentesActivas.length){
+    htmlRecurrentes = '<div style="font-size:12px;font-weight:600;color:var(--text3);margin:4px 0 8px;">🔁 Rondas fijas asignadas a vos</div>' +
+      recurrentesActivas.map(a=>{
+        const p = rondas.plantillas.find(x=>x.id===a.plantillaId);
+        if(!p) return '';
+        const registro = rondas.registros.find(r=>r.plantillaId===p.id && r.fecha===t && r.turno===a.turno);
+        if(registro){
+          return `<div class="config-item" style="flex-direction:column;align-items:flex-start;gap:6px;">
+            <div style="display:flex;justify-content:space-between;width:100%;align-items:center;">
+              <div>
+                <div style="font-weight:600;font-size:14px;">✅ ${p.nombre}</div>
+                <div style="font-size:11px;color:var(--text3);">${p.codigo} · ${a.turno} · Completada a las ${fmtDatetime(registro.firmaTs).split(' ')[1]||''}</div>
+              </div>
+              <button class="btn btn-outline btn-sm" onclick="verDetalleRonda('${registro.id}')">Ver</button>
+            </div>
+          </div>`;
+        }
+        return `<div class="config-item" style="flex-direction:column;align-items:flex-start;gap:6px;border:1px solid var(--gold,#c4922a);">
+          <div style="display:flex;justify-content:space-between;width:100%;align-items:center;">
+            <div>
+              <div style="font-weight:600;font-size:14px;">🔁 ${p.nombre}</div>
+              <div style="font-size:11px;color:var(--text3);">${p.codigo} · ${p.sector} · ${a.turno} · Ronda fija</div>
+            </div>
+            <button class="btn btn-primary btn-sm" onclick="iniciarRonda('${p.id}')" ${a.turno===turno?'':'disabled'}>Iniciar ronda</button>
+          </div>
+        </div>`;
+      }).join('') + '<div style="height:8px;"></div>';
+  }
+
+  if(!plantillas.length && !asignadasPendientes.length && !recurrentesActivas.length){
     cont.innerHTML = '<div class="info-panel" style="font-size:12px;">No hay ninguna ronda de control configurada para tu sector todavía.</div>';
     return;
   }
-  cont.innerHTML = htmlAsignadas + plantillas.map(p=>{
+  cont.innerHTML = htmlAsignadas + htmlRecurrentes + plantillas.map(p=>{
     const registro = rondas.registros.find(r=>r.plantillaId===p.id && r.fecha===t && r.turno===turno);
     if(registro){
       return `<div class="config-item" style="flex-direction:column;align-items:flex-start;gap:6px;">
@@ -6825,6 +6904,7 @@ function openAsignarRondaModal(){
   selPl.innerHTML = rondas.plantillas.map(p=>`<option value="${p.id}">${p.nombre} (${p.codigo})</option>`).join('');
 
   document.getElementById('asigRondaFecha').value = today();
+  document.getElementById('asigRondaRecurrente').checked = false;
   onAsigRondaPlantillaChange();
   document.getElementById('modalAsignarRonda').classList.add('open');
 }
@@ -6840,10 +6920,32 @@ function guardarAsignacionRonda(){
   const plantillaId = document.getElementById('asigRondaPlantilla').value;
   const fecha = document.getElementById('asigRondaFecha').value || today();
   const turno = document.getElementById('asigRondaTurno').value;
+  const recurrente = document.getElementById('asigRondaRecurrente').checked;
   if(!operarioUser){ alert('Elegí un operario.'); return; }
   if(!plantillaId){ alert('Elegí una ronda.'); return; }
   const u = users.find(x=>x.user===operarioUser);
   const p = rondas.plantillas.find(x=>x.id===plantillaId);
+
+  if(recurrente){
+    // Si ya existe una asignación fija igual (misma persona+ronda+turno), no duplicar — solo reactivarla
+    let ar = rondas.asignacionesRecurrentes.find(x=>x.plantillaId===plantillaId && x.operarioUser===operarioUser && x.turno===turno);
+    if(ar){ ar.activo = true; }
+    else {
+      ar = {
+        id: 'arf_'+Date.now()+'_'+Math.floor(Math.random()*1000),
+        plantillaId, operarioUser, operarioNombre: u?u.nombre:operarioUser,
+        turno, activo:true, asignadoPor: currentUser.nombre, ts: nowISO()
+      };
+      rondas.asignacionesRecurrentes.push(ar);
+    }
+    audit('Ronda fija asignada a @'+operarioUser, (p?p.nombre:plantillaId)+' — todos los días — '+turno, 'trazabilidad');
+    saveRondas();
+    closeModal('modalAsignarRonda');
+    pushNotifPersonal(operarioUser, 'ronda_pendiente', '🔁 Te asignaron una ronda fija', (p?p.nombre:'')+' — todos los días ('+turno+')', null);
+    alert('Listo — de ahora en más, '+(u?u.nombre:operarioUser)+' va a ver esta ronda todos los días automáticamente.');
+    return;
+  }
+
   const a = {
     id: 'as_'+Date.now()+'_'+Math.floor(Math.random()*1000),
     plantillaId, operarioUser, operarioNombre: u?u.nombre:operarioUser,
