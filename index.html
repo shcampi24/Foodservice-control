@@ -5663,17 +5663,19 @@ function imprimirLotes(){
   </style></head><body>
   <h1>📦 Lotes recibidos — Sanatorio Parque</h1>
   <div class="sub">${fecha} · Generado por: ${currentUser?currentUser.nombre:'—'} · ${lista.length} lote(s)</div>
-  <table><thead><tr><th>Código</th><th>Insumo</th><th>Proveedor</th><th>Lote prov.</th><th>Sector</th><th>Cant.</th><th>Recepción</th><th>Vencimiento</th><th>Estado</th></tr></thead>
+  <table><thead><tr><th>Código</th><th>Insumo</th><th>Proveedor</th><th>Lote prov.</th><th>Sector</th><th>Cant.</th><th>Recepción</th><th>Vencimiento</th><th>Estado</th><th>Observaciones</th></tr></thead>
   <tbody>${lista.map(l=>{
     const prov = traz.proveedores.find(p=>p.id===l.proveedorId);
     const est = estadoLote(l);
     const estClase = est==='vencido'?'vencido':est==='porVencer'?'porVencer':'vigente';
     const estTexto = l.anulado ? 'Anulado' : est==='vencido'?'Vencido':est==='porVencer'?'Por vencer':'Vigente';
+    const obsTexto = l.anulado ? ('Motivo de anulación: '+l.anuladoMotivo+' (por '+l.anuladoPor+', '+fmtDatetime(l.anuladoTs)+')') : (l.observaciones||'—');
     return `<tr${l.anulado?' class="anulado"':''}>
       <td>${l.codigo}</td><td>${l.insumo}</td><td>${prov?prov.nombre:'—'}</td><td>${l.loteProveedor||'—'}</td>
       <td>${l.sector||'—'}</td><td>${l.cantidad||'—'} ${l.unidad||''}</td>
       <td>${l.fechaRecepcion||'—'}</td><td>${l.fechaVencimiento||'—'}</td>
       <td class="${l.anulado?'':estClase}">${estTexto}</td>
+      <td>${obsTexto}</td>
     </tr>`;
   }).join('')}</tbody></table>
   <div class="foot">Food Service Control Center · Sanatorio Parque — ${fecha}</div>
@@ -5804,12 +5806,15 @@ function imprimirProducciones(){
   </style></head><body>
   <h1>🍽 Producciones — Sanatorio Parque</h1>
   <div class="sub">${fecha} · Generado por: ${currentUser?currentUser.nombre:'—'} · ${lista.length} registro(s)</div>
-  <table><thead><tr><th>Fecha</th><th>Turno</th><th>Sector</th><th>Preparación</th><th>Responsable</th><th>Lotes usados</th></tr></thead>
+  <table><thead><tr><th>Fecha</th><th>Turno</th><th>Sector</th><th>Preparación</th><th>Responsable</th><th>Lotes usados</th><th>Estado</th><th>Observaciones</th></tr></thead>
   <tbody>${lista.map(p=>{
     const lotesTxt = (p.lotesUsados||[]).map(lid=>{const l=traz.lotes.find(x=>x.id===lid);return l?l.codigo:'';}).filter(Boolean).join(', ') || '—';
+    const obsTexto = p.anulado ? ('Motivo de anulación: '+p.anuladoMotivo+' (por '+p.anuladoPor+', '+fmtDatetime(p.anuladoTs)+')') : (p.observaciones||'—');
     return `<tr${p.anulado?' class="anulado"':''}>
-      <td>${p.fecha}</td><td>${p.turno}</td><td>${p.sector}</td><td>${p.preparacion}${p.anulado?' (ANULADA — '+p.anuladoMotivo+')':''}</td>
+      <td>${p.fecha}</td><td>${p.turno}</td><td>${p.sector}</td><td>${p.preparacion}</td>
       <td>${p.responsable||'—'}</td><td style="font-family:monospace;">${lotesTxt}</td>
+      <td style="${p.anulado?'color:#b02020;font-weight:700;text-decoration:none;':'color:#1a7a4a;'}">${p.anulado?'Anulada':'Activa'}</td>
+      <td>${obsTexto}</td>
     </tr>`;
   }).join('')}</tbody></table>
   <div class="foot">Food Service Control Center · Sanatorio Parque — ${fecha}</div>
@@ -6012,9 +6017,9 @@ function itemsDelDia(plantilla, turno){
 function renderRondas(){
   updateRondasBadge();
   if(!currentUser) return;
-  // Operario y Cubre solo hacen rondas. Supervisor hace rondas Y aprueba las de todos.
-  // Admin solo ve el historial/aprobación (no está asignado a un sector fijo para "hacer" una ronda).
-  const puedeHacerRondas = ['operario','cubre','supervisor'].includes(currentUser.rol);
+  // Operario, Cubre y Supervisor hacen rondas de campo. Admin también puede
+  // (para poder probarlas sin necesitar otro usuario), aunque no es su uso principal.
+  const puedeHacerRondas = ['operario','cubre','supervisor','admin'].includes(currentUser.rol);
   const puedeAprobar = ['supervisor','admin'].includes(currentUser.rol);
   document.getElementById('rondaOperarioPanel').style.display = puedeHacerRondas ? 'block' : 'none';
   document.getElementById('rondaHistorialPanel').style.display = puedeAprobar ? 'block' : 'none';
