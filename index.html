@@ -1424,6 +1424,13 @@ tbody td{padding:8px 10px;vertical-align:middle;}
         <label>Sector</label>
         <select id="plSector"></select>
       </div>
+      <div class="fg">
+        <label>¿Dónde quedan guardados los datos?</label>
+        <select id="plDestino">
+          <option value="rondas">Rondas (checklist general)</option>
+          <option value="haccp">HACCP/CAA (también aparece en Historial y Resumen HACCP)</option>
+        </select>
+      </div>
     </div>
 
     <div class="fg" style="margin-bottom:8px;">
@@ -6458,6 +6465,18 @@ function seedPlantillasRondas(){
       {id:'i15', texto:'Llaves de luz (control semanal)', dia:'lunes'},
       {id:'i16', texto:'Cables canal y luces de emergencia (semanal)', dia:'lunes', turno:'Tarde'},
     ]
+  },{
+    id: 'pl_haccp_diario',
+    codigo: 'HACCP-01',
+    nombre: 'Control HACCP diario — Cocina',
+    sector: 'Cocina Caliente',
+    destino: 'haccp',
+    items: [
+      {id:'h1', texto:'Cocción / Recalentamiento', tipo:'temp', limiteMin:74, limiteMax:null, unidad:'°C', pcc:'Cocción / Recalentamiento'},
+      {id:'h2', texto:'Mantenimiento en caliente (bandeja térmica)', tipo:'temp', limiteMin:60, limiteMax:null, unidad:'°C', pcc:'Mantenimiento en caliente'},
+      {id:'h3', texto:'Cámara / conservación en frío', tipo:'temp', limiteMin:null, limiteMax:8, unidad:'°C', pcc:'Conservación en frío'},
+      {id:'h4', texto:'Temperatura de servicio (al emplatar)', tipo:'temp', limiteMin:65, limiteMax:null, unidad:'°C', pcc:'Temperatura de servicio'},
+    ]
   }];
 }
 
@@ -6476,11 +6495,13 @@ function renderPlantillasRondaConfig(){
   }
   el.innerHTML = rondas.plantillas.map(p=>{
     const cantRegistros = rondas.registros.filter(r=>r.plantillaId===p.id).length;
+    const badgeHaccp = p.destino==='haccp' ? '<span class="badge" style="background:#fde8ff;color:#7a1a9a;border:1px solid #e0b0f0;">🌡 va a HACCP</span>' : '';
     return `<div class="config-item" style="flex-wrap:wrap;gap:8px;">
       <div style="flex:1;min-width:220px;">
         <div style="font-weight:600;font-size:13px;">${p.nombre} ${p.codigo?`<span style="font-family:var(--mono);font-size:11px;color:var(--text3);">${p.codigo}</span>`:''}</div>
         <div style="font-size:11px;color:var(--text3);margin-top:2px;">${p.sector} · ${p.items.length} ítem(s) · ${cantRegistros} ronda(s) registrada(s)</div>
       </div>
+      ${badgeHaccp}
       <button class="btn btn-outline btn-sm" onclick="openPlantillaModal('${p.id}')">Editar</button>
       <button class="btn btn-danger btn-sm" onclick="eliminarPlantillaRonda('${p.id}')">✕</button>
     </div>`;
@@ -6498,10 +6519,12 @@ function openPlantillaModal(id){
     document.getElementById('plNombre').value = p.nombre;
     document.getElementById('plCodigo').value = p.codigo||'';
     document.getElementById('plSector').value = p.sector;
+    document.getElementById('plDestino').value = p.destino||'rondas';
     _plantillaItemsEdit = p.items.map(it=>({...it}));
   } else {
     document.getElementById('plNombre').value = '';
     document.getElementById('plCodigo').value = '';
+    document.getElementById('plDestino').value = 'rondas';
     _plantillaItemsEdit = [];
   }
   renderPlItemsLista();
@@ -6512,7 +6535,7 @@ function agregarItemsDesdeTexto(){
   const texto = document.getElementById('plItemsTexto').value;
   const lineas = texto.split('\n').map(l=>l.trim()).filter(Boolean);
   lineas.forEach(linea=>{
-    _plantillaItemsEdit.push({ id:'it_'+Date.now()+'_'+Math.floor(Math.random()*10000), texto:linea, turno:'', dia:'' });
+    _plantillaItemsEdit.push({ id:'it_'+Date.now()+'_'+Math.floor(Math.random()*10000), texto:linea, turno:'', dia:'', tipo:'check', limiteMin:'', limiteMax:'', unidad:'°C', pcc:'' });
   });
   document.getElementById('plItemsTexto').value = '';
   renderPlItemsLista();
@@ -6524,48 +6547,74 @@ function renderPlItemsLista(){
     el.innerHTML = '<div style="font-size:12px;color:var(--text3);">Todavía no agregaste ítems.</div>';
     return;
   }
-  el.innerHTML = _plantillaItemsEdit.map((it,i)=>`
-    <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;background:var(--surface);border:.5px solid var(--border);border-radius:6px;padding:6px 8px;">
-      <input type="text" value="${it.texto.replace(/"/g,'&quot;')}" style="flex:1;min-width:140px;font-size:12px;border:none;background:transparent;" oninput="_plantillaItemsEdit[${i}].texto=this.value" />
-      <select style="font-size:11px;" onchange="_plantillaItemsEdit[${i}].turno=this.value">
-        <option value="" ${!it.turno?'selected':''}>Ambos turnos</option>
-        <option value="Mañana" ${it.turno==='Mañana'?'selected':''}>Solo Mañana</option>
-        <option value="Tarde" ${it.turno==='Tarde'?'selected':''}>Solo Tarde</option>
-      </select>
-      <select style="font-size:11px;" onchange="_plantillaItemsEdit[${i}].dia=this.value; renderPlItemsLista();">
-        <option value="" ${!it.dia?'selected':''}>Diario</option>
-        <option value="lunes" ${it.dia==='lunes'?'selected':''}>Solo lunes</option>
-        <option value="martes" ${it.dia==='martes'?'selected':''}>Solo martes</option>
-        <option value="miércoles" ${it.dia==='miércoles'?'selected':''}>Solo miércoles</option>
-        <option value="jueves" ${it.dia==='jueves'?'selected':''}>Solo jueves</option>
-        <option value="viernes" ${it.dia==='viernes'?'selected':''}>Solo viernes</option>
-        <option value="sábado" ${it.dia==='sábado'?'selected':''}>Solo sábado</option>
-        <option value="domingo" ${it.dia==='domingo'?'selected':''}>Solo domingo</option>
-      </select>
-      <button class="btn btn-ghost btn-sm" onclick="_plantillaItemsEdit.splice(${i},1); renderPlItemsLista();">✕</button>
-    </div>`).join('');
+  const pccOptions = Object.keys(HACCP_PCC_CONFIG);
+  el.innerHTML = _plantillaItemsEdit.map((it,i)=>{
+    if(it.tipo===undefined) it.tipo='check';
+    const esTemp = it.tipo==='temp';
+    return `<div style="display:flex;flex-direction:column;gap:6px;background:var(--surface);border:.5px solid var(--border);border-radius:6px;padding:8px;">
+      <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+        <input type="text" value="${it.texto.replace(/"/g,'&quot;')}" style="flex:1;min-width:140px;font-size:12px;border:none;background:transparent;" oninput="_plantillaItemsEdit[${i}].texto=this.value" />
+        <select style="font-size:11px;" onchange="_plantillaItemsEdit[${i}].tipo=this.value; renderPlItemsLista();">
+          <option value="check" ${!esTemp?'selected':''}>✓/✕ Check</option>
+          <option value="temp" ${esTemp?'selected':''}>🌡 Temperatura (número)</option>
+        </select>
+        <select style="font-size:11px;" onchange="_plantillaItemsEdit[${i}].turno=this.value">
+          <option value="" ${!it.turno?'selected':''}>Ambos turnos</option>
+          <option value="Mañana" ${it.turno==='Mañana'?'selected':''}>Solo Mañana</option>
+          <option value="Tarde" ${it.turno==='Tarde'?'selected':''}>Solo Tarde</option>
+        </select>
+        <select style="font-size:11px;" onchange="_plantillaItemsEdit[${i}].dia=this.value">
+          <option value="" ${!it.dia?'selected':''}>Diario</option>
+          <option value="lunes" ${it.dia==='lunes'?'selected':''}>Solo lunes</option>
+          <option value="martes" ${it.dia==='martes'?'selected':''}>Solo martes</option>
+          <option value="miércoles" ${it.dia==='miércoles'?'selected':''}>Solo miércoles</option>
+          <option value="jueves" ${it.dia==='jueves'?'selected':''}>Solo jueves</option>
+          <option value="viernes" ${it.dia==='viernes'?'selected':''}>Solo viernes</option>
+          <option value="sábado" ${it.dia==='sábado'?'selected':''}>Solo sábado</option>
+          <option value="domingo" ${it.dia==='domingo'?'selected':''}>Solo domingo</option>
+        </select>
+        <button class="btn btn-ghost btn-sm" onclick="_plantillaItemsEdit.splice(${i},1); renderPlItemsLista();">✕</button>
+      </div>
+      ${esTemp?`<div style="display:flex;gap:6px;flex-wrap:wrap;padding-left:4px;">
+        <input type="number" step="0.1" placeholder="Mínimo aceptable" value="${it.limiteMin||''}" style="width:130px;font-size:11px;" oninput="_plantillaItemsEdit[${i}].limiteMin=this.value" />
+        <input type="number" step="0.1" placeholder="Máximo aceptable" value="${it.limiteMax||''}" style="width:130px;font-size:11px;" oninput="_plantillaItemsEdit[${i}].limiteMax=this.value" />
+        <input type="text" placeholder="Unidad (°C)" value="${it.unidad||'°C'}" style="width:90px;font-size:11px;" oninput="_plantillaItemsEdit[${i}].unidad=this.value" />
+        <select style="font-size:11px;" onchange="_plantillaItemsEdit[${i}].pcc=this.value">
+          <option value="">Sin vincular a un PCC HACCP</option>
+          ${pccOptions.map(k=>`<option value="${k}" ${it.pcc===k?'selected':''}>${k}</option>`).join('')}
+        </select>
+      </div>`:''}
+    </div>`;
+  }).join('');
 }
 
 function guardarPlantillaRonda(){
   const nombre = document.getElementById('plNombre').value.trim();
   const codigo = document.getElementById('plCodigo').value.trim();
   const sector = document.getElementById('plSector').value;
+  const destino = document.getElementById('plDestino').value;
   if(!nombre){ alert('Ingresá un nombre para la plantilla.'); return; }
   if(!sector){ alert('Elegí un sector.'); return; }
   if(!_plantillaItemsEdit.length){ alert('Agregá al menos un ítem.'); return; }
-  // Limpiar campos turno/dia vacíos (undefined en vez de "") para que itemsDelDia los trate como "aplica siempre"
+  // Limpiar campos vacíos para que itemsDelDia/ejecución los traten como "no aplica restricción"
   const items = _plantillaItemsEdit.map(it=>({
-    id: it.id, texto: it.texto,
+    id: it.id, texto: it.texto, tipo: it.tipo||'check',
     ...(it.turno ? {turno: it.turno} : {}),
     ...(it.dia ? {dia: it.dia} : {}),
+    ...(it.tipo==='temp' ? {
+      limiteMin: it.limiteMin!==''&&it.limiteMin!=null ? parseFloat(it.limiteMin) : null,
+      limiteMax: it.limiteMax!==''&&it.limiteMax!=null ? parseFloat(it.limiteMax) : null,
+      unidad: it.unidad||'°C',
+      pcc: it.pcc||''
+    } : {}),
   }));
   if(plantillaEditId){
     const p = rondas.plantillas.find(x=>x.id===plantillaEditId);
     if(!p){ return; }
-    Object.assign(p, {nombre, codigo, sector, items});
+    Object.assign(p, {nombre, codigo, sector, destino, items});
     audit('Plantilla de ronda editada: '+nombre, sector, 'trazabilidad');
   } else {
-    rondas.plantillas.push({ id:'pl_'+Date.now()+'_'+Math.floor(Math.random()*10000), nombre, codigo, sector, items });
+    rondas.plantillas.push({ id:'pl_'+Date.now()+'_'+Math.floor(Math.random()*10000), nombre, codigo, sector, destino, items });
     audit('Plantilla de ronda creada: '+nombre, sector+' — '+items.length+' ítem(s)', 'trazabilidad');
   }
   saveRondas();
@@ -6787,9 +6836,13 @@ function iniciarRonda(plantillaId, asignacionId){
   const items = itemsDelDia(p, turno);
   _rondaEnCurso = {
     id: 'rd_'+Date.now()+'_'+Math.floor(Math.random()*1000),
-    plantillaId: p.id, codigo: p.codigo, nombre: p.nombre,
+    plantillaId: p.id, codigo: p.codigo, nombre: p.nombre, destino: p.destino||'rondas',
     fecha: today(), turno, sector: p.sector,
-    items: items.map(it=>({itemId:it.id, texto:it.texto, estado:null, motivo:'', hora:null})),
+    items: items.map(it=>({
+      itemId:it.id, texto:it.texto, estado:null, motivo:'', hora:null,
+      tipo: it.tipo||'check', valor:null,
+      ...(it.tipo==='temp' ? {limiteMin:it.limiteMin, limiteMax:it.limiteMax, unidad:it.unidad||'°C', pcc:it.pcc||''} : {})
+    })),
     responsable: currentUser.nombre, responsableUser: currentUser.user,
     asignacionId: asignacionId || null,
   };
@@ -6815,6 +6868,21 @@ function renderRondaItemsModal(){
   const cont = document.getElementById('rondaItemsCont');
   cont.innerHTML = _rondaEnCurso.items.map((it,i)=>{
     const bg = it.estado==='ok' ? 'var(--green-bg,#e8f5ee)' : it.estado==='mal' ? 'var(--red-bg,#fde8e8)' : 'var(--bg2)';
+    if(it.tipo==='temp'){
+      const rango = (it.limiteMin!=null&&it.limiteMax!=null) ? `entre ${it.limiteMin} y ${it.limiteMax}${it.unidad}`
+        : it.limiteMin!=null ? `≥ ${it.limiteMin}${it.unidad}`
+        : it.limiteMax!=null ? `≤ ${it.limiteMax}${it.unidad}` : 'sin límite definido';
+      return `<div style="background:${bg};border-radius:var(--r);padding:10px 12px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
+          <div style="font-size:13px;flex:1;">🌡 ${it.texto} <span style="font-size:10px;color:var(--text3);">(${rango})</span></div>
+          <div style="display:flex;align-items:center;gap:4px;flex-shrink:0;">
+            <input type="number" step="0.1" value="${it.valor!=null?it.valor:''}" placeholder="${it.unidad}" style="width:80px;font-size:13px;text-align:center;" onchange="marcarValorTemperatura(${i},this.value)" />
+          </div>
+        </div>
+        ${it.estado==='mal' ? `<textarea placeholder="Acción correctiva tomada..." style="margin-top:8px;width:100%;font-size:12px;" oninput="_rondaEnCurso.items[${i}].motivo=this.value">${it.motivo||''}</textarea>` : ''}
+        ${it.hora ? `<div style="font-size:10px;color:var(--text3);margin-top:4px;">Medido a las ${it.hora}</div>` : ''}
+      </div>`;
+    }
     return `<div style="background:${bg};border-radius:var(--r);padding:10px 12px;">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
         <div style="font-size:13px;flex:1;">${it.texto}</div>
@@ -6851,6 +6919,17 @@ function renderRondaItemsModal(){
   }
 }
 
+function marcarValorTemperatura(i, valorStr){
+  const it = _rondaEnCurso.items[i];
+  if(valorStr===''){ it.valor=null; it.estado=null; it.hora=null; renderRondaItemsModal(); return; }
+  const valor = parseFloat(valorStr);
+  it.valor = valor;
+  const dentroDeRango = (it.limiteMin==null||valor>=it.limiteMin) && (it.limiteMax==null||valor<=it.limiteMax);
+  it.estado = dentroDeRango ? 'ok' : 'mal';
+  it.hora = new Date().toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'});
+  renderRondaItemsModal();
+}
+
 function marcarItemRonda(i, val){
   const it = _rondaEnCurso.items[i];
   const yaEstaba = it.estado===val;
@@ -6881,6 +6960,27 @@ async function confirmarFirmaRonda(){
   }
   rondas.registros.unshift(_rondaEnCurso);
   audit('Ronda completada: '+_rondaEnCurso.nombre, _rondaEnCurso.codigo+' — '+_rondaEnCurso.sector+' — '+_rondaEnCurso.turno, 'trazabilidad');
+
+  // Si la plantilla manda sus datos a HACCP, cada ítem de temperatura también
+  // queda como un registro HACCP normal — aparece en Historial y Resumen HACCP.
+  if(_rondaEnCurso.destino==='haccp'){
+    _rondaEnCurso.items.filter(it=>it.tipo==='temp' && it.pcc && it.valor!=null).forEach(it=>{
+      haccpLogs.unshift({
+        id: Date.now()+Math.random(),
+        pcc: it.pcc, sector: _rondaEnCurso.sector, operario: _rondaEnCurso.responsable,
+        turno: _rondaEnCurso.turno, fecha: _rondaEnCurso.fecha, hora: nowISO(),
+        valor: it.valor, unidad: it.unidad||'°C',
+        conformidad: it.estado==='ok' ? 'conforme' : 'no-conforme',
+        equipoMed: it.texto, accionCorrectiva: it.motivo||'', obs: 'Cargado desde Rondas: '+_rondaEnCurso.nombre,
+        registradoPor: currentUser.nombre
+      });
+      if(it.estado==='mal'){
+        pushNotif('incident','⚠ No conformidad HACCP',`${it.pcc} — ${_rondaEnCurso.sector} / ${currentUser.nombre} (${it.valor}${it.unidad||'°C'})`,null);
+      }
+    });
+    saveHaccp();
+  }
+
   saveRondas();
   if(_rondaRelojInterval) clearInterval(_rondaRelojInterval);
   closeModal('modalFirmaRonda');
@@ -6988,7 +7088,7 @@ function verDetalleRonda(id){
   document.getElementById('rondaDetalleSub').textContent = r.codigo+' · '+r.sector+' · '+r.fecha+' · '+r.turno;
   document.getElementById('rondaDetalleItems').innerHTML = r.items.map(it=>`
     <div style="display:flex;justify-content:space-between;gap:8px;font-size:12px;padding:6px 10px;background:var(--bg2);border-radius:6px;">
-      <div>${it.estado==='ok'?'✅':'⚠️'} ${it.texto}${it.motivo?' — <em style="color:var(--text3)">'+it.motivo+'</em>':''}</div>
+      <div>${it.estado==='ok'?'✅':'⚠️'} ${it.texto}${it.tipo==='temp'&&it.valor!=null?' — <strong>'+it.valor+' '+(it.unidad||'°C')+'</strong>':''}${it.motivo?' — <em style="color:var(--text3)">'+it.motivo+'</em>':''}</div>
       <div style="color:var(--text3);flex-shrink:0;">${it.hora||''}</div>
     </div>`).join('');
   let firmaHtml = `Firmado por <strong>${r.responsable}</strong> (@${r.responsableUser}) el ${fmtDatetime(r.firmaTs)}.`;
@@ -7068,10 +7168,11 @@ function imprimirRonda(id){
     <div><b>Turno</b>${r.turno}</div>
     <div><b>Sector</b>${r.sector}</div>
   </div>
-  <table><thead><tr><th>Ítem</th><th>Hora</th><th>Estado</th><th>Observación</th></tr></thead>
+  <table><thead><tr><th>Ítem</th><th>Hora</th><th>Valor</th><th>Estado</th><th>Observación</th></tr></thead>
   <tbody>${r.items.map(it=>`<tr>
     <td>${it.texto}</td>
     <td>${it.hora||'—'}</td>
+    <td>${it.tipo==='temp'&&it.valor!=null?(it.valor+' '+(it.unidad||'°C')):'—'}</td>
     <td class="${it.estado==='ok'?'ok':'bad'}">${it.estado==='ok'?'✓ Aceptable':'✗ Deficiente'}</td>
     <td>${it.motivo||'—'}</td>
   </tr>`).join('')}</tbody></table>
