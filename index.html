@@ -1118,6 +1118,7 @@ tbody td{padding:8px 10px;vertical-align:middle;}
     <button class="haccp-subtab" id="trazTabProducciones" onclick="switchTrazTab('producciones',this)">🍽 Producciones</button>
     <button class="haccp-subtab" id="trazTabBuscar" onclick="switchTrazTab('buscar',this)">🔎 Buscar trazabilidad</button>
     <button class="haccp-subtab" id="trazTabNC" onclick="switchTrazTab('nc',this)">⚠ No Conformidades</button>
+    <button class="haccp-subtab" id="trazTabPrep" onclick="switchTrazTab('prep',this)">🍽 Preparaciones</button>
     <button class="haccp-subtab" id="trazTabProveedores" onclick="switchTrazTab('proveedores',this)">🏭 Proveedores</button>
   </div>
   <div style="background:var(--surface);border:.5px solid var(--border-light);border-top:none;border-radius:0 0 var(--rl) var(--rl);padding:0.85rem 1.25rem 1rem;margin-bottom:1rem;">
@@ -1187,6 +1188,28 @@ tbody td{padding:8px 10px;vertical-align:middle;}
         </div>
       </div>
       <div id="trazListadoNC"></div>
+    </div>
+
+    <!-- PREPARACIONES -->
+    <div id="trazPanelPrep" style="display:none;">
+      <div class="toolbar" style="margin-bottom:1rem;flex-wrap:wrap;gap:6px;">
+        <div class="toolbar-l" style="flex-wrap:wrap;gap:6px;">
+          <select class="flt" id="prepFiltroMenu" onchange="renderTrazPrep()">
+            <option value="">Todos los menús</option>
+          </select>
+          <select class="flt" id="prepFiltroTipo" onchange="renderTrazPrep()">
+            <option value="">Almuerzo / Cena / Especial</option>
+            <option value="almuerzo">Almuerzo</option>
+            <option value="cena">Cena</option>
+            <option value="especial">Especial</option>
+          </select>
+          <input type="text" class="flt" id="prepBuscar" placeholder="Buscar plato o ingrediente..." oninput="renderTrazPrep()" />
+        </div>
+        <div class="toolbar-r">
+          <button class="btn btn-primary" onclick="openPrepModal()">+ Nueva preparación</button>
+        </div>
+      </div>
+      <div id="trazListadoPrep"></div>
     </div>
 
     <!-- PROVEEDORES -->
@@ -1263,6 +1286,12 @@ tbody td{padding:8px 10px;vertical-align:middle;}
     <button class="modal-close" onclick="closeModal('modalProduccion')">✕</button>
     <div class="modal-title" style="margin-bottom:4px;">🍽 Nueva producción</div>
     <div class="modal-sub" style="margin-bottom:14px;font-size:11px;">Registrá qué se cocinó y con qué lotes — es lo que permite rastrear un insumo hasta el plato.</div>
+    <div class="fg" style="margin-bottom:10px;">
+      <label>Elegir del catálogo (opcional — completa el nombre solo)</label>
+      <select id="prodPrepCatalogo" onchange="onProdPrepCatalogoChange()">
+        <option value="">— Escribir manualmente —</option>
+      </select>
+    </div>
     <div class="form-grid" style="margin-bottom:10px;">
       <div class="fg">
         <label>Preparación</label>
@@ -1285,6 +1314,7 @@ tbody td{padding:8px 10px;vertical-align:middle;}
         <input type="text" id="prodResponsable" placeholder="Nombre" />
       </div>
     </div>
+    <div id="prodRecetaRef" style="display:none;margin-bottom:10px;"></div>
     <div class="fg" style="margin-bottom:10px;">
       <label>Lotes utilizados (elegí los insumos que usaste)</label>
       <div id="prodLotesCheck" style="display:flex;flex-direction:column;gap:6px;max-height:220px;overflow-y:auto;margin-top:4px;padding:8px;background:var(--bg);border:.5px solid var(--border);border-radius:var(--r);"></div>
@@ -1325,6 +1355,49 @@ tbody td{padding:8px 10px;vertical-align:middle;}
       <button class="btn btn-ghost" onclick="closeModal('modalProveedor')">Cancelar</button>
       <button class="btn btn-primary" onclick="guardarProveedor()">Guardar proveedor</button>
     </div>
+  </div>
+</div>
+
+<!-- ══ MODAL: NUEVA / EDITAR PREPARACIÓN ══ -->
+<div class="modal-bg" id="modalPrep" onclick="handleModalClick(event,'modalPrep')">
+  <div class="modal-box wide">
+    <button class="modal-close" onclick="closeModal('modalPrep')">✕</button>
+    <div class="modal-title" id="prepModalTitle" style="margin-bottom:14px;">🍽 Nueva preparación</div>
+    <div class="form-grid" style="margin-bottom:10px;">
+      <div class="fg">
+        <label>Nombre del plato</label>
+        <input type="text" id="prepNombre" placeholder="Ej: ESTOFADO DE POLLO" />
+      </div>
+      <div class="fg">
+        <label>Menú</label>
+        <input type="text" id="prepMenu" placeholder="Ej: Menu 1" />
+      </div>
+      <div class="fg">
+        <label>Tipo</label>
+        <select id="prepTipo">
+          <option value="almuerzo">Almuerzo</option>
+          <option value="cena">Cena</option>
+          <option value="especial">Especial</option>
+        </select>
+      </div>
+    </div>
+    <label style="font-size:12px;font-weight:600;color:var(--text2);display:block;margin-bottom:6px;">Ingredientes (peso neto / FC / peso bruto por porción)</label>
+    <div id="prepIngredientesLista" style="display:flex;flex-direction:column;gap:6px;max-height:280px;overflow-y:auto;margin-bottom:10px;padding:8px;background:var(--bg);border:.5px solid var(--border);border-radius:var(--r);"></div>
+    <button class="btn btn-outline btn-sm" style="margin-bottom:14px;" onclick="agregarIngredientePrep()">+ Agregar ingrediente</button>
+    <div class="form-actions">
+      <button class="btn btn-ghost" onclick="closeModal('modalPrep')">Cancelar</button>
+      <button class="btn btn-primary" onclick="guardarPrep()">Guardar preparación</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ MODAL: VER RECETA (solo lectura) ══ -->
+<div class="modal-bg" id="modalPrepVer" onclick="handleModalClick(event,'modalPrepVer')">
+  <div class="modal-box" style="max-width:480px;">
+    <button class="modal-close" onclick="closeModal('modalPrepVer')">✕</button>
+    <div class="modal-title" id="prepVerTitulo" style="margin-bottom:2px;">🍽 Receta</div>
+    <div class="modal-sub" id="prepVerSub" style="margin-bottom:12px;"></div>
+    <div id="prepVerBody"></div>
   </div>
 </div>
 
@@ -2100,10 +2173,10 @@ async function loadDataFromFirebase(){
   try{
     showSyncStatus('⏳ Sincronizando...','amber');
     // Carga inicial: traer todos los datos de Firebase de una vez
-    const [fbUsers,fbCfg,fbTasks,fbAudit,fbNotif,fbHaccp,fbMant,fbTraz,fbRondas]=await Promise.all([
+    const [fbUsers,fbCfg,fbTasks,fbAudit,fbNotif,fbHaccp,fbMant,fbTraz,fbRondas,fbCatalogo]=await Promise.all([
       fbLoad('fscc_users'), fbLoad('fscc_cfg'), fbLoad('fscc_tasks'),
       fbLoad('fscc_audit'), fbLoad('fscc_notif'), fbLoad('fscc_haccp'), fbLoad('fscc_mant'),
-      fbLoad('fscc_traz'), fbLoad('fscc_rondas')
+      fbLoad('fscc_traz'), fbLoad('fscc_rondas'), fbLoad('fscc_catalogo')
     ]);
 
     // Regla: si Firebase tiene datos, SIEMPRE ganan sobre localStorage
@@ -2138,6 +2211,7 @@ async function loadDataFromFirebase(){
     if(fbMant){mantSolicitudes=fbMant;LS.set('fscc_mant',mantSolicitudes);}
     if(fbTraz){traz=fbTraz;if(!traz.proveedores)traz.proveedores=[];if(!traz.lotes)traz.lotes=[];if(!traz.producciones)traz.producciones=[];if(!traz.noConformidades)traz.noConformidades=[];LS.set('fscc_traz',traz);}
     if(fbRondas){rondas=fbRondas;if(!rondas.plantillas||!rondas.plantillas.length)rondas.plantillas=seedPlantillasRondas();if(!rondas.registros)rondas.registros=[];if(!rondas.asignaciones)rondas.asignaciones=[];if(!rondas.asignacionesRecurrentes)rondas.asignacionesRecurrentes=[];LS.set('fscc_rondas',rondas);}
+    if(fbCatalogo){catalogo=fbCatalogo;if(!catalogo.preparaciones||!catalogo.preparaciones.length)catalogo.preparaciones=seedCatalogoPreparaciones();LS.set('fscc_catalogo',catalogo);}
 
     // Capacitaciones
     const fbCap = await fbLoad('fscc_cap');
@@ -2196,6 +2270,13 @@ async function loadDataFromFirebase(){
       if(!rondas.asignacionesRecurrentes)rondas.asignacionesRecurrentes=[];
       LS.set('fscc_rondas',rondas);
       if(currentUser && document.getElementById('view-rondas') && document.getElementById('view-rondas').classList.contains('active')) renderRondas();
+    });
+    fbWatch('fscc_catalogo',(val)=>{
+      if(_localSaveInProgress)return;
+      catalogo=val||{preparaciones:seedCatalogoPreparaciones()};
+      if(!catalogo.preparaciones||!catalogo.preparaciones.length)catalogo.preparaciones=seedCatalogoPreparaciones();
+      LS.set('fscc_catalogo',catalogo);
+      if(currentUser && document.getElementById('view-trazabilidad') && document.getElementById('view-trazabilidad').classList.contains('active')) renderTraz();
     });
     fbWatch('fscc_cap',(val)=>{
       if(_localSaveInProgress)return;
@@ -2547,6 +2628,7 @@ function loadData(){
   loadMant();
   loadTraz();
   loadRondas();
+  loadCatalogo();
   // Sincronizar con Firebase
   if(window._fbReady){
     loadDataFromFirebase();
@@ -2559,7 +2641,7 @@ async function saveAll(){
   // Guardar local primero (inmediato)
   LS.set('fscc_cfg',cfg);LS.set('fscc_tasks',tasks);
   LS.set('fscc_users',users);LS.set('fscc_audit',auditLog);
-  LS.set('fscc_notif',notifications);saveHaccp();saveMant();saveTraz();saveRondas();
+  LS.set('fscc_notif',notifications);saveHaccp();saveMant();saveTraz();saveRondas();saveCatalogo();
   // Luego sincronizar con Firebase
   showSyncStatus('⏳ Guardando...','amber');
   // Flag: bloquear listeners entrantes mientras guardamos
@@ -2571,7 +2653,7 @@ async function saveAll(){
       fbSave('fscc_users',users), fbSave('fscc_audit',auditLog),
       fbSave('fscc_notif',notifications),
       fbSave('fscc_haccp',haccpLogs), fbSave('fscc_mant',mantSolicitudes),
-      fbSave('fscc_traz',traz), fbSave('fscc_rondas',rondas)
+      fbSave('fscc_traz',traz), fbSave('fscc_rondas',rondas), fbSave('fscc_catalogo',catalogo)
     ]);
     showSyncStatus('☁ Guardado','green');
   }catch(e){
@@ -5736,6 +5818,188 @@ function saveTraz(){
   fbSave('fscc_traz', traz).catch(()=>{});
 }
 
+// ═══════════════════════════════════════════════════
+//  CATÁLOGO DE PREPARACIONES (Menú Invierno 2026, FO-CO-02)
+// ═══════════════════════════════════════════════════
+// catalogo.preparaciones: [{id, menu, tipo, nombre, ingredientes:[{grupo,nombre,pesoNeto,fc,pesoBruto}]}]
+let catalogo = {preparaciones:[]};
+let catEditId = null;
+let _catIngredientesEdit = [];
+
+function seedCatalogoPreparaciones(){
+  return [
+    {id:'prep_1',menu:"Menu 1",tipo:"almuerzo",nombre:"ESTOFADO DE POLLO",ingredientes:[{grupo:null,nombre:"Fideos  tirabuzon",pesoNeto:"70.0",fc:"1.0",pesoBruto:"33.0"},{grupo:null,nombre:"Cebolla",pesoNeto:"25.0",fc:"1.2",pesoBruto:"33.0"},{grupo:null,nombre:"Pimiento",pesoNeto:"20.0",fc:"1.2",pesoBruto:"33.0"},{grupo:null,nombre:"Zanahoria",pesoNeto:"100.0",fc:"1.1",pesoBruto:"33.0"},{grupo:null,nombre:"Tomate triturado",pesoNeto:"35.0",fc:"1.0",pesoBruto:"33.0"},{grupo:null,nombre:"Pollo cubo",pesoNeto:"100.0",fc:"1.0",pesoBruto:"33.0"},{grupo:null,nombre:"Aceite",pesoNeto:"6.0",fc:"1.0",pesoBruto:"33.0"}]},
+    {id:'prep_2',menu:"Menu 1",tipo:"cena",nombre:"ALBONDIGAS SALSEADAS CON PURE MIXTO",ingredientes:[{grupo:"Albondigas",nombre:"carne picada",pesoNeto:"150.0",fc:"1.18",pesoBruto:"177.0"},{grupo:"Albondigas",nombre:"huevo",pesoNeto:"15.0",fc:"1.0",pesoBruto:"15.0"},{grupo:"Albondigas",nombre:"pan rallado",pesoNeto:"30.0",fc:"1.0",pesoBruto:"30.0"},{grupo:"Albondigas",nombre:"Tomate triturado",pesoNeto:"40.0",fc:"1.0",pesoBruto:"40.0"},{grupo:"Albondigas",nombre:"cebolla",pesoNeto:"15.0",fc:"1.2",pesoBruto:"18.0"},{grupo:"Pure  mixto",nombre:"Papas",pesoNeto:"150.0",fc:"1.4",pesoBruto:"210.0"},{grupo:"Pure  mixto",nombre:"Calabaza",pesoNeto:"100.0",fc:"1.66",pesoBruto:"166.0"},{grupo:"Pure  mixto",nombre:"Aceite",pesoNeto:"10.0",fc:"1.0",pesoBruto:"10.0"},{grupo:"Pure  mixto",nombre:"Leche",pesoNeto:"30.0",fc:"1.0",pesoBruto:"30.0"}]},
+    {id:'prep_3',menu:"Menu 2",tipo:"almuerzo",nombre:"BIFES A LA CRIOLLA. PAPAS AL HORNO.",ingredientes:[{grupo:"Bifes a la criolla",nombre:"bife de cuadril",pesoNeto:"150.0",fc:"1.3",pesoBruto:"195.0"},{grupo:"Bifes a la criolla",nombre:"tomate",pesoNeto:"30.0",fc:"1.2",pesoBruto:"36.0"},{grupo:"Bifes a la criolla",nombre:"cebolla",pesoNeto:"30.0",fc:"1.2",pesoBruto:"36.0"},{grupo:"Bifes a la criolla",nombre:"pimiento",pesoNeto:"5.0",fc:"1.2",pesoBruto:"6.0"},{grupo:"Bifes a la criolla",nombre:"vino tinto",pesoNeto:"15.0",fc:"1.0",pesoBruto:"15.0"},{grupo:"Papas al horno",nombre:"Papa",pesoNeto:"250.0",fc:"1.4",pesoBruto:"15.0"},{grupo:"Papas al horno",nombre:"Aceite",pesoNeto:"10.0",fc:"1.0",pesoBruto:"15.0"}]},
+    {id:'prep_4',menu:"Menu 2",tipo:"cena",nombre:"SUPREMA. SOUFFLE DE CALABAZA, QUESO Y CHOCLO",ingredientes:[{grupo:null,nombre:"suprema",pesoNeto:"160.0",fc:"1.0",pesoBruto:"160.0"},{grupo:null,nombre:"aceite",pesoNeto:"5.0",fc:"1.0",pesoBruto:"5.0"},{grupo:"Terrina",nombre:"calabaza",pesoNeto:"150.0",fc:"1.1",pesoBruto:"165.0"},{grupo:"Terrina",nombre:"Choclo",pesoNeto:"10.0",fc:"1.0",pesoBruto:"10.0"},{grupo:"Terrina",nombre:"Cloclo cremoso",pesoNeto:"20.0",fc:"1.0",pesoBruto:"20.0"},{grupo:"Terrina",nombre:"Queso en barra",pesoNeto:"25.0",fc:"1.0",pesoBruto:"25.0"},{grupo:"Terrina",nombre:"Leche",pesoNeto:"50.0",fc:"1.0",pesoBruto:"50.0"},{grupo:"Terrina",nombre:"Manteca",pesoNeto:"5.0",fc:"1.0",pesoBruto:"5.0"},{grupo:"Terrina",nombre:"fécula de maíz",pesoNeto:"5.0",fc:"1.0",pesoBruto:"5.0"},{grupo:"Terrina",nombre:"Huevo",pesoNeto:"50.0",fc:"1.0",pesoBruto:"50.0"}]},
+    {id:'prep_5',menu:"Menu 3",tipo:"almuerzo",nombre:"POLLO AL HORNO CON SALSA DE PUERROS CON ARROZ AMARILLO",ingredientes:[{grupo:null,nombre:"pollo",pesoNeto:"1 CUARTO",fc:"A",pesoBruto:"1 CUARTO"},{grupo:null,nombre:"aceite",pesoNeto:"5.0",fc:"1.0",pesoBruto:"5.0"},{grupo:null,nombre:"condimento",pesoNeto:"2.0",fc:"1.0",pesoBruto:"2.0"},{grupo:"Salsa de puerro",nombre:"Caldo",pesoNeto:"50.0",fc:"1.0",pesoBruto:"50.0"},{grupo:"Salsa de puerro",nombre:"manteca",pesoNeto:"5.0",fc:"1.0",pesoBruto:"5.0"},{grupo:"Salsa de puerro",nombre:"fécula",pesoNeto:"5.0",fc:"1.0",pesoBruto:"5.0"},{grupo:"Salsa de puerro",nombre:"Puerro/Verdeo",pesoNeto:"15.0",fc:"1.9",pesoBruto:"28.5"},{grupo:"Arroz amarillo",nombre:"arroz",pesoNeto:"50.0",fc:"1.0",pesoBruto:"50.0"},{grupo:"Arroz amarillo",nombre:"cebolla",pesoNeto:"20.0",fc:"1.2",pesoBruto:"24.0"},{grupo:"Arroz amarillo",nombre:"pimiento",pesoNeto:"10.0",fc:"1.2",pesoBruto:"12.0"},{grupo:"Arroz amarillo",nombre:"puerro",pesoNeto:"10.0",fc:"1.9",pesoBruto:"19.0"},{grupo:"Arroz amarillo",nombre:"condimento para arroz",pesoNeto:"3.0",fc:"1.0",pesoBruto:"3.0"},{grupo:"Arroz amarillo",nombre:"Queso de rallar",pesoNeto:"8.0",fc:"1.0",pesoBruto:"8.0"}]},
+    {id:'prep_6',menu:"Menu 3",tipo:"cena",nombre:"FIDEOS AL WOK CON TIRITAS DE CARNE",ingredientes:[{grupo:"Fideos al wok",nombre:"fideos",pesoNeto:"70.0",fc:"1.0",pesoBruto:"70.0"},{grupo:"Fideos al wok",nombre:"Cebolla juliana",pesoNeto:"30.0",fc:"1.2",pesoBruto:"36.0"},{grupo:"Fideos al wok",nombre:"Zanahoria juliana",pesoNeto:"25.0",fc:"1.1",pesoBruto:"27.500000000000004"},{grupo:"Fideos al wok",nombre:"Pimiento juliana",pesoNeto:"20.0",fc:"1.2",pesoBruto:"24.0"},{grupo:"Fideos al wok",nombre:"Berenjena juliana",pesoNeto:"25.0",fc:"1.1",pesoBruto:"27.500000000000004"},{grupo:"Fideos al wok",nombre:"Brotes de soja",pesoNeto:"20.0",fc:"1.3",pesoBruto:"26.0"},{grupo:"Fideos al wok",nombre:"aceite",pesoNeto:"5.0",fc:"1.0",pesoBruto:"5.0"},{grupo:"Fideos al wok",nombre:"Carne en tiras",pesoNeto:"100.0",fc:"1.3",pesoBruto:"130.0"}]},
+    {id:'prep_7',menu:"Menu 4",tipo:"almuerzo",nombre:"SUPREMA CON TERRINA DE QUESO, ZANAHORIA Y CALABAZA",ingredientes:[{grupo:null,nombre:"suprema",pesoNeto:"160.0",fc:"1.0",pesoBruto:"160.0"},{grupo:null,nombre:"aceite",pesoNeto:"5.0",fc:"1.0",pesoBruto:"5.0"},{grupo:"Terrina",nombre:"zanahoria",pesoNeto:"100.0",fc:"1.1",pesoBruto:"110.00000000000001"},{grupo:"Terrina",nombre:"Calabaza",pesoNeto:"100.0",fc:"1.45",pesoBruto:"145.0"},{grupo:"Terrina",nombre:"Queso en barra",pesoNeto:"25.0",fc:"1.0",pesoBruto:"25.0"},{grupo:"Terrina",nombre:"Leche",pesoNeto:"50.0",fc:"1.0",pesoBruto:"50.0"},{grupo:"Terrina",nombre:"Manteca",pesoNeto:"5.0",fc:"1.0",pesoBruto:"5.0"},{grupo:"Terrina",nombre:"fécula de maíz",pesoNeto:"5.0",fc:"1.0",pesoBruto:"5.0"},{grupo:"Terrina",nombre:"Huevo",pesoNeto:"50.0",fc:"1.0",pesoBruto:"50.0"}]},
+    {id:'prep_8',menu:"Menu 4",tipo:"cena",nombre:"PASTEL DE PAPAS CON ENSALADA",ingredientes:[{grupo:"Pastel de papas",nombre:"papa",pesoNeto:"200.0",fc:"1.4",pesoBruto:"280.0"},{grupo:"Pastel de papas",nombre:"cebolla",pesoNeto:"30.0",fc:"1.2",pesoBruto:"36.0"},{grupo:"Pastel de papas",nombre:"pimiento rojo",pesoNeto:"20.0",fc:"1.2",pesoBruto:"24.0"},{grupo:"Pastel de papas",nombre:"puerro",pesoNeto:"20.0",fc:"1.9",pesoBruto:"38.0"},{grupo:"Pastel de papas",nombre:"carne picada",pesoNeto:"100.0",fc:"1.18",pesoBruto:"118.0"},{grupo:"Pastel de papas",nombre:"huevos",pesoNeto:"25.0",fc:"1.0",pesoBruto:"25.0"},{grupo:"Pastel de papas",nombre:"leche",pesoNeto:"40.0",fc:"1.0",pesoBruto:"40.0"},{grupo:"Pastel de papas",nombre:"almidón de maíz",pesoNeto:"3.0",fc:"1.0",pesoBruto:"3.0"},{grupo:"Pastel de papas",nombre:"aceite",pesoNeto:"5.0",fc:"1.0",pesoBruto:"5.0"},{grupo:"Pastel de papas",nombre:"manteca",pesoNeto:"5.0",fc:"1.0",pesoBruto:"5.0"},{grupo:"Pastel de papas",nombre:"queso de rallar",pesoNeto:"10.0",fc:"1.0",pesoBruto:"10.0"},{grupo:"Ensalada mixta",nombre:"Lechuga",pesoNeto:"30.0",fc:"1.2",pesoBruto:"36.0"},{grupo:"Ensalada mixta",nombre:"Tomate",pesoNeto:"80.0",fc:"1.2",pesoBruto:"96.0"},{grupo:"Ensalada mixta",nombre:"Zanahoria",pesoNeto:"50.0",fc:"1.1",pesoBruto:"55.00000000000001"},{grupo:"Ensalada mixta",nombre:"Aceite individual",pesoNeto:"1.0",fc:"1.0",pesoBruto:"1.0"},{grupo:"Ensalada mixta",nombre:"Vinagre individual",pesoNeto:"1.0",fc:"1.0",pesoBruto:"1.0"}]},
+    {id:'prep_9',menu:"Menu 5",tipo:"almuerzo",nombre:"BONDIOLA DE CERDO BRASEADA. PURE DE PAPAS",ingredientes:[{grupo:null,nombre:"Bondiola de cerdo",pesoNeto:"170.0",fc:"1.3",pesoBruto:"221.0"},{grupo:null,nombre:"caldo",pesoNeto:"30.0",fc:"1.0",pesoBruto:"30.0"},{grupo:null,nombre:"vino blanco",pesoNeto:"10.0",fc:"1.0",pesoBruto:"10.0"},{grupo:null,nombre:"hierbas",pesoNeto:"2.0",fc:"1.0",pesoBruto:"2.0"},{grupo:null,nombre:"condimento",pesoNeto:"3.0",fc:"1.0",pesoBruto:"3.0"},{grupo:"Pure de papas",nombre:"Papas",pesoNeto:"250.0",fc:"1.4",pesoBruto:"350.0"},{grupo:"Pure de papas",nombre:"Aceite",pesoNeto:"10.0",fc:"1.0",pesoBruto:"10.0"},{grupo:"Pure de papas",nombre:"Leche",pesoNeto:"30.0",fc:"1.0",pesoBruto:"30.0"}]},
+    {id:'prep_10',menu:"Menu 5",tipo:"cena",nombre:"LASAGÑA DE RICOTA , POLLO Y ESPINACA CON SALSA FILETTO GRATINADA",ingredientes:[{grupo:null,nombre:"masa de crepes",pesoNeto:"120.0",fc:"1.0",pesoBruto:"120.0"},{grupo:"Relleno",nombre:"Acelga",pesoNeto:"150.0",fc:"1.9",pesoBruto:"285.0"},{grupo:"Relleno",nombre:"pollo",pesoNeto:"100.0",fc:"1.0",pesoBruto:"100.0"},{grupo:"Relleno",nombre:"ricota",pesoNeto:"50.0",fc:"1.0",pesoBruto:"50.0"},{grupo:"Relleno",nombre:"cebolla",pesoNeto:"40.0",fc:"1.2",pesoBruto:"48.0"},{grupo:"Relleno",nombre:"queso rallar",pesoNeto:"10.0",fc:"1.0",pesoBruto:"10.0"},{grupo:"Relleno",nombre:"leche",pesoNeto:"30.0",fc:"1.0",pesoBruto:"30.0"},{grupo:"Relleno",nombre:"almidón",pesoNeto:"1.0",fc:"1.0",pesoBruto:"1.0"},{grupo:"Relleno",nombre:"manteca",pesoNeto:"2.0",fc:"1.0",pesoBruto:"2.0"},{grupo:"Salsa fileto",nombre:"tomate triturado",pesoNeto:"60.0",fc:"1.0",pesoBruto:"60.0"},{grupo:"Salsa fileto",nombre:"cebolla",pesoNeto:"10.0",fc:"1.2",pesoBruto:"12.0"},{grupo:"Salsa fileto",nombre:"pimiento",pesoNeto:"5.0",fc:"1.2",pesoBruto:"6.0"},{grupo:"Salsa fileto",nombre:"Queso rallado",pesoNeto:"8.0",fc:"1.0",pesoBruto:"8.0"},{grupo:"Salsa fileto",nombre:"Queso cremoso",pesoNeto:"20.0",fc:"1.0",pesoBruto:"20.0"}]},
+    {id:'prep_11',menu:"Menu 6",tipo:"almuerzo",nombre:"HAMBURGUESAS NAPOLITANAS CON PAPAS AL HORNO",ingredientes:[{grupo:null,nombre:"Hamburguesas ( CARNE PICADA)",pesoNeto:"2.0",fc:"1.0",pesoBruto:"2.0"},{grupo:null,nombre:"queso barra",pesoNeto:"40.0",fc:"1.0",pesoBruto:"40.0"},{grupo:null,nombre:"Tomate triturado",pesoNeto:"40.0",fc:"1.0",pesoBruto:"40.0"},{grupo:null,nombre:"orégano",pesoNeto:"0.5",fc:"1.0",pesoBruto:"0.5"},{grupo:null,nombre:"aceite",pesoNeto:"3.0",fc:"1.0",pesoBruto:"3.0"},{grupo:"Papas al horno",nombre:"Papa",pesoNeto:"250.0",fc:"1.4",pesoBruto:"350.0"},{grupo:"Papas al horno",nombre:"Aceite",pesoNeto:"10.0",fc:"1.0",pesoBruto:"10.0"}]},
+    {id:'prep_12',menu:"Menu 6",tipo:"cena",nombre:"FRICASSE DE POLLO Y PAPAS",ingredientes:[{grupo:"Fricase de pollo",nombre:"Cebolla",pesoNeto:"20.0",fc:"1.2",pesoBruto:"24.0"},{grupo:"Fricase de pollo",nombre:"Zanahoria",pesoNeto:"80.0",fc:"1.1",pesoBruto:"88.0"},{grupo:"Fricase de pollo",nombre:"Pimiento",pesoNeto:"10.0",fc:"1.2",pesoBruto:"12.0"},{grupo:"Fricase de pollo",nombre:"Berenjena",pesoNeto:"70.0",fc:"1.2",pesoBruto:"84.0"},{grupo:"Fricase de pollo",nombre:"Zapallito",pesoNeto:"70.0",fc:"1.45",pesoBruto:"101.5"},{grupo:"Fricase de pollo",nombre:"Brotes",pesoNeto:"10.0",fc:"1.0",pesoBruto:"10.0"},{grupo:"Fricase de pollo",nombre:"Aceite",pesoNeto:"15.0",fc:"1.0",pesoBruto:"15.0"},{grupo:"Fricase de pollo",nombre:"Pollo cubo",pesoNeto:"130.0",fc:"1.3",pesoBruto:"169.0"},{grupo:"Fricase de pollo",nombre:"Papa cubo",pesoNeto:"100.0",fc:"1.4",pesoBruto:"140.0"},{grupo:"Fricase de pollo",nombre:"Calabaza cubo",pesoNeto:"100.0",fc:"1.66",pesoBruto:"166.0"}]},
+    {id:'prep_13',menu:"Menu 7",tipo:"almuerzo",nombre:"CHOWFAN DE CERDO",ingredientes:[{grupo:null,nombre:"Arroz",pesoNeto:"70.0",fc:"1.0",pesoBruto:"70.0"},{grupo:null,nombre:"Cebolla",pesoNeto:"20.0",fc:"1.2",pesoBruto:"24.0"},{grupo:null,nombre:"Zanahoria",pesoNeto:"70.0",fc:"1.1",pesoBruto:"77.0"},{grupo:null,nombre:"Pimiento",pesoNeto:"10.0",fc:"1.2",pesoBruto:"12.0"},{grupo:null,nombre:"Ajo",pesoNeto:"1.0",fc:"1.1",pesoBruto:"1.1"},{grupo:null,nombre:"zapallito",pesoNeto:"70.0",fc:"1.45",pesoBruto:"101.5"},{grupo:null,nombre:"Verdeo/puerro",pesoNeto:"10.0",fc:"1.9",pesoBruto:"19.0"},{grupo:null,nombre:"aceite",pesoNeto:"15.0",fc:"1.0",pesoBruto:"15.0"},{grupo:null,nombre:"Cerdo",pesoNeto:"130.0",fc:"1.3",pesoBruto:"169.0"}]},
+    {id:'prep_14',menu:"Menu 7",tipo:"cena",nombre:"MILANESA DE CARNE VACUNA CON PANACHE GRATINADO",ingredientes:[{grupo:null,nombre:"Milanesa de carne vacuna",pesoNeto:"170.0",fc:"1.0",pesoBruto:"170.0"},{grupo:null,nombre:"aceite",pesoNeto:"5.0",fc:"1.0",pesoBruto:"5.0"},{grupo:"Panaché gratinado",nombre:"calabaza",pesoNeto:"100.0",fc:"1.65",pesoBruto:"165.0"},{grupo:"Panaché gratinado",nombre:"zapallito",pesoNeto:"100.0",fc:"1.45",pesoBruto:"145.0"},{grupo:"Panaché gratinado",nombre:"zanahoria",pesoNeto:"80.0",fc:"1.1",pesoBruto:"88.0"},{grupo:"Panaché gratinado",nombre:"queso cremoso",pesoNeto:"30.0",fc:"1.0",pesoBruto:"30.0"},{grupo:"Salsa blanca",nombre:"harina/fécula",pesoNeto:"3.0",fc:"1.0",pesoBruto:"3.0"},{grupo:"Salsa blanca",nombre:"manteca/aceite",pesoNeto:"3.0",fc:"1.0",pesoBruto:"3.0"},{grupo:"Salsa blanca",nombre:"leche",pesoNeto:"30.0",fc:"1.0",pesoBruto:"30.0"}]},
+    {id:'prep_15',menu:"Menu 8",tipo:"almuerzo",nombre:"FILETTE DE POLLO CON SALSA  DE HIERBAS CON VERDURAS GRILLADAS",ingredientes:[{grupo:null,nombre:"Filete de pollo",pesoNeto:"170.0",fc:"1.0",pesoBruto:"170.0"},{grupo:"Salsa de puerro",nombre:"Caldo",pesoNeto:"50.0",fc:"1.0",pesoBruto:"50.0"},{grupo:"Salsa de puerro",nombre:"manteca",pesoNeto:"5.0",fc:"1.0",pesoBruto:"5.0"},{grupo:"Salsa de puerro",nombre:"fécula",pesoNeto:"5.0",fc:"1.0",pesoBruto:"5.0"},{grupo:"Salsa de puerro",nombre:"Puerro/Verdeo",pesoNeto:"15.0",fc:"1.9",pesoBruto:"28.5"},{grupo:"Vegetales grillados",nombre:"cebolla",pesoNeto:"30.0",fc:"1.2",pesoBruto:"36.0"},{grupo:"Vegetales grillados",nombre:"zapallito",pesoNeto:"100.0",fc:"1.45",pesoBruto:"145.0"},{grupo:"Vegetales grillados",nombre:"berenjenas",pesoNeto:"100.0",fc:"1.1",pesoBruto:"110.00000000000001"},{grupo:"Vegetales grillados",nombre:"zanahoria",pesoNeto:"70.0",fc:"1.1",pesoBruto:"77.0"},{grupo:"Vegetales grillados",nombre:"aceite",pesoNeto:"5.0",fc:"1.0",pesoBruto:"5.0"}]},
+    {id:'prep_16',menu:"Menu 8",tipo:"cena",nombre:"PASTEL DE PAPAS CON ENSALADA",ingredientes:[{grupo:"Pastel de papas",nombre:"papa",pesoNeto:"200.0",fc:"1.4",pesoBruto:"280.0"},{grupo:"Pastel de papas",nombre:"cebolla",pesoNeto:"30.0",fc:"1.2",pesoBruto:"36.0"},{grupo:"Pastel de papas",nombre:"pimiento rojo",pesoNeto:"20.0",fc:"1.2",pesoBruto:"24.0"},{grupo:"Pastel de papas",nombre:"puerro",pesoNeto:"20.0",fc:"1.9",pesoBruto:"38.0"},{grupo:"Pastel de papas",nombre:"carne picada",pesoNeto:"100.0",fc:"1.18",pesoBruto:"118.0"},{grupo:"Pastel de papas",nombre:"huevos",pesoNeto:"25.0",fc:"1.0",pesoBruto:"25.0"},{grupo:"Pastel de papas",nombre:"leche",pesoNeto:"40.0",fc:"1.0",pesoBruto:"40.0"},{grupo:"Pastel de papas",nombre:"almidón de maíz",pesoNeto:"3.0",fc:"1.0",pesoBruto:"3.0"},{grupo:"Pastel de papas",nombre:"aceite",pesoNeto:"5.0",fc:"1.0",pesoBruto:"5.0"},{grupo:"Pastel de papas",nombre:"manteca",pesoNeto:"5.0",fc:"1.0",pesoBruto:"5.0"},{grupo:"Pastel de papas",nombre:"queso de rallar",pesoNeto:"10.0",fc:"1.0",pesoBruto:"10.0"},{grupo:"Ensalada mixta",nombre:"Lechuga",pesoNeto:"30.0",fc:"1.2",pesoBruto:"36.0"},{grupo:"Ensalada mixta",nombre:"Tomate",pesoNeto:"80.0",fc:"1.2",pesoBruto:"96.0"},{grupo:"Ensalada mixta",nombre:"Zanahoria",pesoNeto:"50.0",fc:"1.1",pesoBruto:"55.00000000000001"},{grupo:"Ensalada mixta",nombre:"Aceite individual",pesoNeto:"1.0",fc:"1.0",pesoBruto:"1.0"},{grupo:"Ensalada mixta",nombre:"Vinagre individual",pesoNeto:"1.0",fc:"1.0",pesoBruto:"1.0"}]},
+    {id:'prep_17',menu:"Menu 9",tipo:"almuerzo",nombre:"MILANESA DE CARNE VACUNA NAPOLITANA CON CALABAZAS Y ZANAHORIAS GRILLADAS",ingredientes:[{grupo:null,nombre:"Milanesa de carne vacuna",pesoNeto:"170.0",fc:"1.0",pesoBruto:"170.0"},{grupo:null,nombre:"aceite",pesoNeto:"5.0",fc:"1.0",pesoBruto:"5.0"},{grupo:null,nombre:"Calabaza",pesoNeto:"150.0",fc:"1.66",pesoBruto:"249.0"},{grupo:null,nombre:"Zanahoria",pesoNeto:"100.0",fc:"1.1",pesoBruto:"110.00000000000001"},{grupo:null,nombre:"Aceite",pesoNeto:"10.0",fc:"1.0",pesoBruto:"10.0"}]},
+    {id:'prep_18',menu:"Menu 9",tipo:"cena",nombre:"ZAPALLITOS RELLENOS. PAPAS AL HORNO",ingredientes:[{grupo:"Zapallitos rellenos",nombre:"zapallitos medianos",pesoNeto:"2 UN",fc:"1.0",pesoBruto:"2 UN"},{grupo:"Zapallitos rellenos",nombre:"carne picada",pesoNeto:"100.0",fc:"1.18",pesoBruto:"118.0"},{grupo:"Zapallitos rellenos",nombre:"cebolla",pesoNeto:"20.0",fc:"1.2",pesoBruto:"24.0"},{grupo:"Zapallitos rellenos",nombre:"huevo",pesoNeto:"50.0",fc:"1.0",pesoBruto:"50.0"},{grupo:"Zapallitos rellenos",nombre:"leche",pesoNeto:"30.0",fc:"1.0",pesoBruto:"30.0"},{grupo:"Zapallitos rellenos",nombre:"almidón de maíz",pesoNeto:"5.0",fc:"1.0",pesoBruto:"5.0"},{grupo:"Zapallitos rellenos",nombre:"miga de pan",pesoNeto:"15.0",fc:"1.0",pesoBruto:"15.0"},{grupo:"Zapallitos rellenos",nombre:"Queso en barra",pesoNeto:"30.0",fc:"1.0",pesoBruto:"30.0"},{grupo:"Papas al horno",nombre:"Papa",pesoNeto:"250.0",fc:"1.4",pesoBruto:"350.0"},{grupo:"Papas al horno",nombre:"Aceite",pesoNeto:"10.0",fc:"1.0",pesoBruto:"10.0"}]},
+    {id:'prep_19',menu:"Menu 10",tipo:"almuerzo",nombre:"RISOTTO CON CARNE BRASEADA",ingredientes:[{grupo:"Risotto",nombre:"arroz",pesoNeto:"50.0",fc:"1.0",pesoBruto:"50.0"},{grupo:"Risotto",nombre:"caldo de vegetales",pesoNeto:"180.0",fc:"1.0",pesoBruto:"180.0"},{grupo:"Risotto",nombre:"vino blanco",pesoNeto:"20.0",fc:"1.0",pesoBruto:"20.0"},{grupo:"Risotto",nombre:"cebolla",pesoNeto:"25.0",fc:"1.2",pesoBruto:"30.0"},{grupo:"Risotto",nombre:"ajo",pesoNeto:"1.0",fc:"1.0",pesoBruto:"1.0"},{grupo:"Risotto",nombre:"pimiento",pesoNeto:"10.0",fc:"1.2",pesoBruto:"12.0"},{grupo:"Risotto",nombre:"Zanahoria",pesoNeto:"50.0",fc:"1.1",pesoBruto:"55.00000000000001"},{grupo:"Risotto",nombre:"zapallitos o zuccinis",pesoNeto:"50.0",fc:"1.45",pesoBruto:"72.5"},{grupo:"Risotto",nombre:"manteca",pesoNeto:"20.0",fc:"1.0",pesoBruto:"20.0"},{grupo:"Risotto",nombre:"condimento",pesoNeto:"2.0",fc:"1.0",pesoBruto:"2.0"},{grupo:"Risotto",nombre:"Carne en cubos",pesoNeto:"100.0",fc:"1.3",pesoBruto:"130.0"},{grupo:"Risotto",nombre:"Queso rallado",pesoNeto:"8.0",fc:"1.0",pesoBruto:"8.0"}]},
+    {id:'prep_20',menu:"Menu 10",tipo:"cena",nombre:"MILANESA DE CERDO CON TERRINA DE ZANAHORIA, CHOCLO Y QUESO",ingredientes:[{grupo:null,nombre:"Milanesa de Cerdo",pesoNeto:"150.0",fc:"1.0",pesoBruto:"150.0"},{grupo:null,nombre:"Aceite",pesoNeto:"5.0",fc:"1.0",pesoBruto:"5.0"},{grupo:"Terrina",nombre:"calabaza",pesoNeto:"150.0",fc:"1.1",pesoBruto:"165.0"},{grupo:"Terrina",nombre:"Choclo",pesoNeto:"10.0",fc:"1.0",pesoBruto:"10.0"},{grupo:"Terrina",nombre:"Cloclo cremoso",pesoNeto:"20.0",fc:"1.0",pesoBruto:"20.0"},{grupo:"Terrina",nombre:"Queso en barra",pesoNeto:"25.0",fc:"1.0",pesoBruto:"25.0"},{grupo:"Terrina",nombre:"Leche",pesoNeto:"50.0",fc:"1.0",pesoBruto:"50.0"},{grupo:"Terrina",nombre:"Manteca",pesoNeto:"5.0",fc:"1.0",pesoBruto:"5.0"},{grupo:"Terrina",nombre:"fécula de maíz",pesoNeto:"5.0",fc:"1.0",pesoBruto:"5.0"},{grupo:"Terrina",nombre:"Huevo",pesoNeto:"50.0",fc:"1.0",pesoBruto:"50.0"}]},
+    {id:'prep_21',menu:"Menu 1",tipo:"especial",nombre:"TARTA DE VERDURA CON ENSALADA",ingredientes:[{grupo:null,nombre:"masa de tarta",pesoNeto:"100.0",fc:"1.0",pesoBruto:"100.0"},{grupo:null,nombre:"acelga",pesoNeto:"150.0",fc:"1.66",pesoBruto:"249.0"},{grupo:null,nombre:"queso de rallar",pesoNeto:"25.0",fc:"1.0",pesoBruto:"25.0"},{grupo:null,nombre:"cebollas",pesoNeto:"15.0",fc:"1.2",pesoBruto:"18.0"},{grupo:null,nombre:"leche",pesoNeto:"50.0",fc:"1.0",pesoBruto:"50.0"},{grupo:null,nombre:"manteca",pesoNeto:"5.0",fc:"1.0",pesoBruto:"5.0"},{grupo:null,nombre:"harina",pesoNeto:"5.0",fc:"1.0",pesoBruto:"5.0"},{grupo:null,nombre:"huevo",pesoNeto:"50.0",fc:"1.0",pesoBruto:"50.0"},{grupo:"Ensalada",nombre:"Zanahoria",pesoNeto:"50.0",fc:"1.1",pesoBruto:"55.00000000000001"},{grupo:"Ensalada",nombre:"Repollo",pesoNeto:"50.0",fc:"1.1",pesoBruto:"55.00000000000001"},{grupo:"Ensalada",nombre:"Tomate",pesoNeto:"50.0",fc:"1.2",pesoBruto:"60.0"},{grupo:"Ensalada",nombre:"Aceite individual",pesoNeto:"1.0",fc:"1.0",pesoBruto:"1.0"},{grupo:"Ensalada",nombre:"Vinagre individual",pesoNeto:"1.0",fc:"1.0",pesoBruto:"1.0"}]},
+    {id:'prep_22',menu:"Menu 2",tipo:"especial",nombre:"PIZZA CON ENSALADA",ingredientes:[{grupo:null,nombre:"pre pizza",pesoNeto:"150.0",fc:"1.0",pesoBruto:"150.0"},{grupo:null,nombre:"queso barra",pesoNeto:"40.0",fc:"1.0",pesoBruto:"40.0"},{grupo:null,nombre:"jamón",pesoNeto:"25.0",fc:"1.0",pesoBruto:"25.0"},{grupo:null,nombre:"orégano",pesoNeto:"0.5",fc:"1.0",pesoBruto:"0.5"},{grupo:null,nombre:"huevo duro",pesoNeto:"15.0",fc:"1.0",pesoBruto:"15.0"},{grupo:null,nombre:"aceitunas",pesoNeto:"5.0",fc:"1.0",pesoBruto:"5.0"},{grupo:null,nombre:"aceite de oliva",pesoNeto:"3.0",fc:"1.0",pesoBruto:"3.0"},{grupo:"Ensalada",nombre:"Lechuga",pesoNeto:"30.0",fc:"1.2",pesoBruto:"36.0"},{grupo:"Ensalada",nombre:"Zanahoria",pesoNeto:"50.0",fc:"1.1",pesoBruto:"55.00000000000001"},{grupo:"Ensalada",nombre:"Tomate",pesoNeto:"100.0",fc:"1.2",pesoBruto:"120.0"},{grupo:"Ensalada",nombre:"Aceite individual",pesoNeto:"1.0",fc:"1.0",pesoBruto:"1.0"},{grupo:"Ensalada",nombre:"Vinagre individual",pesoNeto:"1.0",fc:"1.0",pesoBruto:"1.0"}]},
+    {id:'prep_23',menu:"Menu 3",tipo:"especial",nombre:"Polenta a la bologñesa",ingredientes:[{grupo:null,nombre:"Harina de maíz",pesoNeto:"70.0",fc:"1.0",pesoBruto:"70.0"},{grupo:null,nombre:"queso rallado",pesoNeto:"8.0",fc:"1.0",pesoBruto:"8.0"},{grupo:null,nombre:"tomate triturado",pesoNeto:"80.0",fc:"1.0",pesoBruto:"80.0"},{grupo:null,nombre:"cebolla",pesoNeto:"10.0",fc:"1.0",pesoBruto:"10.0"},{grupo:null,nombre:"carne picada",pesoNeto:"50.0",fc:"1.0",pesoBruto:"50.0"},{grupo:null,nombre:"queso cremoso",pesoNeto:"25.0",fc:"1.0",pesoBruto:"25.0"},{grupo:null,nombre:"aceite",pesoNeto:"5.0",fc:"1.0",pesoBruto:"5.0"}]},
+    {id:'prep_24',menu:"Menu 4",tipo:"especial",nombre:"GUISO DE LENTEJAS",ingredientes:[{grupo:null,nombre:"lentejas",pesoNeto:"70.0",fc:"1.0",pesoBruto:"70.0"},{grupo:null,nombre:"carne cortada a cuchillo",pesoNeto:"100.0",fc:"1.3",pesoBruto:"130.0"},{grupo:null,nombre:"papas",pesoNeto:"100.0",fc:"1.4",pesoBruto:"140.0"},{grupo:null,nombre:"zanahoria",pesoNeto:"50.0",fc:"1.1",pesoBruto:"55.00000000000001"},{grupo:null,nombre:"cebolla",pesoNeto:"30.0",fc:"1.2",pesoBruto:"36.0"},{grupo:null,nombre:"pimiento",pesoNeto:"15.0",fc:"1.2",pesoBruto:"18.0"},{grupo:null,nombre:"tomate triturado",pesoNeto:"120.0",fc:"1.0",pesoBruto:"120.0"}]},
+    {id:'prep_25',menu:"Menu 5",tipo:"especial",nombre:"TARTA DE CHOCLO Y QUESO",ingredientes:[{grupo:null,nombre:"Masa de tarta",pesoNeto:"100.0",fc:"1.0",pesoBruto:"100.0"},{grupo:null,nombre:"cebolla",pesoNeto:"25.0",fc:"1.2",pesoBruto:"30.0"},{grupo:null,nombre:"pimiento",pesoNeto:"10.0",fc:"1.2",pesoBruto:"12.0"},{grupo:null,nombre:"huevo",pesoNeto:"50.0",fc:"1.0",pesoBruto:"50.0"},{grupo:null,nombre:"choclo en grano",pesoNeto:"40.0",fc:"1.0",pesoBruto:"40.0"},{grupo:null,nombre:"choclo cremoso",pesoNeto:"40.0",fc:"1.0",pesoBruto:"40.0"},{grupo:null,nombre:"queso cremoso",pesoNeto:"50.0",fc:"1.0",pesoBruto:"50.0"},{grupo:"Salsa blanca",nombre:"leche",pesoNeto:"30.0",fc:"1.0",pesoBruto:"30.0"},{grupo:"Salsa blanca",nombre:"fecula o harina",pesoNeto:"3.0",fc:"1.0",pesoBruto:"3.0"},{grupo:"Salsa blanca",nombre:"manteca",pesoNeto:"3.0",fc:"1.0",pesoBruto:"3.0"},{grupo:"Ensalada",nombre:"Zanahoria",pesoNeto:"70.0",fc:"1.1",pesoBruto:"77.0"},{grupo:"Ensalada",nombre:"Tomate",pesoNeto:"70.0",fc:"1.2",pesoBruto:"84.0"},{grupo:"Ensalada",nombre:"Lechuga",pesoNeto:"30.0",fc:"1.2",pesoBruto:"36.0"}]},
+    {id:'prep_26',menu:"Menu 6",tipo:"especial",nombre:"TARTA CAPRESE CON ENSALADA",ingredientes:[{grupo:null,nombre:"Masa para tarta",pesoNeto:"100.0",fc:"1.0",pesoBruto:"100.0"},{grupo:null,nombre:"tomate",pesoNeto:"150.0",fc:"1.2",pesoBruto:"180.0"},{grupo:null,nombre:"queso barra",pesoNeto:"35.0",fc:"1.0",pesoBruto:"35.0"},{grupo:null,nombre:"huevo",pesoNeto:"50.0",fc:"1.0",pesoBruto:"50.0"},{grupo:null,nombre:"Crema de leche",pesoNeto:"15.0",fc:"1.0",pesoBruto:"15.0"},{grupo:null,nombre:"aceitunas negras",pesoNeto:"3.0",fc:"1.0",pesoBruto:"3.0"},{grupo:"Ensalada",nombre:"Zanahoria",pesoNeto:"30.0",fc:"1.1",pesoBruto:"33.0"},{grupo:"Ensalada",nombre:"Tomate",pesoNeto:"50.0",fc:"1.2",pesoBruto:"60.0"},{grupo:"Ensalada",nombre:"Lechuga",pesoNeto:"40.0",fc:"1.2",pesoBruto:"48.0"},{grupo:"Ensalada",nombre:"Aceite individual",pesoNeto:"1.0",fc:"1.0",pesoBruto:"1.0"},{grupo:"Ensalada",nombre:"Vinagre individual",pesoNeto:"1.0",fc:"1.0",pesoBruto:"1.0"}]},
+    {id:'prep_27',menu:"Menu 7",tipo:"especial",nombre:"3 EMPANADAS DE CARNE, JAMON Y QUESO, VERDURA CON ENSALADA",ingredientes:[{grupo:null,nombre:"3 empanadas",pesoNeto:"Ver FO CO 02 Cocina Suipacha",fc:"",pesoBruto:""},{grupo:"Ensalada",nombre:"Repollo",pesoNeto:"15.0",fc:"1.2",pesoBruto:"18.0"},{grupo:"Ensalada",nombre:"Zanahoria",pesoNeto:"40.0",fc:"1.1",pesoBruto:"44.0"},{grupo:"Ensalada",nombre:"Hojas verdes",pesoNeto:"15.0",fc:"1.2",pesoBruto:"18.0"},{grupo:"Ensalada",nombre:"Aceite individual",pesoNeto:"1.0",fc:"1.0",pesoBruto:"1.0"},{grupo:"Ensalada",nombre:"Vinagre individual",pesoNeto:"1.0",fc:"1.0",pesoBruto:"1.0"}]},
+    {id:'prep_28',menu:"Menu 8",tipo:"especial",nombre:"TARTA DE JAMÓN Y QUESO  ( con 1 tapa)  CON ENSALADA",ingredientes:[{grupo:null,nombre:"masa de tarta",pesoNeto:"50.0",fc:"1.0",pesoBruto:"50.0"},{grupo:null,nombre:"manteca",pesoNeto:"5.0",fc:"1.0",pesoBruto:"5.0"},{grupo:null,nombre:"harina",pesoNeto:"5.0",fc:"1.0",pesoBruto:"5.0"},{grupo:null,nombre:"leche",pesoNeto:"50.0",fc:"1.0",pesoBruto:"50.0"},{grupo:null,nombre:"huevos",pesoNeto:"50.0",fc:"1.0",pesoBruto:"50.0"},{grupo:null,nombre:"queso barra",pesoNeto:"60.0",fc:"1.0",pesoBruto:"60.0"},{grupo:null,nombre:"jamón",pesoNeto:"40.0",fc:"1.0",pesoBruto:"40.0"},{grupo:null,nombre:"condimento 2",pesoNeto:"2.0",fc:"1.0",pesoBruto:"2.0"},{grupo:null,nombre:"cebollas para caramelizar",pesoNeto:"40.0",fc:"1.2",pesoBruto:"48.0"},{grupo:"Ensalada",nombre:"Lechuga",pesoNeto:"30.0",fc:"1.2",pesoBruto:"36.0"},{grupo:"Ensalada",nombre:"Zanahoria",pesoNeto:"50.0",fc:"1.1",pesoBruto:"55.00000000000001"},{grupo:"Ensalada",nombre:"Tomate",pesoNeto:"100.0",fc:"1.2",pesoBruto:"120.0"},{grupo:"Ensalada",nombre:"Aceite individual",pesoNeto:"1.0",fc:"1.0",pesoBruto:"1.0"},{grupo:"Ensalada",nombre:"Vinagre individual",pesoNeto:"1.0",fc:"1.0",pesoBruto:"1.0"}]},
+    {id:'prep_29',menu:"Menu 9",tipo:"especial",nombre:"RAVIOLES CON SALSA MIXTA",ingredientes:[{grupo:null,nombre:"Ravioles super ( carne y verdura)",pesoNeto:"250.0",fc:"1.0",pesoBruto:""},{grupo:"Salsa filetto",nombre:"tomate triturado",pesoNeto:"50.0",fc:"1.0",pesoBruto:"50.0"},{grupo:"Salsa filetto",nombre:"Cebolla",pesoNeto:"10.0",fc:"1.2",pesoBruto:"12.0"},{grupo:"Salsa filetto",nombre:"Pimiento",pesoNeto:"5.0",fc:"1.2",pesoBruto:"6.0"},{grupo:"Salsa filetto",nombre:"Zanahoria",pesoNeto:"15.0",fc:"1.1",pesoBruto:"16.5"},{grupo:"Salsa blanca",nombre:"Leche",pesoNeto:"40.0",fc:"1.0",pesoBruto:"40.0"},{grupo:"Salsa blanca",nombre:"Manteca",pesoNeto:"3.0",fc:"1.0",pesoBruto:"3.0"},{grupo:"Salsa blanca",nombre:"Fecula",pesoNeto:"3.0",fc:"1.0",pesoBruto:"3.0"},{grupo:"Salsa blanca",nombre:"Queso rallado",pesoNeto:"8.0",fc:"1.0",pesoBruto:"8.0"}]},
+    {id:'prep_30',menu:"Menu 10",tipo:"especial",nombre:"TORTILLA DE PAPA, QUESO Y CEBOLLA. ENSALADA.",ingredientes:[{grupo:null,nombre:"papas",pesoNeto:"250.0",fc:"1.4",pesoBruto:"350.0"},{grupo:null,nombre:"cebolla de verdeo",pesoNeto:"20.0",fc:"1.9",pesoBruto:"38.0"},{grupo:null,nombre:"cebolla",pesoNeto:"20.0",fc:"1.2",pesoBruto:"24.0"},{grupo:null,nombre:"huevo",pesoNeto:"50.0",fc:"1.0",pesoBruto:"50.0"},{grupo:"Ensalada",nombre:"Hojas verdes",pesoNeto:"40.0",fc:"1.2",pesoBruto:"48.0"},{grupo:"Ensalada",nombre:"Tomate",pesoNeto:"100.0",fc:"1.2",pesoBruto:"120.0"}]},
+  ];
+}
+
+function loadCatalogo(){
+  catalogo = LS.get('fscc_catalogo') || {preparaciones: seedCatalogoPreparaciones()};
+  if(!catalogo.preparaciones || !catalogo.preparaciones.length) catalogo.preparaciones = seedCatalogoPreparaciones();
+}
+
+function saveCatalogo(){
+  LS.set('fscc_catalogo', catalogo);
+  fbSave('fscc_catalogo', catalogo).catch(()=>{});
+}
+
+function renderTrazPrep(){
+  const selMenu = document.getElementById('prepFiltroMenu');
+  if(selMenu && selMenu.options.length<=1){
+    const menus = [...new Set(catalogo.preparaciones.map(p=>p.menu))].sort();
+    selMenu.innerHTML = '<option value="">Todos los menús</option>' + menus.map(m=>`<option value="${m}">${m}</option>`).join('');
+  }
+  const filtroMenu = (document.getElementById('prepFiltroMenu')||{}).value || '';
+  const filtroTipo = (document.getElementById('prepFiltroTipo')||{}).value || '';
+  const busq = ((document.getElementById('prepBuscar')||{}).value || '').toLowerCase();
+  let lista = [...catalogo.preparaciones];
+  if(filtroMenu) lista = lista.filter(p=>p.menu===filtroMenu);
+  if(filtroTipo) lista = lista.filter(p=>p.tipo===filtroTipo);
+  if(busq) lista = lista.filter(p=>
+    p.nombre.toLowerCase().includes(busq) ||
+    p.ingredientes.some(i=>i.nombre.toLowerCase().includes(busq))
+  );
+  const el = document.getElementById('trazListadoPrep');
+  if(!lista.length){ el.innerHTML = '<div style="font-size:12px;color:var(--text3);padding:12px;">No hay preparaciones que coincidan con el filtro.</div>'; return; }
+  const tipoLabel = {almuerzo:'☀ Almuerzo', cena:'🌙 Cena', especial:'⭐ Especial'};
+  el.innerHTML = lista.map(p=>`
+    <div class="config-item" style="flex-wrap:wrap;gap:8px;">
+      <div style="flex:1;min-width:220px;">
+        <div style="font-weight:600;font-size:13px;">${p.nombre}</div>
+        <div style="font-size:11px;color:var(--text3);margin-top:2px;">${p.menu} · ${tipoLabel[p.tipo]||p.tipo} · ${p.ingredientes.length} ingrediente(s)</div>
+      </div>
+      <button class="btn btn-outline btn-sm" onclick="verPrep('${p.id}')">Ver receta</button>
+      <button class="btn btn-outline btn-sm" onclick="openPrepModal('${p.id}')">Editar</button>
+      <button class="btn btn-danger btn-sm" onclick="eliminarPrep('${p.id}')">✕</button>
+    </div>`).join('');
+}
+
+function verPrep(id){
+  const p = catalogo.preparaciones.find(x=>x.id===id);
+  if(!p) return;
+  const tipoLabel = {almuerzo:'☀ Almuerzo', cena:'🌙 Cena', especial:'⭐ Especial'};
+  document.getElementById('prepVerTitulo').textContent = '🍽 '+p.nombre;
+  document.getElementById('prepVerSub').textContent = p.menu+' · '+(tipoLabel[p.tipo]||p.tipo);
+  let grupoAnt = undefined;
+  let html = '<div style="display:flex;flex-direction:column;gap:4px;max-height:50vh;overflow-y:auto;">';
+  p.ingredientes.forEach(ing=>{
+    if(ing.grupo !== grupoAnt){
+      grupoAnt = ing.grupo;
+      if(ing.grupo) html += `<div style="font-size:12px;font-weight:600;color:var(--gold,#c4922a);margin-top:8px;">${ing.grupo}</div>`;
+    }
+    html += `<div style="display:flex;justify-content:space-between;font-size:12px;padding:5px 8px;background:var(--bg2);border-radius:6px;">
+      <span>${ing.nombre}</span>
+      <span style="color:var(--text3);font-family:var(--mono);">${ing.pesoNeto||'—'} (FC ${ing.fc||'—'}) → ${ing.pesoBruto||'—'}</span>
+    </div>`;
+  });
+  html += '</div>';
+  document.getElementById('prepVerBody').innerHTML = html;
+  document.getElementById('modalPrepVer').classList.add('open');
+}
+
+function openPrepModal(id){
+  catEditId = id || null;
+  document.getElementById('prepModalTitle').textContent = id ? '🍽 Editar preparación' : '🍽 Nueva preparación';
+  if(id){
+    const p = catalogo.preparaciones.find(x=>x.id===id);
+    if(!p) return;
+    document.getElementById('prepNombre').value = p.nombre;
+    document.getElementById('prepMenu').value = p.menu;
+    document.getElementById('prepTipo').value = p.tipo;
+    _catIngredientesEdit = p.ingredientes.map(i=>({...i}));
+  } else {
+    document.getElementById('prepNombre').value = '';
+    document.getElementById('prepMenu').value = '';
+    document.getElementById('prepTipo').value = 'almuerzo';
+    _catIngredientesEdit = [];
+  }
+  renderPrepIngredientesLista();
+  document.getElementById('modalPrep').classList.add('open');
+}
+
+function agregarIngredientePrep(){
+  _catIngredientesEdit.push({grupo:'', nombre:'', pesoNeto:'', fc:'1.0', pesoBruto:''});
+  renderPrepIngredientesLista();
+}
+
+function renderPrepIngredientesLista(){
+  const el = document.getElementById('prepIngredientesLista');
+  if(!_catIngredientesEdit.length){
+    el.innerHTML = '<div style="font-size:12px;color:var(--text3);">Sin ingredientes todavía.</div>';
+    return;
+  }
+  el.innerHTML = _catIngredientesEdit.map((ing,i)=>`
+    <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;background:var(--surface);border:.5px solid var(--border);border-radius:6px;padding:6px 8px;">
+      <input type="text" value="${(ing.grupo||'').replace(/"/g,'&quot;')}" placeholder="Sub-receta (opcional)" style="width:110px;font-size:11px;" oninput="_catIngredientesEdit[${i}].grupo=this.value" />
+      <input type="text" value="${(ing.nombre||'').replace(/"/g,'&quot;')}" placeholder="Ingrediente" style="flex:1;min-width:120px;font-size:12px;" oninput="_catIngredientesEdit[${i}].nombre=this.value" />
+      <input type="text" value="${ing.pesoNeto||''}" placeholder="Peso neto" style="width:80px;font-size:11px;" oninput="_catIngredientesEdit[${i}].pesoNeto=this.value" />
+      <input type="text" value="${ing.fc||''}" placeholder="FC" style="width:50px;font-size:11px;" oninput="_catIngredientesEdit[${i}].fc=this.value" />
+      <input type="text" value="${ing.pesoBruto||''}" placeholder="Peso bruto" style="width:80px;font-size:11px;" oninput="_catIngredientesEdit[${i}].pesoBruto=this.value" />
+      <button class="btn btn-ghost btn-sm" onclick="_catIngredientesEdit.splice(${i},1); renderPrepIngredientesLista();">✕</button>
+    </div>`).join('');
+}
+
+function guardarPrep(){
+  const nombre = document.getElementById('prepNombre').value.trim();
+  const menu = document.getElementById('prepMenu').value.trim();
+  const tipo = document.getElementById('prepTipo').value;
+  if(!nombre){ alert('Ingresá el nombre del plato.'); return; }
+  const ingredientes = _catIngredientesEdit.filter(i=>i.nombre&&i.nombre.trim()).map(i=>({
+    grupo: i.grupo&&i.grupo.trim() ? i.grupo.trim() : null,
+    nombre: i.nombre.trim(), pesoNeto: i.pesoNeto||'', fc: i.fc||'', pesoBruto: i.pesoBruto||''
+  }));
+  if(catEditId){
+    const p = catalogo.preparaciones.find(x=>x.id===catEditId);
+    if(!p) return;
+    Object.assign(p, {nombre, menu, tipo, ingredientes});
+    audit('Preparación editada: '+nombre, menu, 'trazabilidad');
+  } else {
+    catalogo.preparaciones.push({id:'prep_'+Date.now()+'_'+Math.floor(Math.random()*1000), nombre, menu, tipo, ingredientes});
+    audit('Preparación creada: '+nombre, menu+' — '+ingredientes.length+' ingrediente(s)', 'trazabilidad');
+  }
+  saveCatalogo();
+  closeModal('modalPrep');
+  renderTraz();
+}
+
+function eliminarPrep(id){
+  const p = catalogo.preparaciones.find(x=>x.id===id);
+  if(!p) return;
+  if(!confirm('¿Borrar la preparación "'+p.nombre+'" del catálogo? (Esto no afecta producciones ya registradas)')) return;
+  catalogo.preparaciones = catalogo.preparaciones.filter(x=>x.id!==id);
+  audit('Preparación eliminada del catálogo: '+p.nombre, '', 'trazabilidad');
+  saveCatalogo();
+  renderTraz();
+}
+
 // Genera un código de lote interno único: L-AAAAMMDD-NNN
 function generarCodigoLote(){
   const fecha = today().replace(/-/g,'');
@@ -5746,7 +6010,7 @@ function generarCodigoLote(){
 // ── Navegación entre sub-pestañas ──
 function switchTrazTab(tab, btn){
   trazActiveTab = tab;
-  const panelIds = {lotes:'trazPanelLotes', producciones:'trazPanelProducciones', buscar:'trazPanelBuscar', nc:'trazPanelNC', proveedores:'trazPanelProveedores'};
+  const panelIds = {lotes:'trazPanelLotes', producciones:'trazPanelProducciones', buscar:'trazPanelBuscar', nc:'trazPanelNC', prep:'trazPanelPrep', proveedores:'trazPanelProveedores'};
   Object.keys(panelIds).forEach(t=>{
     document.getElementById(panelIds[t]).style.display = (t===tab)?'block':'none';
   });
@@ -5760,6 +6024,7 @@ function renderTraz(){
   if(trazActiveTab==='lotes') renderTrazLotes();
   else if(trazActiveTab==='producciones') renderTrazProducciones();
   else if(trazActiveTab==='nc') renderTrazNC();
+  else if(trazActiveTab==='prep') renderTrazPrep();
   else if(trazActiveTab==='proveedores') renderTrazProveedores();
 }
 
@@ -6033,6 +6298,16 @@ function openProduccionModal(){
   document.getElementById('prodFecha').value=today();
   document.getElementById('prodResponsable').value= currentUser?currentUser.nombre:'';
   document.getElementById('prodObs').value='';
+  document.getElementById('prodRecetaRef').style.display='none';
+  document.getElementById('prodRecetaRef').innerHTML='';
+
+  // Selector del catálogo de preparaciones
+  const selPrep = document.getElementById('prodPrepCatalogo');
+  const tipoLabel = {almuerzo:'☀', cena:'🌙', especial:'⭐'};
+  const catOrdenado = [...catalogo.preparaciones].sort((a,b)=> a.menu.localeCompare(b.menu,'es',{numeric:true}) || a.tipo.localeCompare(b.tipo));
+  selPrep.innerHTML = '<option value="">— Escribir manualmente —</option>' +
+    catOrdenado.map(p=>`<option value="${p.id}">${tipoLabel[p.tipo]||''} ${p.menu} — ${p.nombre}</option>`).join('');
+
   // Checklist de lotes vigentes (ni vencidos ni anulados, para no usarlos por error)
   const vigentes = traz.lotes.filter(l=>estadoLote(l)!=='vencido' && !l.anulado).sort((a,b)=>(b.fechaRecepcion||'').localeCompare(a.fechaRecepcion||''));
   const cont = document.getElementById('prodLotesCheck');
@@ -6046,6 +6321,43 @@ function openProduccionModal(){
       </label>`).join('');
   }
   document.getElementById('modalProduccion').classList.add('open');
+}
+
+// Al elegir un plato del catálogo: completa el nombre, muestra la receta de
+// referencia (ingredientes/gramaje) y tilda automáticamente los lotes vigentes
+// cuyo insumo coincide con algún ingrediente de la receta.
+function onProdPrepCatalogoChange(){
+  const id = document.getElementById('prodPrepCatalogo').value;
+  const ref = document.getElementById('prodRecetaRef');
+  if(!id){ ref.style.display='none'; ref.innerHTML=''; return; }
+  const p = catalogo.preparaciones.find(x=>x.id===id);
+  if(!p) return;
+  document.getElementById('prodPreparacion').value = p.nombre;
+
+  // Receta de referencia (agrupada por sub-receta, igual que "Ver receta")
+  let grupoAnt = undefined;
+  let html = '<label>Receta de referencia (' + p.menu + ')</label><div style="max-height:160px;overflow-y:auto;padding:8px;background:var(--bg);border:.5px solid var(--border);border-radius:var(--r);margin-top:4px;">';
+  p.ingredientes.forEach(ing=>{
+    if(ing.grupo !== grupoAnt){
+      grupoAnt = ing.grupo;
+      if(ing.grupo) html += `<div style="font-size:11px;font-weight:600;color:var(--gold,#c4922a);margin-top:6px;">${ing.grupo}</div>`;
+    }
+    html += `<div style="display:flex;justify-content:space-between;font-size:11px;padding:3px 4px;">
+      <span>${ing.nombre}</span>
+      <span style="color:var(--text3);font-family:var(--mono);">${ing.pesoNeto||'—'}${ing.fc?' · FC '+ing.fc:''}</span>
+    </div>`;
+  });
+  html += '</div>';
+  ref.innerHTML = html;
+  ref.style.display = 'block';
+
+  // Sugerir (tildar) lotes vigentes cuyo insumo coincide con algún ingrediente
+  const nombresIngredientes = p.ingredientes.map(i=>i.nombre.toLowerCase().trim());
+  document.querySelectorAll('.prodLoteChk').forEach(chk=>{
+    const label = chk.parentElement.textContent.toLowerCase();
+    const coincide = nombresIngredientes.some(ni => ni.length>3 && label.includes(ni));
+    if(coincide) chk.checked = true;
+  });
 }
 
 function guardarProduccion(){
