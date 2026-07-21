@@ -1431,6 +1431,19 @@ tbody td{padding:8px 10px;vertical-align:middle;}
           <option value="haccp">HACCP/CAA (también aparece en Historial y Resumen HACCP)</option>
         </select>
       </div>
+      <div class="fg">
+        <label>Escala de evaluación (ítems ✓/✕ Check)</label>
+        <select id="plEscala">
+          <option value="binaria">✓/✕ Aceptable / Deficiente</option>
+          <option value="aid">🟢/🟡/🔴 Aceptable / Deficiente / Inaceptable (A/I/D)</option>
+        </select>
+      </div>
+    </div>
+    <div class="fg" style="margin-bottom:10px;">
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;">
+        <input type="checkbox" id="plRequiereMomento" style="width:15px;height:15px;" />
+        Esta ronda se hace dos veces por turno: Pre-operacional (antes de arrancar) y Operacional (durante el servicio)
+      </label>
     </div>
 
     <div class="fg" style="margin-bottom:8px;">
@@ -1509,6 +1522,16 @@ tbody td{padding:8px 10px;vertical-align:middle;}
       <button class="btn btn-ghost" onclick="closeModal('modalAsignarRonda')">Cancelar</button>
       <button class="btn btn-primary" onclick="guardarAsignacionRonda()">Asignar</button>
     </div>
+  </div>
+</div>
+
+<!-- ══ MODAL: ELEGIR MOMENTO (Pre-operacional / Operacional) ══ -->
+<div class="modal-bg" id="modalElegirMomento" onclick="handleModalClick(event,'modalElegirMomento')">
+  <div class="modal-box" style="max-width:360px;">
+    <button class="modal-close" onclick="closeModal('modalElegirMomento')">✕</button>
+    <div class="modal-title" id="modalElegirMomentoTitulo" style="margin-bottom:6px;">📋 Elegir momento</div>
+    <div class="modal-sub" style="margin-bottom:14px;">Esta ronda se hace dos veces por turno. ¿Cuál vas a completar ahora?</div>
+    <div id="momentoOpciones"></div>
   </div>
 </div>
 
@@ -5748,7 +5771,7 @@ function poblarTrazSelects(){
   if(selProv){
     const prev = selProv.value;
     selProv.innerHTML = '<option value="">Seleccionar...</option>' +
-      traz.proveedores.map(p=>`<option value="${p.id}">${p.nombre}</option>`).join('');
+      traz.proveedores.filter(p=>!p.anulado).map(p=>`<option value="${p.id}">${p.nombre}</option>`).join('');
     if(prev) selProv.value = prev;
   }
   const selSectorProd = document.getElementById('trazFiltroSectorProd');
@@ -5762,7 +5785,7 @@ function poblarTrazSelects(){
   if(selNcProv){
     const prev = selNcProv.value;
     selNcProv.innerHTML = '<option value="">Seleccionar...</option>' +
-      traz.proveedores.map(p=>`<option value="${p.id}">${p.nombre}</option>`).join('');
+      traz.proveedores.filter(p=>!p.anulado).map(p=>`<option value="${p.id}">${p.nombre}</option>`).join('');
     if(prev) selNcProv.value = prev;
   }
   const selNcLote = document.getElementById('ncLote');
@@ -6146,6 +6169,14 @@ function renderTrazProveedores(){
   const el = document.getElementById('trazListadoProveedores');
   if(!traz.proveedores.length){ el.innerHTML = '<div style="font-size:12px;color:var(--text3);padding:12px;">No hay proveedores cargados todavía.</div>'; return; }
   el.innerHTML = traz.proveedores.map(p=>{
+    if(p.anulado){
+      return `<div class="config-item" style="flex-wrap:wrap;gap:8px;opacity:.55;">
+        <div style="flex:1;min-width:200px;">
+          <div style="font-weight:600;font-size:13px;text-decoration:line-through;">${p.nombre}</div>
+          <div style="font-size:11px;color:#b02020;">🚫 Anulado por ${p.anuladoPor} el ${fmtDatetime(p.anuladoTs)} — ${p.anuladoMotivo}</div>
+        </div>
+      </div>`;
+    }
     const vencida = p.habilitacionVence && p.habilitacionVence < today();
     return `<div class="config-item" style="flex-wrap:wrap;gap:8px;">
       <div style="flex:1;min-width:200px;">
@@ -6154,7 +6185,7 @@ function renderTrazProveedores(){
       </div>
       ${vencida?'<span class="badge" style="background:#fde8e8;color:#b02020;border:1px solid #f0b8b8;">⚠ Habilitación vencida</span>':''}
       <button class="btn btn-outline btn-sm" onclick="openProveedorModal('${p.id}')">Editar</button>
-      <button class="btn btn-danger btn-sm" onclick="eliminarProveedor('${p.id}')">✕</button>
+      <button class="btn btn-danger btn-sm" onclick="anularProveedor('${p.id}')">🚫 Anular</button>
     </div>`;
   }).join('');
 }
@@ -6198,15 +6229,21 @@ function guardarProveedor(){
   renderTraz();
 }
 
-function eliminarProveedor(id){
+function anularProveedor(id){
   const p = traz.proveedores.find(x=>x.id===id);
   if(!p) return;
-  if(!confirm('¿Borrar el proveedor "'+p.nombre+'"? Los lotes ya cargados con este proveedor no se borran.')) return;
-  traz.proveedores = traz.proveedores.filter(x=>x.id!==id);
-  audit('Proveedor eliminado: '+p.nombre, '', 'trazabilidad');
+  const motivo = prompt('Motivo de la anulación del proveedor "'+p.nombre+'" (queda registrado, no se puede deshacer):');
+  if(motivo === null) return;
+  if(!motivo.trim()){ alert('Tenés que indicar un motivo.'); return; }
+  p.anulado = true;
+  p.anuladoPor = currentUser.nombre;
+  p.anuladoTs = nowISO();
+  p.anuladoMotivo = motivo.trim();
+  audit('Proveedor anulado: '+p.nombre, motivo.trim(), 'trazabilidad');
   saveTraz();
   renderTraz();
 }
+
 
 // ═══ ALERTAS DE VENCIMIENTO (se revisa una vez por día, junto con las tareas) ═══
 function chequearVencimientosLotes(){
@@ -6520,11 +6557,15 @@ function openPlantillaModal(id){
     document.getElementById('plCodigo').value = p.codigo||'';
     document.getElementById('plSector').value = p.sector;
     document.getElementById('plDestino').value = p.destino||'rondas';
+    document.getElementById('plEscala').value = p.escala||'binaria';
+    document.getElementById('plRequiereMomento').checked = !!p.requiereMomento;
     _plantillaItemsEdit = p.items.map(it=>({...it}));
   } else {
     document.getElementById('plNombre').value = '';
     document.getElementById('plCodigo').value = '';
     document.getElementById('plDestino').value = 'rondas';
+    document.getElementById('plEscala').value = 'binaria';
+    document.getElementById('plRequiereMomento').checked = false;
     _plantillaItemsEdit = [];
   }
   renderPlItemsLista();
@@ -6593,6 +6634,8 @@ function guardarPlantillaRonda(){
   const codigo = document.getElementById('plCodigo').value.trim();
   const sector = document.getElementById('plSector').value;
   const destino = document.getElementById('plDestino').value;
+  const escala = document.getElementById('plEscala').value;
+  const requiereMomento = document.getElementById('plRequiereMomento').checked;
   if(!nombre){ alert('Ingresá un nombre para la plantilla.'); return; }
   if(!sector){ alert('Elegí un sector.'); return; }
   if(!_plantillaItemsEdit.length){ alert('Agregá al menos un ítem.'); return; }
@@ -6611,10 +6654,10 @@ function guardarPlantillaRonda(){
   if(plantillaEditId){
     const p = rondas.plantillas.find(x=>x.id===plantillaEditId);
     if(!p){ return; }
-    Object.assign(p, {nombre, codigo, sector, destino, items});
+    Object.assign(p, {nombre, codigo, sector, destino, escala, requiereMomento, items});
     audit('Plantilla de ronda editada: '+nombre, sector, 'trazabilidad');
   } else {
-    rondas.plantillas.push({ id:'pl_'+Date.now()+'_'+Math.floor(Math.random()*10000), nombre, codigo, sector, destino, items });
+    rondas.plantillas.push({ id:'pl_'+Date.now()+'_'+Math.floor(Math.random()*10000), nombre, codigo, sector, destino, escala, requiereMomento, items });
     audit('Plantilla de ronda creada: '+nombre, sector+' — '+items.length+' ítem(s)', 'trazabilidad');
   }
   saveRondas();
@@ -6734,7 +6777,67 @@ function rondasAplicablesHoy(){
 
 function rondaYaHechaHoy(plantillaId){
   const t = today();
-  return rondas.registros.some(r=>r.plantillaId===plantillaId && r.fecha===t && r.turno===getTurnoActivoNombre());
+  const turno = getTurnoActivoNombre();
+  const p = rondas.plantillas.find(x=>x.id===plantillaId);
+  if(p && p.requiereMomento){
+    const tieneMomento = m => rondas.registros.some(r=>r.plantillaId===plantillaId && r.fecha===t && r.turno===turno && r.momento===m);
+    return tieneMomento('preoperacional') && tieneMomento('operacional');
+  }
+  return rondas.registros.some(r=>r.plantillaId===plantillaId && r.fecha===t && r.turno===turno);
+}
+
+// Devuelve 'ok'|'mal' generalizado — trata A/I/D y binario con el mismo criterio
+function esEstadoMal(estado){
+  return estado==='mal' || estado==='deficiente' || estado==='inaceptable';
+}
+
+// Genera el bloque HTML de una plantilla para el panel del operario,
+// contemplando plantillas de una sola pasada y de dos (Pre-op/Operacional)
+function rondaCardHtml(p, turno, t, borde){
+  const style = borde ? 'border:1px solid var(--gold,#c4922a);' : '';
+  if(!p.requiereMomento){
+    const registro = rondas.registros.find(r=>r.plantillaId===p.id && r.fecha===t && r.turno===turno);
+    if(registro){
+      return `<div class="config-item" style="flex-direction:column;align-items:flex-start;gap:6px;">
+        <div style="display:flex;justify-content:space-between;width:100%;align-items:center;">
+          <div>
+            <div style="font-weight:600;font-size:14px;">✅ ${p.nombre}</div>
+            <div style="font-size:11px;color:var(--text3);">${p.codigo} · ${turno||'—'} · Completada a las ${fmtDatetime(registro.firmaTs).split(' ')[1]||''}</div>
+          </div>
+          <button class="btn btn-outline btn-sm" onclick="verDetalleRonda('${registro.id}')">Ver</button>
+        </div>
+      </div>`;
+    }
+    const items = itemsDelDia(p, turno);
+    return `<div class="config-item" style="flex-direction:column;align-items:flex-start;gap:6px;${style}">
+      <div style="display:flex;justify-content:space-between;width:100%;align-items:center;">
+        <div>
+          <div style="font-weight:600;font-size:14px;">📋 ${p.nombre}</div>
+          <div style="font-size:11px;color:var(--text3);">${p.codigo} · ${p.sector} · ${turno||'Sin turno activo'} · ${items.length} ítem(s)</div>
+        </div>
+        <button class="btn btn-primary btn-sm" onclick="iniciarRonda('${p.id}')" ${turno?'':'disabled'}>Iniciar ronda</button>
+      </div>
+    </div>`;
+  }
+  // Plantilla de dos pasadas: una fila por momento
+  const momentos = [['preoperacional','🌅 Pre-operacional'],['operacional','🍽 Operacional']];
+  const filas = momentos.map(([m,label])=>{
+    const registro = rondas.registros.find(r=>r.plantillaId===p.id && r.fecha===t && r.turno===turno && r.momento===m);
+    if(registro){
+      return `<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;">
+        <div style="font-size:12px;">✅ ${label} — completada a las ${fmtDatetime(registro.firmaTs).split(' ')[1]||''}</div>
+        <button class="btn btn-outline btn-sm" onclick="verDetalleRonda('${registro.id}')">Ver</button>
+      </div>`;
+    }
+    return `<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;">
+      <div style="font-size:12px;">⏳ ${label}</div>
+      <button class="btn btn-primary btn-sm" onclick="_iniciarRondaReal('${p.id}',null,'${m}')" ${turno?'':'disabled'}>Iniciar</button>
+    </div>`;
+  }).join('<div style="border-top:.5px solid var(--border);"></div>');
+  return `<div class="config-item" style="flex-direction:column;align-items:flex-start;gap:2px;${style}">
+    <div style="font-weight:600;font-size:14px;">📋 ${p.nombre} <span style="font-size:11px;color:var(--text3);font-weight:400;">${p.codigo} · ${p.sector} · ${turno||'Sin turno activo'}</span></div>
+    <div style="width:100%;">${filas}</div>
+  </div>`;
 }
 
 function renderRondaOperarioPanel(){
@@ -6774,27 +6877,7 @@ function renderRondaOperarioPanel(){
       recurrentesActivas.map(a=>{
         const p = rondas.plantillas.find(x=>x.id===a.plantillaId);
         if(!p) return '';
-        const registro = rondas.registros.find(r=>r.plantillaId===p.id && r.fecha===t && r.turno===a.turno);
-        if(registro){
-          return `<div class="config-item" style="flex-direction:column;align-items:flex-start;gap:6px;">
-            <div style="display:flex;justify-content:space-between;width:100%;align-items:center;">
-              <div>
-                <div style="font-weight:600;font-size:14px;">✅ ${p.nombre}</div>
-                <div style="font-size:11px;color:var(--text3);">${p.codigo} · ${a.turno} · Completada a las ${fmtDatetime(registro.firmaTs).split(' ')[1]||''}</div>
-              </div>
-              <button class="btn btn-outline btn-sm" onclick="verDetalleRonda('${registro.id}')">Ver</button>
-            </div>
-          </div>`;
-        }
-        return `<div class="config-item" style="flex-direction:column;align-items:flex-start;gap:6px;border:1px solid var(--gold,#c4922a);">
-          <div style="display:flex;justify-content:space-between;width:100%;align-items:center;">
-            <div>
-              <div style="font-weight:600;font-size:14px;">🔁 ${p.nombre}</div>
-              <div style="font-size:11px;color:var(--text3);">${p.codigo} · ${p.sector} · ${a.turno} · Ronda fija</div>
-            </div>
-            <button class="btn btn-primary btn-sm" onclick="iniciarRonda('${p.id}')" ${a.turno===turno?'':'disabled'}>Iniciar ronda</button>
-          </div>
-        </div>`;
+        return rondaCardHtml(p, a.turno, t, true);
       }).join('') + '<div style="height:8px;"></div>';
   }
 
@@ -6802,34 +6885,33 @@ function renderRondaOperarioPanel(){
     cont.innerHTML = '<div class="info-panel" style="font-size:12px;">No hay ninguna ronda de control configurada para tu sector todavía.</div>';
     return;
   }
-  cont.innerHTML = htmlAsignadas + htmlRecurrentes + plantillas.map(p=>{
-    const registro = rondas.registros.find(r=>r.plantillaId===p.id && r.fecha===t && r.turno===turno);
-    if(registro){
-      return `<div class="config-item" style="flex-direction:column;align-items:flex-start;gap:6px;">
-        <div style="display:flex;justify-content:space-between;width:100%;align-items:center;">
-          <div>
-            <div style="font-weight:600;font-size:14px;">✅ ${p.nombre}</div>
-            <div style="font-size:11px;color:var(--text3);">${p.codigo} · ${turno||'—'} · Completada a las ${fmtDatetime(registro.firmaTs).split(' ')[1]||''}</div>
-          </div>
-          <button class="btn btn-outline btn-sm" onclick="verDetalleRonda('${registro.id}')">Ver</button>
-        </div>
-      </div>`;
-    }
-    const items = itemsDelDia(p, turno);
-    return `<div class="config-item" style="flex-direction:column;align-items:flex-start;gap:6px;">
-      <div style="display:flex;justify-content:space-between;width:100%;align-items:center;">
-        <div>
-          <div style="font-weight:600;font-size:14px;">📋 ${p.nombre}</div>
-          <div style="font-size:11px;color:var(--text3);">${p.codigo} · ${p.sector} · ${turno||'Sin turno activo'} · ${items.length} ítem(s)</div>
-        </div>
-        <button class="btn btn-primary btn-sm" onclick="iniciarRonda('${p.id}')" ${turno?'':'disabled'}>Iniciar ronda</button>
-      </div>
-    </div>`;
-  }).join('');
+  cont.innerHTML = htmlAsignadas + htmlRecurrentes + plantillas.map(p=>rondaCardHtml(p, turno, t, false)).join('');
 }
 
 // ── Ejecutar la ronda ──
 function iniciarRonda(plantillaId, asignacionId){
+  const p = rondas.plantillas.find(x=>x.id===plantillaId);
+  if(!p) return;
+  if(p.requiereMomento){
+    abrirElegirMomento(plantillaId, asignacionId);
+    return;
+  }
+  _iniciarRondaReal(plantillaId, asignacionId, null);
+}
+
+function abrirElegirMomento(plantillaId, asignacionId){
+  const p = rondas.plantillas.find(x=>x.id===plantillaId);
+  if(!p) return;
+  const el = document.getElementById('momentoOpciones');
+  el.innerHTML = `
+    <button class="btn btn-primary" style="width:100%;justify-content:center;margin-bottom:8px;" onclick="closeModal('modalElegirMomento');_iniciarRondaReal('${plantillaId}',${asignacionId?`'${asignacionId}'`:null},'preoperacional')">🌅 Pre-operacional (antes de arrancar)</button>
+    <button class="btn btn-primary" style="width:100%;justify-content:center;" onclick="closeModal('modalElegirMomento');_iniciarRondaReal('${plantillaId}',${asignacionId?`'${asignacionId}'`:null},'operacional')">🍽 Operacional (durante el servicio)</button>
+  `;
+  document.getElementById('modalElegirMomentoTitulo').textContent = '📋 '+p.nombre;
+  document.getElementById('modalElegirMomento').classList.add('open');
+}
+
+function _iniciarRondaReal(plantillaId, asignacionId, momento){
   const p = rondas.plantillas.find(x=>x.id===plantillaId);
   if(!p) return;
   const turno = getTurnoActivoNombre();
@@ -6837,6 +6919,7 @@ function iniciarRonda(plantillaId, asignacionId){
   _rondaEnCurso = {
     id: 'rd_'+Date.now()+'_'+Math.floor(Math.random()*1000),
     plantillaId: p.id, codigo: p.codigo, nombre: p.nombre, destino: p.destino||'rondas',
+    escala: p.escala||'binaria', momento: momento||null,
     fecha: today(), turno, sector: p.sector,
     items: items.map(it=>({
       itemId:it.id, texto:it.texto, estado:null, motivo:'', hora:null,
@@ -6846,8 +6929,9 @@ function iniciarRonda(plantillaId, asignacionId){
     responsable: currentUser.nombre, responsableUser: currentUser.user,
     asignacionId: asignacionId || null,
   };
+  const momentoLabel = momento==='preoperacional' ? ' · 🌅 Pre-operacional' : momento==='operacional' ? ' · 🍽 Operacional' : '';
   document.getElementById('rondaModalTitulo').textContent = '📋 '+p.nombre;
-  document.getElementById('rondaModalSub').textContent = p.codigo+' · '+p.sector+' · '+turno;
+  document.getElementById('rondaModalSub').textContent = p.codigo+' · '+p.sector+' · '+turno+momentoLabel;
   renderRondaItemsModal();
   document.getElementById('modalRonda').classList.add('open');
   if(_rondaRelojInterval) clearInterval(_rondaRelojInterval);
@@ -6866,8 +6950,9 @@ function cerrarModalRondaSinGuardar(){
 
 function renderRondaItemsModal(){
   const cont = document.getElementById('rondaItemsCont');
+  const esAID = _rondaEnCurso.escala === 'aid';
   cont.innerHTML = _rondaEnCurso.items.map((it,i)=>{
-    const bg = it.estado==='ok' ? 'var(--green-bg,#e8f5ee)' : it.estado==='mal' ? 'var(--red-bg,#fde8e8)' : 'var(--bg2)';
+    const bg = it.estado==='ok' ? 'var(--green-bg,#e8f5ee)' : esEstadoMal(it.estado) ? 'var(--red-bg,#fde8e8)' : 'var(--bg2)';
     if(it.tipo==='temp'){
       const rango = (it.limiteMin!=null&&it.limiteMax!=null) ? `entre ${it.limiteMin} y ${it.limiteMax}${it.unidad}`
         : it.limiteMin!=null ? `≥ ${it.limiteMin}${it.unidad}`
@@ -6879,19 +6964,23 @@ function renderRondaItemsModal(){
             <input type="number" step="0.1" value="${it.valor!=null?it.valor:''}" placeholder="${it.unidad}" style="width:80px;font-size:13px;text-align:center;" onchange="marcarValorTemperatura(${i},this.value)" />
           </div>
         </div>
-        ${it.estado==='mal' ? `<textarea placeholder="Acción correctiva tomada..." style="margin-top:8px;width:100%;font-size:12px;" oninput="_rondaEnCurso.items[${i}].motivo=this.value">${it.motivo||''}</textarea>` : ''}
+        ${esEstadoMal(it.estado) ? `<textarea placeholder="Acción correctiva tomada..." style="margin-top:8px;width:100%;font-size:12px;" oninput="_rondaEnCurso.items[${i}].motivo=this.value">${it.motivo||''}</textarea>` : ''}
         ${it.hora ? `<div style="font-size:10px;color:var(--text3);margin-top:4px;">Medido a las ${it.hora}</div>` : ''}
       </div>`;
     }
+    const botones = esAID ? `
+        <button aria-label="Aceptable" onclick="marcarItemRonda(${i},'ok')" style="width:34px;height:34px;border-radius:50%;border:.5px solid var(--border);background:${it.estado==='ok'?'#1a7a4a':'#fff'};color:${it.estado==='ok'?'#fff':'#888'};font-size:14px;">A</button>
+        <button aria-label="Deficiente" onclick="marcarItemRonda(${i},'deficiente')" style="width:34px;height:34px;border-radius:50%;border:.5px solid var(--border);background:${it.estado==='deficiente'?'#8a6416':'#fff'};color:${it.estado==='deficiente'?'#fff':'#888'};font-size:14px;">D</button>
+        <button aria-label="Inaceptable" onclick="marcarItemRonda(${i},'inaceptable')" style="width:34px;height:34px;border-radius:50%;border:.5px solid var(--border);background:${it.estado==='inaceptable'?'#b02020':'#fff'};color:${it.estado==='inaceptable'?'#fff':'#888'};font-size:14px;">I</button>`
+      : `
+        <button aria-label="Aceptable" onclick="marcarItemRonda(${i},'ok')" style="width:36px;height:36px;border-radius:50%;border:.5px solid var(--border);background:${it.estado==='ok'?'#1a7a4a':'#fff'};color:${it.estado==='ok'?'#fff':'#888'};font-size:16px;">✓</button>
+        <button aria-label="Deficiente" onclick="marcarItemRonda(${i},'mal')" style="width:36px;height:36px;border-radius:50%;border:.5px solid var(--border);background:${it.estado==='mal'?'#b02020':'#fff'};color:${it.estado==='mal'?'#fff':'#888'};font-size:16px;">✕</button>`;
     return `<div style="background:${bg};border-radius:var(--r);padding:10px 12px;">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
         <div style="font-size:13px;flex:1;">${it.texto}</div>
-        <div style="display:flex;gap:6px;flex-shrink:0;">
-          <button aria-label="Aceptable" onclick="marcarItemRonda(${i},'ok')" style="width:36px;height:36px;border-radius:50%;border:.5px solid var(--border);background:${it.estado==='ok'?'#1a7a4a':'#fff'};color:${it.estado==='ok'?'#fff':'#888'};font-size:16px;">✓</button>
-          <button aria-label="Deficiente" onclick="marcarItemRonda(${i},'mal')" style="width:36px;height:36px;border-radius:50%;border:.5px solid var(--border);background:${it.estado==='mal'?'#b02020':'#fff'};color:${it.estado==='mal'?'#fff':'#888'};font-size:16px;">✕</button>
-        </div>
+        <div style="display:flex;gap:6px;flex-shrink:0;">${botones}</div>
       </div>
-      ${it.estado==='mal' ? `<select style="margin-top:8px;width:100%;" onchange="_rondaEnCurso.items[${i}].motivo=this.value">
+      ${esEstadoMal(it.estado) ? `<select style="margin-top:8px;width:100%;" onchange="_rondaEnCurso.items[${i}].motivo=this.value">
         <option value="">Elegí un motivo...</option>
         <option>Restos de comida</option>
         <option>Falta desinfección</option>
@@ -7073,7 +7162,7 @@ function renderRondasHistorial(){
     <div class="config-item" style="flex-wrap:wrap;gap:8px;">
       <div style="flex:1;min-width:200px;">
         <div style="font-weight:600;font-size:13px;">${r.nombre} <span style="font-family:var(--mono);font-size:11px;color:var(--text3);">${r.codigo}</span></div>
-        <div style="font-size:11px;color:var(--text3);">${r.sector} · ${r.fecha} · ${r.turno} · Responsable: ${r.responsable}</div>
+        <div style="font-size:11px;color:var(--text3);">${r.sector} · ${r.fecha} · ${r.turno}${r.momento?' · '+(r.momento==='preoperacional'?'🌅 Pre-op':'🍽 Operacional'):''} · Responsable: ${r.responsable}</div>
       </div>
       ${r.supervisorTs ? '<span class="badge" style="background:#e8f5ee;color:#1a7a4a;border:1px solid #a8dbb8;">🟢 Aprobada</span>' : '<span class="badge" style="background:#fff3cd;color:#8a6416;border:1px solid #f0d880;">🟡 Pendiente</span>'}
       <button class="btn btn-outline btn-sm" onclick="verDetalleRonda('${r.id}')">Ver</button>
@@ -7084,13 +7173,16 @@ function verDetalleRonda(id){
   const r = rondas.registros.find(x=>x.id===id);
   if(!r) return;
   _rondaDetalleId = id;
+  const momentoLabel = r.momento==='preoperacional' ? ' · 🌅 Pre-operacional' : r.momento==='operacional' ? ' · 🍽 Operacional' : '';
   document.getElementById('rondaDetalleTitulo').textContent = '📋 '+r.nombre;
-  document.getElementById('rondaDetalleSub').textContent = r.codigo+' · '+r.sector+' · '+r.fecha+' · '+r.turno;
-  document.getElementById('rondaDetalleItems').innerHTML = r.items.map(it=>`
-    <div style="display:flex;justify-content:space-between;gap:8px;font-size:12px;padding:6px 10px;background:var(--bg2);border-radius:6px;">
-      <div>${it.estado==='ok'?'✅':'⚠️'} ${it.texto}${it.tipo==='temp'&&it.valor!=null?' — <strong>'+it.valor+' '+(it.unidad||'°C')+'</strong>':''}${it.motivo?' — <em style="color:var(--text3)">'+it.motivo+'</em>':''}</div>
+  document.getElementById('rondaDetalleSub').textContent = r.codigo+' · '+r.sector+' · '+r.fecha+' · '+r.turno+momentoLabel;
+  document.getElementById('rondaDetalleItems').innerHTML = r.items.map(it=>{
+    const icono = it.estado==='ok'?'✅':it.estado==='deficiente'?'🟡':it.estado==='inaceptable'?'🔴':'⚠️';
+    return `<div style="display:flex;justify-content:space-between;gap:8px;font-size:12px;padding:6px 10px;background:var(--bg2);border-radius:6px;">
+      <div>${icono} ${it.texto}${it.tipo==='temp'&&it.valor!=null?' — <strong>'+it.valor+' '+(it.unidad||'°C')+'</strong>':''}${it.motivo?' — <em style="color:var(--text3)">'+it.motivo+'</em>':''}</div>
       <div style="color:var(--text3);flex-shrink:0;">${it.hora||''}</div>
-    </div>`).join('');
+    </div>`;
+  }).join('');
   let firmaHtml = `Firmado por <strong>${r.responsable}</strong> (@${r.responsableUser}) el ${fmtDatetime(r.firmaTs)}.`;
   if(r.supervisorTs) firmaHtml += `<br/>Aprobado por <strong>${r.supervisorNombre}</strong> el ${fmtDatetime(r.supervisorTs)}.`;
   document.getElementById('rondaDetalleFirma').innerHTML = firmaHtml;
@@ -7165,17 +7257,21 @@ function imprimirRonda(id){
   </div>
   <div class="meta">
     <div><b>Fecha</b>${fechaLarga}</div>
-    <div><b>Turno</b>${r.turno}</div>
+    <div><b>Turno</b>${r.turno}${r.momento?' · '+(r.momento==='preoperacional'?'Pre-operacional':'Operacional'):''}</div>
     <div><b>Sector</b>${r.sector}</div>
   </div>
   <table><thead><tr><th>Ítem</th><th>Hora</th><th>Valor</th><th>Estado</th><th>Observación</th></tr></thead>
-  <tbody>${r.items.map(it=>`<tr>
+  <tbody>${r.items.map(it=>{
+    const estadoTexto = it.estado==='ok'?'✓ Aceptable':it.estado==='deficiente'?'⚠ Deficiente':it.estado==='inaceptable'?'✗ Inaceptable':'✗ Deficiente';
+    const claseEstado = it.estado==='ok'?'ok':'bad';
+    return `<tr>
     <td>${it.texto}</td>
     <td>${it.hora||'—'}</td>
     <td>${it.tipo==='temp'&&it.valor!=null?(it.valor+' '+(it.unidad||'°C')):'—'}</td>
-    <td class="${it.estado==='ok'?'ok':'bad'}">${it.estado==='ok'?'✓ Aceptable':'✗ Deficiente'}</td>
+    <td class="${claseEstado}">${estadoTexto}</td>
     <td>${it.motivo||'—'}</td>
-  </tr>`).join('')}</tbody></table>
+  </tr>`;
+  }).join('')}</tbody></table>
   <div class="firmas">
     <div class="firma-box">
       <div class="tag">Realizó el control</div>
