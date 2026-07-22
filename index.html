@@ -1617,8 +1617,11 @@ tbody td{padding:8px 10px;vertical-align:middle;}
       <div id="rondaReloj" style="font-size:12px;color:var(--text3);font-family:var(--mono);"></div>
     </div>
     <div class="modal-sub" id="rondaModalSub" style="margin-bottom:10px;"></div>
-    <div style="height:6px;background:var(--bg2);border-radius:99px;overflow:hidden;margin-bottom:12px;">
-      <div id="rondaBarra" style="height:100%;width:0%;background:var(--green);transition:width .2s;"></div>
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
+      <div style="flex:1;height:6px;background:var(--bg2);border-radius:99px;overflow:hidden;">
+        <div id="rondaBarra" style="height:100%;width:0%;background:var(--green);transition:width .2s;"></div>
+      </div>
+      <div id="rondaPorcentaje" style="font-size:12px;font-weight:700;color:var(--text3);font-family:var(--mono);min-width:36px;text-align:right;">0%</div>
     </div>
     <div id="rondaItemsCont" style="display:flex;flex-direction:column;gap:8px;max-height:50vh;overflow-y:auto;"></div>
     <button id="rondaBtnFirmar" disabled style="width:100%;margin-top:14px;height:44px;border-radius:var(--r);border:.5px solid var(--border);background:var(--bg2);color:var(--text3);font-size:14px;font-weight:600;" onclick="abrirFirmaRonda()">Completá los ítems para firmar</button>
@@ -3685,9 +3688,27 @@ function getSvFiltered(){
   return filtered;
 }
 
+// Rondas de hoy con los mismos filtros de sector/turno/operario. El filtro de
+// Estado es vocabulario de tareas (Pendiente/Vencido/etc.) y no aplica a una
+// ronda ya guardada (siempre está completa) — si está activo, no se muestran.
+function getSvRondasFiltradas(){
+  const t=today();
+  let filtered=(rondas.registros||[]).filter(x=>x.fecha===t);
+  const fS=document.getElementById('svFiltroSector').value;
+  const fT=document.getElementById('svFiltroTurno').value;
+  const fE=document.getElementById('svFiltroEstado').value;
+  const fO=document.getElementById('svFiltroOperario').value;
+  if(fE) return []; // filtro de estado de tarea activo → las rondas no aplican
+  if(fS)filtered=filtered.filter(x=>x.sector===fS);
+  if(fT)filtered=filtered.filter(x=>x.turno===fT);
+  if(fO)filtered=filtered.filter(x=>x.responsable===fO);
+  return filtered;
+}
+
 function renderSvMetrics(filtered){
-  const total=filtered.length;
-  const ok=filtered.filter(x=>x.estado==='Cumplido').length;
+  const rondasHoy = getSvRondasFiltradas();
+  const total=filtered.length+rondasHoy.length;
+  const ok=filtered.filter(x=>x.estado==='Cumplido').length+rondasHoy.length;
   const pend=filtered.filter(x=>x.estado==='Pendiente').length;
   const noR=filtered.filter(x=>x.estado==='No realizada').length;
   const pct=total?Math.round(ok/total*100):0;
@@ -3761,41 +3782,50 @@ function renderSupervisor(){
 function renderSvOperarios(){
   if(!currentUser)return;
   const filtered=getSvFiltered();
+  const rondasHoy=getSvRondasFiltradas();
   renderSvMetrics(filtered);
 
-  // Agrupar por responsable
+  // Agrupar por responsable (tareas + rondas juntas)
   const operarioMap={};
   filtered.forEach(t=>{
     const op=t.responsable||'Sin asignar';
-    if(!operarioMap[op])operarioMap[op]=[];
-    operarioMap[op].push(t);
+    if(!operarioMap[op])operarioMap[op]={tareas:[],rondas:[]};
+    operarioMap[op].tareas.push(t);
+  });
+  rondasHoy.forEach(r=>{
+    const op=r.responsable||'Sin asignar';
+    if(!operarioMap[op])operarioMap[op]={tareas:[],rondas:[]};
+    operarioMap[op].rondas.push(r);
   });
 
   const operariosOrdenados=Object.keys(operarioMap).sort((a,b)=>{
     // Primero los que tienen tareas pendientes/bloqueadas
-    const scoreA=operarioMap[a].filter(x=>x.estado==='No realizada').length*10+operarioMap[a].filter(x=>x.estado==='Pendiente').length;
-    const scoreB=operarioMap[b].filter(x=>x.estado==='No realizada').length*10+operarioMap[b].filter(x=>x.estado==='Pendiente').length;
+    const scoreA=operarioMap[a].tareas.filter(x=>x.estado==='No realizada').length*10+operarioMap[a].tareas.filter(x=>x.estado==='Pendiente').length;
+    const scoreB=operarioMap[b].tareas.filter(x=>x.estado==='No realizada').length*10+operarioMap[b].tareas.filter(x=>x.estado==='Pendiente').length;
     return scoreB-scoreA;
   });
 
   const grid=document.getElementById('svOperariosGrid');
   if(!operariosOrdenados.length){
-    grid.innerHTML='<div style="text-align:center;padding:2rem;color:var(--text3);font-size:13px;">No hay tareas para el filtro seleccionado.</div>';
+    grid.innerHTML='<div style="text-align:center;padding:2rem;color:var(--text3);font-size:13px;">No hay actividad (tareas ni rondas) para el filtro seleccionado.</div>';
     return;
   }
 
   // Layout 2 columnas como sectores
   const cards=operariosOrdenados.map(op=>{
-    const tareas=operarioMap[op];
-    const ok=tareas.filter(x=>x.estado==='Cumplido').length;
+    const tareas=operarioMap[op].tareas;
+    const misRondas=operarioMap[op].rondas;
+    const okTareas=tareas.filter(x=>x.estado==='Cumplido').length;
     const pend=tareas.filter(x=>x.estado==='Pendiente').length;
     const noR=tareas.filter(x=>x.estado==='No realizada').length;
-    const pct=tareas.length?Math.round(ok/tareas.length*100):0;
+    const totalActividad=tareas.length+misRondas.length;
+    const ok=okTareas+misRondas.length;
+    const pct=totalActividad?Math.round(ok/totalActividad*100):0;
     const clsP=pct>=80?'green':pct>=50?'amber':'red';
     const clsFill=pct>=80?'':pct>=50?'warn':'danger';
 
-    // Sectores del operario
-    const sectoresOp=[...new Set(tareas.map(x=>x.sector))].join(', ');
+    // Sectores del operario (tareas + rondas)
+    const sectoresOp=[...new Set([...tareas.map(x=>x.sector),...misRondas.map(x=>x.sector)])].join(', ');
 
     // Info del usuario (si existe en users)
     const userObj=users.find(u=>u.nombre===op);
@@ -3819,11 +3849,27 @@ function renderSvOperarios(){
       </div>`;
     }).join('');
 
+    // Rondas de hoy de este operario — mismo diseño de fila que las tareas
+    const rondaRows=misRondas.map(r=>{
+      const hallazgos=(r.items||[]).filter(it=>esEstadoMal(it.estado)).length;
+      const ec=hallazgos>0?'b-pend':'b-ok';
+      const estadoTxt=hallazgos>0?`⚠ ${hallazgos} observación${hallazgos>1?'es':''}`:'Completada';
+      return`<div class="op-worker-task done" style="cursor:pointer;" onclick="verDetalleRonda('${r.id}')">
+        <div class="op-worker-sector-tag">${r.sector}</div>
+        <div style="flex:1;min-width:0;">
+          <div style="font-weight:500;">📋 ${r.nombre}</div>
+        </div>
+        <span class="badge b-turno" style="flex-shrink:0;">${r.turno}</span>
+        <span class="badge ${ec}" style="flex-shrink:0;min-width:80px;text-align:center;">${estadoTxt}</span>
+        <span style="font-family:var(--mono);font-size:10px;color:var(--text3);flex-shrink:0;min-width:50px;text-align:right;">${r.firmaTs?fmtDatetime(r.firmaTs).split(' ')[1]:'—'}</span>
+      </div>`;
+    }).join('');
+
     // Alertas rápidas
     const alertas=[];
     if(noR>0)alertas.push(`<span style="color:var(--red);font-size:11px;">⚠ ${noR} no realizada${noR>1?'s':''}</span>`);
     if(pend>0)alertas.push(`<span style="color:var(--amber);font-size:11px;">⏳ ${pend} pendiente${pend>1?'s':''}</span>`);
-    if(ok===tareas.length&&tareas.length>0)alertas.push(`<span style="color:var(--green);font-size:11px;">✅ Todo cumplido</span>`);
+    if(ok===totalActividad&&totalActividad>0)alertas.push(`<span style="color:var(--green);font-size:11px;">✅ Todo cumplido</span>`);
 
     const opEscaped=op.replace(/'/g,"\\'");
     return`<div class="op-worker-card" style="border-left:3px solid var(--${clsP});">
@@ -3838,14 +3884,14 @@ function renderSvOperarios(){
             <div class="op-worker-pct-bar"><div class="op-worker-pct-fill ${clsFill}" style="width:${pct}%;background:var(--${clsP});"></div></div>
             <span style="font-family:var(--mono);font-size:13px;font-weight:600;color:var(--${clsP});">${pct}%</span>
           </div>
-          <div style="font-family:var(--mono);font-size:10px;color:var(--text3);margin-bottom:6px;">${ok}/${tareas.length} cumplidas</div>
+          <div style="font-family:var(--mono);font-size:10px;color:var(--text3);margin-bottom:6px;">${ok}/${totalActividad} cumplidas${misRondas.length?` (${tareas.length} tareas + ${misRondas.length} rondas)`:''}</div>
           <div style="display:flex;gap:6px;justify-content:flex-end;">
             <button class="op-hist-btn" onclick="openHistOperario('${opEscaped}')">📊 Historial</button>
             <button class="op-hist-btn" onclick="openReporteOperarioModal('${opEscaped}')">📄 Reporte</button>
           </div>
         </div>
       </div>
-      <div class="op-worker-body">${taskRows}</div>
+      <div class="op-worker-body">${taskRows}${rondaRows}</div>
     </div>`;
   });
 
@@ -4371,8 +4417,13 @@ function getHistoricoData(dias, sector, operario){
     let t = tasks.filter(tk=>tk.fechaReg===fecha);
     if(sector) t = t.filter(tk=>tk.sector===sector);
     if(operario) t = t.filter(tk=>tk.responsable===operario);
-    const total = t.length;
-    const ok = t.filter(tk=>tk.estado==='Cumplido').length;
+    // Rondas del mismo día — cuentan como actividad realizada por el operario
+    // (una ronda guardada siempre está completa; no existe "ronda a medias").
+    let r = (rondas.registros||[]).filter(rr=>rr.fecha===fecha);
+    if(sector) r = r.filter(rr=>rr.sector===sector);
+    if(operario) r = r.filter(rr=>rr.responsable===operario);
+    const total = t.length + r.length;
+    const ok = t.filter(tk=>tk.estado==='Cumplido').length + r.length;
     const noR = t.filter(tk=>tk.estado==='No realizada').length;
     const pct = total>0?Math.round(ok/total*100):null;
     return {fecha, total, ok, noR, pct};
@@ -4387,12 +4438,19 @@ function getSectorStats(dias, operario){
 
   let t = tasks.filter(tk=>tk.fechaReg>=desdeStr && tk.fechaReg<=hoy);
   if(operario) t = t.filter(tk=>tk.responsable===operario);
+  let r = (rondas.registros||[]).filter(rr=>rr.fecha>=desdeStr && rr.fecha<=hoy);
+  if(operario) r = r.filter(rr=>rr.responsable===operario);
 
   const porSector = {};
   t.forEach(tk=>{
     if(!porSector[tk.sector]) porSector[tk.sector]={total:0,ok:0};
     porSector[tk.sector].total++;
     if(tk.estado==='Cumplido') porSector[tk.sector].ok++;
+  });
+  r.forEach(rr=>{
+    if(!porSector[rr.sector]) porSector[rr.sector]={total:0,ok:0};
+    porSector[rr.sector].total++;
+    porSector[rr.sector].ok++; // una ronda guardada siempre está completa
   });
 
   return Object.entries(porSector)
@@ -4490,10 +4548,12 @@ function initHistoricoSelects(){
 }
 
 function renderMetrics(){
-  const total=tasks.length,cumplidos=tasks.filter(t=>t.estado==='Cumplido').length;
+  const totalT=tasks.length,cumplidosT=tasks.filter(t=>t.estado==='Cumplido').length;
   const pendientes=tasks.filter(t=>t.estado==='Pendiente').length;
   const vencidos=tasks.filter(t=>t.estado==='Vencido').length;
   const noReal=tasks.filter(t=>t.estado==='No realizada').length;
+  const totalR=(rondas.registros||[]).length; // toda ronda guardada está completa
+  const total=totalT+totalR, cumplidos=cumplidosT+totalR;
   const pct=total?Math.round(cumplidos/total*100):0;
   const items=[
     {l:'Total',v:total,c:''},{l:'Cumplidos',v:cumplidos,c:'ok'},
@@ -4508,6 +4568,7 @@ function renderMetrics(){
 function renderBars(){
   const map={};cfg.sectores.forEach(s=>{map[s]={total:0,ok:0};});
   tasks.forEach(t=>{if(map[t.sector]){map[t.sector].total++;if(t.estado==='Cumplido')map[t.sector].ok++;}});
+  (rondas.registros||[]).forEach(r=>{if(map[r.sector]){map[r.sector].total++;map[r.sector].ok++;}});
   const rows=cfg.sectores.filter(s=>map[s]&&map[s].total>0).map(s=>{
     const pct=Math.round(map[s].ok/map[s].total*100);
     const cls=pct>=80?'':pct>=50?'warn':'danger';
@@ -7244,7 +7305,7 @@ function _iniciarRondaReal(plantillaId, asignacionId, momento){
     escala: p.escala||'binaria', momento: momento||null,
     fecha: today(), turno, sector: p.sector,
     items: items.map(it=>({
-      itemId:it.id, texto:it.texto, estado:null, motivo:'', hora:null,
+      itemId:it.id, texto:it.texto, estado:null, motivo:'', accionCorrectiva:'', hora:null,
       tipo: it.tipo||'check', valor:null,
       ...(it.tipo==='temp' ? {limiteMin:it.limiteMin, limiteMax:it.limiteMax, unidad:it.unidad||'°C', pcc:it.pcc||''} : {})
     })),
@@ -7274,7 +7335,11 @@ function renderRondaItemsModal(){
   const cont = document.getElementById('rondaItemsCont');
   const esAID = _rondaEnCurso.escala === 'aid';
   cont.innerHTML = _rondaEnCurso.items.map((it,i)=>{
-    const bg = it.estado==='ok' ? 'var(--green-bg,#e8f5ee)' : esEstadoMal(it.estado) ? 'var(--red-bg,#fde8e8)' : 'var(--bg2)';
+    // Fondo de la fila: 3 niveles reales (verde/ámbar/rojo), no solo ok/mal
+    const bg = it.estado==='ok' ? '#e8f5ee'
+      : it.estado==='deficiente' ? '#fff3cd'
+      : esEstadoMal(it.estado) ? '#fde8e8'
+      : 'var(--bg2)';
     if(it.tipo==='temp'){
       const rango = (it.limiteMin!=null&&it.limiteMax!=null) ? `entre ${it.limiteMin} y ${it.limiteMax}${it.unidad}`
         : it.limiteMin!=null ? `≥ ${it.limiteMin}${it.unidad}`
@@ -7290,10 +7355,11 @@ function renderRondaItemsModal(){
         ${it.hora ? `<div style="font-size:10px;color:var(--text3);margin-top:4px;">Medido a las ${it.hora}</div>` : ''}
       </div>`;
     }
+    // Colores semáforo reales para A/I/D: verde / ámbar / rojo, bien diferenciados
     const botones = esAID ? `
-        <button aria-label="Aceptable" onclick="marcarItemRonda(${i},'ok')" style="width:34px;height:34px;border-radius:50%;border:.5px solid var(--border);background:${it.estado==='ok'?'#1a7a4a':'#fff'};color:${it.estado==='ok'?'#fff':'#888'};font-size:14px;">A</button>
-        <button aria-label="Deficiente" onclick="marcarItemRonda(${i},'deficiente')" style="width:34px;height:34px;border-radius:50%;border:.5px solid var(--border);background:${it.estado==='deficiente'?'#8a6416':'#fff'};color:${it.estado==='deficiente'?'#fff':'#888'};font-size:14px;">D</button>
-        <button aria-label="Inaceptable" onclick="marcarItemRonda(${i},'inaceptable')" style="width:34px;height:34px;border-radius:50%;border:.5px solid var(--border);background:${it.estado==='inaceptable'?'#b02020':'#fff'};color:${it.estado==='inaceptable'?'#fff':'#888'};font-size:14px;">I</button>`
+        <button aria-label="Aceptable" onclick="marcarItemRonda(${i},'ok')" style="width:34px;height:34px;border-radius:50%;border:.5px solid var(--border);background:${it.estado==='ok'?'#1a7a4a':'#fff'};color:${it.estado==='ok'?'#fff':'#888'};font-size:14px;font-weight:700;">A</button>
+        <button aria-label="Deficiente" onclick="marcarItemRonda(${i},'deficiente')" style="width:34px;height:34px;border-radius:50%;border:.5px solid var(--border);background:${it.estado==='deficiente'?'#e0a020':'#fff'};color:${it.estado==='deficiente'?'#fff':'#888'};font-size:14px;font-weight:700;">D</button>
+        <button aria-label="Inaceptable" onclick="marcarItemRonda(${i},'inaceptable')" style="width:34px;height:34px;border-radius:50%;border:.5px solid var(--border);background:${it.estado==='inaceptable'?'#b02020':'#fff'};color:${it.estado==='inaceptable'?'#fff':'#888'};font-size:14px;font-weight:700;">I</button>`
       : `
         <button aria-label="Aceptable" onclick="marcarItemRonda(${i},'ok')" style="width:36px;height:36px;border-radius:50%;border:.5px solid var(--border);background:${it.estado==='ok'?'#1a7a4a':'#fff'};color:${it.estado==='ok'?'#fff':'#888'};font-size:16px;">✓</button>
         <button aria-label="Deficiente" onclick="marcarItemRonda(${i},'mal')" style="width:36px;height:36px;border-radius:50%;border:.5px solid var(--border);background:${it.estado==='mal'?'#b02020':'#fff'};color:${it.estado==='mal'?'#fff':'#888'};font-size:16px;">✕</button>`;
@@ -7302,22 +7368,27 @@ function renderRondaItemsModal(){
         <div style="font-size:13px;flex:1;">${it.texto}</div>
         <div style="display:flex;gap:6px;flex-shrink:0;">${botones}</div>
       </div>
-      ${esEstadoMal(it.estado) ? `<select style="margin-top:8px;width:100%;" onchange="_rondaEnCurso.items[${i}].motivo=this.value">
-        <option value="">Elegí un motivo...</option>
+      ${esEstadoMal(it.estado) ? `
+      <select style="margin-top:8px;width:100%;" onchange="_rondaEnCurso.items[${i}].motivo=this.value">
+        <option value="">¿Por qué no está aceptable?...</option>
         <option>Restos de comida</option>
         <option>Falta desinfección</option>
         <option>Manchas / suciedad visible</option>
         <option>Elemento roto o en mal estado</option>
         <option>Faltante de insumo de limpieza</option>
         <option>Otro (ver observación)</option>
-      </select>` : ''}
+      </select>
+      <textarea placeholder="¿Qué acción correctiva se tomó?" style="margin-top:6px;width:100%;font-size:12px;" oninput="_rondaEnCurso.items[${i}].accionCorrectiva=this.value">${it.accionCorrectiva||''}</textarea>` : ''}
       ${it.hora ? `<div style="font-size:10px;color:var(--text3);margin-top:4px;">Marcado a las ${it.hora}</div>` : ''}
     </div>`;
   }).join('');
 
   const done = _rondaEnCurso.items.filter(i=>i.estado).length;
   const total = _rondaEnCurso.items.length;
-  document.getElementById('rondaBarra').style.width = (total?done/total*100:0)+'%';
+  const pctVivo = total?Math.round(done/total*100):0;
+  document.getElementById('rondaBarra').style.width = pctVivo+'%';
+  document.getElementById('rondaPorcentaje').textContent = pctVivo+'%';
+  document.getElementById('rondaPorcentaje').style.color = pctVivo===100?'var(--green)':'var(--text3)';
   const btn = document.getElementById('rondaBtnFirmar');
   if(done===total && total>0){
     btn.disabled=false;
@@ -7501,7 +7572,7 @@ function verDetalleRonda(id){
   document.getElementById('rondaDetalleItems').innerHTML = r.items.map(it=>{
     const icono = it.estado==='ok'?'✅':it.estado==='deficiente'?'🟡':it.estado==='inaceptable'?'🔴':'⚠️';
     return `<div style="display:flex;justify-content:space-between;gap:8px;font-size:12px;padding:6px 10px;background:var(--bg2);border-radius:6px;">
-      <div>${icono} ${it.texto}${it.tipo==='temp'&&it.valor!=null?' — <strong>'+it.valor+' '+(it.unidad||'°C')+'</strong>':''}${it.motivo?' — <em style="color:var(--text3)">'+it.motivo+'</em>':''}</div>
+      <div>${icono} ${it.texto}${it.tipo==='temp'&&it.valor!=null?' — <strong>'+it.valor+' '+(it.unidad||'°C')+'</strong>':''}${it.motivo?' — <em style="color:var(--text3)">'+it.motivo+'</em>':''}${it.accionCorrectiva?'<br/><span style="color:var(--text3);">🔧 Acción correctiva: '+it.accionCorrectiva+'</span>':''}</div>
       <div style="color:var(--text3);flex-shrink:0;">${it.hora||''}</div>
     </div>`;
   }).join('');
@@ -7561,6 +7632,7 @@ function imprimirRonda(id){
     th{background:#1a2744;color:#fff;font-size:10px;text-transform:uppercase;padding:6px 8px;text-align:left;}
     td{padding:6px 8px;border-bottom:1px solid #eee;font-size:11px;}
     .ok{color:#1a7a4a;font-weight:700;}
+    .warn{color:#b8860b;font-weight:700;}
     .bad{color:#b02020;font-weight:700;}
     .firmas{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:24px;}
     .firma-box{border:1px solid #ddd;border-radius:6px;padding:12px;}
@@ -7582,16 +7654,17 @@ function imprimirRonda(id){
     <div><b>Turno</b>${r.turno}${r.momento?' · '+(r.momento==='preoperacional'?'Pre-operacional':'Operacional'):''}</div>
     <div><b>Sector</b>${r.sector}</div>
   </div>
-  <table><thead><tr><th>Ítem</th><th>Hora</th><th>Valor</th><th>Estado</th><th>Observación</th></tr></thead>
+  <table><thead><tr><th>Ítem</th><th>Hora</th><th>Valor</th><th>Estado</th><th>Motivo</th><th>Acción correctiva</th></tr></thead>
   <tbody>${r.items.map(it=>{
     const estadoTexto = it.estado==='ok'?'✓ Aceptable':it.estado==='deficiente'?'⚠ Deficiente':it.estado==='inaceptable'?'✗ Inaceptable':'✗ Deficiente';
-    const claseEstado = it.estado==='ok'?'ok':'bad';
+    const claseEstado = it.estado==='ok'?'ok':it.estado==='deficiente'?'warn':'bad';
     return `<tr>
     <td>${it.texto}</td>
     <td>${it.hora||'—'}</td>
     <td>${it.tipo==='temp'&&it.valor!=null?(it.valor+' '+(it.unidad||'°C')):'—'}</td>
     <td class="${claseEstado}">${estadoTexto}</td>
     <td>${it.motivo||'—'}</td>
+    <td>${it.accionCorrectiva||(it.tipo==='temp'?(it.motivo||'—'):'—')}</td>
   </tr>`;
   }).join('')}</tbody></table>
   <div class="firmas">
@@ -8003,13 +8076,20 @@ function switchHistTab(tab, btn){
 }
 
 function getHistData(opNombre){
-  // Agrupa tasks por fecha para el operario dado
+  // Agrupa tasks + rondas por fecha para el operario dado
   const tareasOp = tasks.filter(t => t.responsable === opNombre);
+  const rondasOp = (rondas.registros||[]).filter(r => r.responsable === opNombre);
   const porFecha = {};
   tareasOp.forEach(t => {
     const f = t.fechaReg || today();
     if(!porFecha[f]) porFecha[f] = [];
     porFecha[f].push(t);
+  });
+  rondasOp.forEach(r => {
+    const f = r.fecha || today();
+    if(!porFecha[f]) porFecha[f] = [];
+    // Se agrega como pseudo-tarea "Cumplido" (una ronda guardada siempre está completa)
+    porFecha[f].push({estado:'Cumplido', fechaReg:f, sector:r.sector, tipo:'📋 '+r.nombre, horaRegistro:r.firmaTs, esRonda:true, rondaId:r.id});
   });
   return porFecha;
 }
@@ -8033,10 +8113,11 @@ function openHistOperario(opNombre){
   const porFecha = getHistData(opNombre);
   const fechas = Object.keys(porFecha).sort().reverse();
   const todasTareas = tasks.filter(t => t.responsable === opNombre);
+  const todasRondasOp = (rondas.registros||[]).filter(r => r.responsable === opNombre);
 
-  // ── Métricas globales ──
-  const totalT   = todasTareas.length;
-  const totalOk  = todasTareas.filter(t=>t.estado==='Cumplido').length;
+  // ── Métricas globales (tareas + rondas) ──
+  const totalT   = todasTareas.length + todasRondasOp.length;
+  const totalOk  = todasTareas.filter(t=>t.estado==='Cumplido').length + todasRondasOp.length;
   const totalNoR = todasTareas.filter(t=>t.estado==='No realizada').length;
   const totalIncid = todasTareas.filter(t=>t.incidencia).length;
   const pctGlobal = totalT ? Math.round(totalOk/totalT*100) : 0;
