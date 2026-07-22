@@ -3235,13 +3235,27 @@ async function recrearCuentaAuth(user, plainPassword){
 
 // Verifica la contraseña actual del usuario logueado (para firma digital)
 // reautenticando contra Firebase, sin cerrar su sesión.
+// Devuelve {ok, code, msg} — code/msg distinguen "contraseña incorrecta" de
+// otros problemas (demasiados intentos, sesión vencida, etc.) que antes
+// quedaban todos ocultos detrás del mismo mensaje genérico.
 async function verificarPasswordActual(plainInput){
-  if(!window._auth.currentUser || !currentUser) return false;
+  if(!window._auth.currentUser || !currentUser) return {ok:false, code:'sin-sesion', msg:'Tu sesión no está activa. Cerrá sesión y volvé a entrar.'};
+  // Usar el registro más actualizado de "users" (por si authGen cambió en otra
+  // pestaña/sesión desde que se cargó currentUser) en vez de una copia vieja.
+  const userActual = users.find(u=>u.user===currentUser.user) || currentUser;
   try{
-    const cred = window._fbEmailCredential(syntheticEmail(currentUser), plainInput);
+    const cred = window._fbEmailCredential(syntheticEmail(userActual), plainInput);
     await window._fbReauthenticate(window._auth.currentUser, cred);
-    return true;
-  }catch(e){ return false; }
+    return {ok:true, code:null, msg:''};
+  }catch(e){
+    const code = e && e.code ? e.code : 'desconocido';
+    let msg = 'Contraseña incorrecta.';
+    if(code==='auth/too-many-requests') msg = 'Demasiados intentos — Firebase bloqueó los reintentos por un rato. Esperá unos minutos y probá de nuevo.';
+    else if(code==='auth/user-mismatch' || code==='auth/user-not-found') msg = 'Tu sesión quedó desactualizada (por ejemplo, si te resetearon la contraseña mientras estabas logueado). Cerrá sesión y volvé a entrar.';
+    else if(code==='auth/network-request-failed') msg = 'Sin conexión con el servidor — revisá tu internet e intentá de nuevo.';
+    else if(code!=='auth/wrong-password' && code!=='auth/invalid-credential' && code!=='desconocido') msg = 'No se pudo verificar ('+code+'). Si se repite, cerrá sesión y volvé a entrar.';
+    return {ok:false, code, msg};
+  }
 }
 
 // Crea la cuenta de Firebase Auth si el usuario nunca tuvo una, o la
@@ -4918,6 +4932,7 @@ function openReporteOperarioModal(opNombre){
   document.getElementById('repOpHasta').value = t;
   document.getElementById('repOpFirmaPass').value = '';
   document.getElementById('repOpFirmaMsg').style.display = 'none';
+  document.getElementById('repOpFirmaQuien').textContent = currentUser ? currentUser.nombre+' (@'+currentUser.user+')' : 'quien está generando el reporte';
   document.getElementById('modalReporteOperario').classList.add('open');
 }
 
@@ -5049,7 +5064,8 @@ async function generarReporteOperario(modo){
 
   if(passInput){
     // Verificar contraseña del usuario actual
-    if(currentUser && await verificarPasswordActual(passInput)){
+    const verif = await verificarPasswordActual(passInput);
+    if(currentUser && verif.ok){
       const ahora = new Date();
       firmaData = {
         firmante: currentUser.nombre,
@@ -5064,7 +5080,7 @@ async function generarReporteOperario(modo){
     } else {
       firmaMsg.style.display='block';
       firmaMsg.style.color='var(--red)';
-      firmaMsg.textContent='❌ Contraseña incorrecta. Verificá e intentá de nuevo.';
+      firmaMsg.textContent='❌ '+verif.msg;
       return;
     }
   }
@@ -6758,8 +6774,8 @@ async function confirmarCierreNC(){
   const pass = document.getElementById('ncFirmaPass').value;
   const msg = document.getElementById('ncFirmaMsg');
   if(!pass){ msg.textContent='Ingresá tu contraseña.'; msg.style.display='block'; return; }
-  const ok = await verificarPasswordActual(pass);
-  if(!ok){ msg.textContent='Contraseña incorrecta.'; msg.style.display='block'; return; }
+  const verif = await verificarPasswordActual(pass);
+  if(!verif.ok){ msg.textContent=verif.msg; msg.style.display='block'; return; }
   const n = traz.noConformidades.find(x=>x.id===_ncDetalleId);
   if(!n) return;
   n.cerrado = true;
@@ -7432,8 +7448,8 @@ async function confirmarFirmaRonda(){
   const pass = document.getElementById('rondaFirmaPass').value;
   const msg = document.getElementById('rondaFirmaMsg');
   if(!pass){ msg.textContent='Ingresá tu contraseña.'; msg.style.display='block'; return; }
-  const ok = await verificarPasswordActual(pass);
-  if(!ok){ msg.textContent='Contraseña incorrecta.'; msg.style.display='block'; return; }
+  const verif = await verificarPasswordActual(pass);
+  if(!verif.ok){ msg.textContent=verif.msg; msg.style.display='block'; return; }
   _rondaEnCurso.firmaTs = nowISO();
   _rondaEnCurso.estado = 'cerrada';
   if(_rondaEnCurso.asignacionId){
@@ -7598,8 +7614,8 @@ async function confirmarFirmaSupervisorRonda(){
   const pass = document.getElementById('rondaFirmaSupervisorPass').value;
   const msg = document.getElementById('rondaFirmaSupervisorMsg');
   if(!pass){ msg.textContent='Ingresá tu contraseña.'; msg.style.display='block'; return; }
-  const ok = await verificarPasswordActual(pass);
-  if(!ok){ msg.textContent='Contraseña incorrecta.'; msg.style.display='block'; return; }
+  const verif = await verificarPasswordActual(pass);
+  if(!verif.ok){ msg.textContent=verif.msg; msg.style.display='block'; return; }
   const r = rondas.registros.find(x=>x.id===_rondaDetalleId);
   if(!r) return;
   r.supervisorNombre = currentUser.nombre;
@@ -8279,27 +8295,52 @@ function renderCapacitaciones(){
       }
       const deleteBtn = esSvAdmin ? `<button class="btn btn-ghost btn-sm" style="font-size:10px;color:var(--red);" onclick="eliminarCapacitacion('${c.id}')">🗑</button>` : '';
 
-      // Bloque de firma
+      // Bloque de firmas — operario (recepción) + instructor (dictado)
       const esOperarioPropio = !esSvAdmin && currentUser && currentUser.nombre === c.operario;
-      let firmaBloque = '';
+
+      let firmaOperarioHtml = '';
       if(c.firma){
-        // Ya firmada — mostrar sello
-        firmaBloque = `<div style="margin-top:8px;background:#e8f5ee;border:.5px solid #a8dbb8;border-radius:5px;padding:6px 10px;display:flex;align-items:center;gap:8px;">
+        firmaOperarioHtml = `<div style="background:#e8f5ee;border:.5px solid #a8dbb8;border-radius:5px;padding:6px 10px;display:flex;align-items:center;gap:8px;">
           <span style="font-size:14px;">✅</span>
           <div>
-            <div style="font-size:11px;font-weight:600;color:#1a7a4a;">Recibido y firmado por ${c.firma.firmante}</div>
+            <div style="font-size:11px;font-weight:600;color:#1a7a4a;">Recibida y firmada por ${c.firma.firmante}</div>
             <div style="font-size:10px;color:#4a7a5a;">${c.firma.ts} · @${c.firma.usuario}</div>
           </div>
         </div>`;
       } else if(esOperarioPropio){
-        // Operario puede firmar
-        firmaBloque = `<div style="margin-top:8px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+        firmaOperarioHtml = `<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
           <input type="password" id="firmaPass_${c.id}" placeholder="Tu contraseña para firmar" style="font-size:11px;padding:4px 8px;border:.5px solid var(--border);border-radius:4px;background:var(--surface);color:var(--text1);flex:1;min-width:160px;" />
           <button class="btn btn-primary btn-sm" style="font-size:11px;" onclick="firmarCapacitacion('${c.id}')">✍ Firmar recepción</button>
         </div>`;
-      } else if(esSvAdmin){
-        firmaBloque = `<div style="margin-top:6px;font-size:11px;color:var(--text3);font-style:italic;">⏳ Pendiente de firma del operario</div>`;
+      } else {
+        firmaOperarioHtml = `<div style="font-size:11px;color:var(--text3);font-style:italic;">⏳ Pendiente de firma del operario</div>`;
       }
+
+      let firmaInstructorHtml = '';
+      if(c.firmaInstructor){
+        firmaInstructorHtml = `<div style="background:#e8f5ee;border:.5px solid #a8dbb8;border-radius:5px;padding:6px 10px;display:flex;align-items:center;gap:8px;">
+          <span style="font-size:14px;">✅</span>
+          <div>
+            <div style="font-size:11px;font-weight:600;color:#1a7a4a;">Dictado confirmado por ${c.firmaInstructor.firmante}</div>
+            <div style="font-size:10px;color:#4a7a5a;">${c.firmaInstructor.ts} · @${c.firmaInstructor.usuario}</div>
+          </div>
+        </div>`;
+      } else if(esSvAdmin){
+        firmaInstructorHtml = `<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+          <input type="password" id="firmaInstructorPass_${c.id}" placeholder="Tu contraseña para confirmar el dictado" style="font-size:11px;padding:4px 8px;border:.5px solid var(--border);border-radius:4px;background:var(--surface);color:var(--text1);flex:1;min-width:160px;" />
+          <button class="btn btn-outline btn-sm" style="font-size:11px;" onclick="firmarCapacitacionInstructor('${c.id}')">✍ Firmar como instructor</button>
+        </div>`;
+      } else {
+        firmaInstructorHtml = `<div style="font-size:11px;color:var(--text3);font-style:italic;">⏳ Pendiente de confirmación del instructor</div>`;
+      }
+
+      const completa = c.firma && c.firmaInstructor;
+      const firmaBloque = `
+        <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px;">
+          ${completa?`<div style="font-size:11px;font-weight:600;color:#1a7a4a;">✅ Capacitación completa — firmada por las dos partes</div>`:''}
+          <div>${firmaOperarioHtml}</div>
+          <div>${firmaInstructorHtml}</div>
+        </div>`;
 
       return `<div style="background:var(--surface);border:.5px solid var(--border);border-radius:var(--r);padding:12px 14px;margin-bottom:8px;">
         <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;flex-wrap:wrap;">
@@ -8338,8 +8379,9 @@ async function firmarCapacitacion(id){
   if(!passInput) return;
   const pass = passInput.value;
   if(!pass){ alert('Ingresá tu contraseña para firmar.'); return; }
-  if(!currentUser || !(await verificarPasswordActual(pass))){
-    alert('Contraseña incorrecta. Verificá e intentá de nuevo.');
+  const verifCap = currentUser ? await verificarPasswordActual(pass) : {ok:false, msg:'No hay sesión activa.'};
+  if(!currentUser || !verifCap.ok){
+    alert(verifCap.msg);
     passInput.value='';
     return;
   }
@@ -8352,6 +8394,36 @@ async function firmarCapacitacion(id){
   };
   saveCapacitaciones();
   audit(`Capacitación firmada: ${c.tema}`, `Firmado por @${currentUser.user}`, 'usuario');
+  renderCapacitaciones();
+}
+
+// Firma de quien dictó/registra la capacitación (Supervisor/Coordinador/Admin).
+// Junto con firmarCapacitacion (la del operario que la recibió), deja la
+// capacitación con las dos firmas que pediste: la de quien la tomó y la de
+// quien la dio.
+async function firmarCapacitacionInstructor(id){
+  const c = capacitaciones.find(x=>String(x.id)===String(id));
+  if(!c) return;
+  if(!esSupervisorOSuperior(currentUser)){ alert('Solo Supervisor, Coordinador o Administrador pueden firmar como instructor.'); return; }
+  const passInput = document.getElementById('firmaInstructorPass_'+id);
+  if(!passInput) return;
+  const pass = passInput.value;
+  if(!pass){ alert('Ingresá tu contraseña para firmar.'); return; }
+  const verifCap = await verificarPasswordActual(pass);
+  if(!verifCap.ok){
+    alert(verifCap.msg);
+    passInput.value='';
+    return;
+  }
+  const ahora = new Date();
+  c.firmaInstructor = {
+    firmante: currentUser.nombre,
+    usuario: currentUser.user,
+    ts: ahora.toLocaleDateString('es-AR',{weekday:'long',year:'numeric',month:'long',day:'numeric'})+
+        ' a las '+ahora.toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'}),
+  };
+  saveCapacitaciones();
+  audit(`Capacitación confirmada por instructor: ${c.tema}`, `Firmado por @${currentUser.user}`, 'usuario');
   renderCapacitaciones();
 }
 
@@ -8574,10 +8646,10 @@ loadData();
     </div>
     <div style="background:var(--surface);border:.5px solid var(--border);border-radius:var(--rl);padding:12px 14px;margin-bottom:16px;">
       <div style="font-size:11px;font-weight:600;color:var(--navy);margin-bottom:8px;text-transform:uppercase;letter-spacing:.04em;">🔐 Validación digital</div>
-      <div style="font-size:12px;color:var(--text2);margin-bottom:10px;">Ingresá tu contraseña para firmar digitalmente el reporte. Si no la ingresás, el reporte se genera sin firma.</div>
+      <div style="font-size:12px;color:var(--text2);margin-bottom:10px;">Esto certifica el reporte con <strong>tu</strong> firma (<span id="repOpFirmaQuien">quien está generando el reporte</span>), no la del operario. Si no la ingresás, el reporte se genera sin firma.</div>
       <div class="fg" style="margin:0;">
         <label>Tu contraseña</label>
-        <input type="password" id="repOpFirmaPass" placeholder="Contraseña de tu usuario" />
+        <input type="password" id="repOpFirmaPass" placeholder="Contraseña de tu propio usuario" />
       </div>
       <div id="repOpFirmaMsg" style="display:none;font-size:11px;margin-top:6px;"></div>
     </div>
