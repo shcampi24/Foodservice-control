@@ -936,6 +936,15 @@ tbody td{padding:8px 10px;vertical-align:middle;}
     <div id="cfgRondasFijas" style="display:flex;flex-direction:column;gap:6px;"></div>
   </div>
 
+  <div class="config-section" id="cfgInstitucionesWrap" style="display:none;margin-top:1rem;">
+    <h3>🏢 Instituciones del sistema</h3>
+    <div class="info-panel" style="font-size:11px;padding:7px 10px;margin-bottom:10px;">
+      Esta sección solo la ves vos, como operador del sistema — no es parte de lo que ve un Admin normal de una institución. Cada institución nueva queda 100% separada: sus propios usuarios, sectores, tareas y todo lo demás.
+    </div>
+    <div id="cfgListaInstituciones" style="display:flex;flex-direction:column;gap:6px;margin-bottom:12px;"></div>
+    <button class="btn btn-primary btn-sm" onclick="openNuevaInstitucionModal()">+ Nueva institución</button>
+  </div>
+
 
   <!-- RESPALDO: botones de backup -->
   <div class="config-section" style="margin-top:1rem;">
@@ -1813,6 +1822,49 @@ tbody td{padding:8px 10px;vertical-align:middle;}
   </div>
 </div>
 
+<!-- ══ MODAL: NUEVA INSTITUCIÓN ══ -->
+<div class="modal-bg" id="modalNuevaInstitucion" onclick="handleModalClick(event,'modalNuevaInstitucion')">
+  <div class="modal-box wide">
+    <button class="modal-close" onclick="closeModal('modalNuevaInstitucion')">✕</button>
+    <div class="modal-title" style="margin-bottom:4px;">🏢 Nueva institución</div>
+    <div class="modal-sub" style="margin-bottom:14px;font-size:11px;">Crea una institución completamente separada, con su propio primer Administrador. No comparte ningún dato con las demás.</div>
+    <div class="form-grid" style="margin-bottom:10px;">
+      <div class="fg">
+        <label>Nombre</label>
+        <input type="text" id="niNombre" placeholder="Ej: Sanatorio de Niños" />
+      </div>
+      <div class="fg">
+        <label>Grupo / referencia (opcional)</label>
+        <input type="text" id="niGrupo" placeholder="Ej: Grupo Oroño" />
+      </div>
+      <div class="fg">
+        <label>Identificador interno</label>
+        <input type="text" id="niId" placeholder="Ej: sanatorio-de-ninos" oninput="this.value=this.value.toLowerCase().replace(/[^a-z0-9-]/g,'-')" />
+      </div>
+    </div>
+    <div class="fg" style="margin-bottom:6px;"><label style="font-weight:600;">Primer Administrador de esta institución</label></div>
+    <div class="form-grid" style="margin-bottom:10px;">
+      <div class="fg">
+        <label>Nombre y apellido</label>
+        <input type="text" id="niAdminNombre" placeholder="Nombre del Administrador" />
+      </div>
+      <div class="fg">
+        <label>Usuario</label>
+        <input type="text" id="niAdminUser" placeholder="admin" />
+      </div>
+      <div class="fg">
+        <label>Contraseña temporal</label>
+        <input type="password" id="niAdminPass" placeholder="mínimo 6 caracteres" />
+      </div>
+    </div>
+    <div id="niMsg" style="display:none;font-size:12px;padding:8px 10px;border-radius:6px;margin-bottom:8px;"></div>
+    <div class="form-actions">
+      <button class="btn btn-ghost" onclick="closeModal('modalNuevaInstitucion')">Cancelar</button>
+      <button class="btn btn-primary" id="niBtnCrear" onclick="crearInstitucionNueva()">Crear institución</button>
+    </div>
+  </div>
+</div>
+
 <!-- ══ MODAL: FIRMA DE SUPERVISOR (segunda firma) ══ -->
 <div class="modal-bg" id="modalFirmaSupervisorRonda" onclick="handleModalClick(event,'modalFirmaSupervisorRonda')">
   <div class="modal-box" style="max-width:360px;">
@@ -2198,14 +2250,36 @@ function _rutaInstitucion(colName){ return 'instituciones/'+INSTITUCION_ID+'/'+c
 // se construya el panel de alta de instituciones (Fase 3), esto pasa a
 // vivir en Firestore y se podrá agregar una institución nueva sin tocar
 // el código cada vez.
-const INSTITUCIONES_DISPONIBLES = [
+//
+// FASE 3: la lista real ahora vive en Firestore (registro_instituciones/lista,
+// lectura pública porque hace falta antes de loguearse). Esta constante queda
+// solo como respaldo, por si todavía no existe ese documento o falla la
+// conexión — así la pantalla de selección nunca se queda vacía.
+const INSTITUCIONES_FALLBACK = [
   { id:'sanatorio-parque', nombre:'Sanatorio Parque', grupo:'Grupo Oroño' },
 ];
+let institucionesCache = INSTITUCIONES_FALLBACK;
+
+async function cargarInstitucionesDisponibles(){
+  try{
+    if(!window._db){ institucionesCache = INSTITUCIONES_FALLBACK; return; }
+    const snap = await window._fsGet(window._fsDoc('registro_instituciones/lista'));
+    if(snap.exists() && Array.isArray(snap.data().instituciones) && snap.data().instituciones.length){
+      institucionesCache = snap.data().instituciones;
+    } else {
+      institucionesCache = INSTITUCIONES_FALLBACK;
+    }
+  }catch(e){
+    console.warn('No se pudo cargar el registro de instituciones, uso el respaldo fijo', e);
+    institucionesCache = INSTITUCIONES_FALLBACK;
+  }
+}
 
 // ── Selección de institución (pantalla previa al login) ──
-function iniciarSeleccionInstitucion(){
+async function iniciarSeleccionInstitucion(){
+  await cargarInstitucionesDisponibles();
   const guardada = LS.get('fscc_institucion_id');
-  if(guardada && INSTITUCIONES_DISPONIBLES.some(i=>i.id===guardada)){
+  if(guardada && institucionesCache.some(i=>i.id===guardada)){
     INSTITUCION_ID = guardada;
     arrancarConInstitucion();
     return;
@@ -2216,7 +2290,7 @@ function iniciarSeleccionInstitucion(){
 
 function renderListaInstituciones(){
   const el = document.getElementById('listaInstituciones');
-  el.innerHTML = INSTITUCIONES_DISPONIBLES.map(inst=>`
+  el.innerHTML = institucionesCache.map(inst=>`
     <button class="btn btn-outline" style="width:100%;justify-content:flex-start;padding:12px 14px;text-align:left;" onclick="elegirInstitucion('${inst.id}')">
       <div>
         <div style="font-weight:600;font-size:14px;">${inst.nombre}</div>
@@ -2241,11 +2315,124 @@ function cambiarInstitucion(){
 }
 
 function arrancarConInstitucion(){
-  const inst = INSTITUCIONES_DISPONIBLES.find(i=>i.id===INSTITUCION_ID);
+  const inst = institucionesCache.find(i=>i.id===INSTITUCION_ID);
   const nombreEl = document.getElementById('loginInstitucionNombre');
   if(nombreEl) nombreEl.textContent = inst ? inst.nombre : INSTITUCION_ID;
   document.getElementById('loginScreen').classList.add('active');
   loadData();
+}
+
+// ═══════════════════════════════════════════════════
+//  ALTA DE INSTITUCIONES NUEVAS (Fase 3)
+// ═══════════════════════════════════════════════════
+// Quién puede ver y usar esto: por ahora, únicamente el usuario "admin" de
+// Sanatorio Parque (el operador real del sistema). No existe todavía un rol
+// de "super admin" separado — se podría construir más adelante si hace
+// falta repartir esta tarea entre varias personas, pero agregaría una
+// capa de autenticación extra que hoy no es necesaria.
+function esOperadorDelSistema(){
+  return !!currentUser && currentUser.user === 'admin' && INSTITUCION_ID === 'sanatorio-parque';
+}
+
+function renderInstitucionesConfig(){
+  const wrap = document.getElementById('cfgInstitucionesWrap');
+  if(!wrap) return;
+  if(!esOperadorDelSistema()){ wrap.style.display = 'none'; return; }
+  wrap.style.display = 'block';
+  const el = document.getElementById('cfgListaInstituciones');
+  el.innerHTML = institucionesCache.map(inst=>`
+    <div class="config-item" style="flex-wrap:wrap;gap:8px;">
+      <div style="flex:1;min-width:200px;">
+        <div style="font-weight:600;font-size:13px;">${inst.nombre}</div>
+        <div style="font-size:11px;color:var(--text3);">${inst.grupo||'—'} · <span style="font-family:var(--mono);">${inst.id}</span></div>
+      </div>
+    </div>`).join('');
+  // Refrescar contra Firestore por si otro operador agregó una institución
+  // desde otra sesión mientras tanto.
+  cargarInstitucionesDisponibles().then(()=>{
+    if(esOperadorDelSistema()) renderInstitucionesConfig();
+  });
+}
+
+function openNuevaInstitucionModal(){
+  document.getElementById('niNombre').value = '';
+  document.getElementById('niGrupo').value = '';
+  document.getElementById('niId').value = '';
+  document.getElementById('niAdminNombre').value = '';
+  document.getElementById('niAdminUser').value = 'admin';
+  document.getElementById('niAdminPass').value = '';
+  document.getElementById('niMsg').style.display = 'none';
+  document.getElementById('modalNuevaInstitucion').classList.add('open');
+}
+
+// Email interno de Firebase Auth para un usuario de una institución
+// EXPLÍCITA (no la que está activa ahora) — hace falta al crear la
+// primera cuenta de una institución nueva, mientras seguís logueado en la
+// tuya.
+function syntheticEmailPara(institucionId, user){
+  const gen = user.authGen || 1;
+  if(institucionId === 'sanatorio-parque'){
+    return (user.user||'').toLowerCase()+'.g'+gen+'@fscc-sanatorioparque.local';
+  }
+  return (user.user||'').toLowerCase()+'.g'+gen+'@fscc-'+institucionId+'.local';
+}
+
+async function crearInstitucionNueva(){
+  const nombre = document.getElementById('niNombre').value.trim();
+  const grupo = document.getElementById('niGrupo').value.trim();
+  const id = document.getElementById('niId').value.trim();
+  const adminNombre = document.getElementById('niAdminNombre').value.trim();
+  const adminUser = document.getElementById('niAdminUser').value.trim().toLowerCase();
+  const adminPass = document.getElementById('niAdminPass').value;
+  const msg = document.getElementById('niMsg');
+  const mostrarError = (txt)=>{ msg.textContent = txt; msg.style.background = '#fde8e8'; msg.style.color = '#b02020'; msg.style.display = 'block'; };
+
+  if(!nombre || !id || !adminNombre || !adminUser || !adminPass){ mostrarError('Completá todos los campos obligatorios.'); return; }
+  if(adminPass.length < 6){ mostrarError('La contraseña temporal tiene que tener al menos 6 caracteres.'); return; }
+  if(!/^[a-z0-9-]+$/.test(id)){ mostrarError('El identificador solo puede tener letras minúsculas, números y guiones.'); return; }
+
+  await cargarInstitucionesDisponibles(); // asegurarse de chequear contra la lista más actual
+  if(institucionesCache.some(i=>i.id===id)){ mostrarError('Ya existe una institución con ese identificador.'); return; }
+
+  const btn = document.getElementById('niBtnCrear');
+  btn.disabled = true; btn.textContent = 'Creando...';
+  try{
+    // 1) Cuenta de Firebase Auth del primer Admin, en la instancia secundaria
+    //    (para no perder tu propia sesión mientras se crea).
+    const nuevoUsuario = { user: adminUser, authGen: 1 };
+    const email = syntheticEmailPara(id, nuevoUsuario);
+    await window._fbCreateUser(window._authSecondary, email, adminPass);
+    await window._fbSignOut(window._authSecondary);
+
+    // 2) Usuarios y configuración inicial de la institución nueva —
+    //    totalmente separados de cualquier otra.
+    const usuarioAdmin = {
+      nombre: adminNombre, user: adminUser, rol: 'admin', sectores: [],
+      authGen: 1, debeCambiarPass: true
+    };
+    await window._fsSet(window._fsDoc('instituciones/'+id+'/fscc_users/data'), { value:[usuarioAdmin] }, { merge:false });
+    await window._fsSet(window._fsDoc('instituciones/'+id+'/fscc_cfg/data'), { value: JSON.parse(JSON.stringify(DEFAULT_CFG)) }, { merge:false });
+
+    // 3) Sumarla al registro público de instituciones.
+    const nuevaEntrada = { id, nombre, grupo };
+    const listaNueva = [...institucionesCache, nuevaEntrada];
+    await window._fsSet(window._fsDoc('registro_instituciones/lista'), { instituciones: listaNueva }, { merge:false });
+    institucionesCache = listaNueva;
+
+    audit('Institución nueva creada: '+nombre, id+' — Admin inicial: @'+adminUser, 'config');
+    closeModal('modalNuevaInstitucion');
+    renderInstitucionesConfig();
+    alert('Institución "'+nombre+'" creada.\n\nDatos para el primer ingreso:\nUsuario: '+adminUser+'\nContraseña temporal: '+adminPass+'\n\nVa a tener que elegir su propia contraseña la primera vez que entre.');
+  }catch(e){
+    console.error(e);
+    const code = e && e.code ? e.code : '';
+    let texto = 'No se pudo crear la institución.';
+    if(code==='auth/email-already-in-use') texto = 'Ya existe una cuenta con ese usuario para ese identificador de institución.';
+    else if(code==='auth/weak-password') texto = 'Firebase considera esa contraseña demasiado débil — probá con otra.';
+    mostrarError(texto);
+  }finally{
+    btn.disabled = false; btn.textContent = 'Crear institución';
+  }
 }
 
 async function fbLoad(colName){
@@ -5542,6 +5729,7 @@ function renderConfig(){
   const inpCiclo = document.getElementById('cfgCicloMenuInicio');
   if(inpCiclo) inpCiclo.value = cfg.cicloMenuFechaInicio || '';
   renderCicloMenuPreview();
+  renderInstitucionesConfig();
 }
 
 function guardarHorasMuestraTestigo(val){
