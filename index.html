@@ -422,9 +422,18 @@ tbody td{padding:8px 10px;vertical-align:middle;}
 <body>
 
 <!-- ══ LOGIN ══ -->
-<div class="login-screen active" id="loginScreen">
+<div class="login-screen" id="selectInstitucionScreen">
   <div class="login-box">
-    <div class="login-logo">Sanatorio Parque</div>
+    <div class="login-logo">Food Service Control Center</div>
+    <div class="login-title" style="font-size:15px;">¿Qué institución sos?</div>
+    <div id="listaInstituciones" style="display:flex;flex-direction:column;gap:8px;margin:16px 0;"></div>
+    <div style="font-size:11px;color:var(--text3);text-align:center;margin-top:6px;">¿Institución nueva? Contactá al proveedor del sistema.</div>
+  </div>
+</div>
+
+<div class="login-screen" id="loginScreen">
+  <div class="login-box">
+    <div class="login-logo" id="loginInstitucionNombre">Sanatorio Parque</div>
     <div class="login-title">Food Service Control</div>
     <div class="login-sub">Ingresá con tu usuario y contraseña</div>
     <div class="login-error" id="loginError">Usuario o contraseña incorrectos.</div>
@@ -439,6 +448,7 @@ tbody td{padding:8px 10px;vertical-align:middle;}
     <button class="btn btn-primary" style="width:100%;justify-content:center;padding:10px;" onclick="doLogin()">Ingresar</button>
     <button class="btn btn-ghost" style="width:100%;justify-content:center;margin-top:8px;font-size:12px;color:var(--text3);" onclick="openRecuperarPass()">¿Olvidaste tu contraseña?</button>
     <button class="btn btn-ghost" style="width:100%;justify-content:center;margin-top:2px;font-size:11px;color:var(--text3);" onclick="openBootstrapAdmin()">🔧 Primer ingreso tras la actualización (solo Administrador)</button>
+    <button class="btn btn-ghost" style="width:100%;justify-content:center;margin-top:2px;font-size:11px;color:var(--text3);" onclick="cambiarInstitucion()">← Cambiar institución</button>
   </div>
 </div>
 
@@ -2179,10 +2189,64 @@ const LS={
 // ═══════════════════════════════════════════════════
 // Cada institución (Sanatorio Parque, y las que se sumen después) tiene sus
 // datos completamente separados bajo instituciones/{institucionId}/...
-// INSTITUCION_ID hoy está fijo — cuando exista la pantalla de selección de
-// institución, esto se va a completar dinámicamente antes de cargar datos.
-const INSTITUCION_ID = 'sanatorio-parque';
+// Se define en tiempo de ejecución, cuando la persona elige su institución
+// en la pantalla previa al login (o al restaurar la última elegida).
+let INSTITUCION_ID = null;
 function _rutaInstitucion(colName){ return 'instituciones/'+INSTITUCION_ID+'/'+colName+'/data'; }
+
+// Institución conocidas. Por ahora es una lista fija en el código — cuando
+// se construya el panel de alta de instituciones (Fase 3), esto pasa a
+// vivir en Firestore y se podrá agregar una institución nueva sin tocar
+// el código cada vez.
+const INSTITUCIONES_DISPONIBLES = [
+  { id:'sanatorio-parque', nombre:'Sanatorio Parque', grupo:'Grupo Oroño' },
+];
+
+// ── Selección de institución (pantalla previa al login) ──
+function iniciarSeleccionInstitucion(){
+  const guardada = LS.get('fscc_institucion_id');
+  if(guardada && INSTITUCIONES_DISPONIBLES.some(i=>i.id===guardada)){
+    INSTITUCION_ID = guardada;
+    arrancarConInstitucion();
+    return;
+  }
+  renderListaInstituciones();
+  document.getElementById('selectInstitucionScreen').classList.add('active');
+}
+
+function renderListaInstituciones(){
+  const el = document.getElementById('listaInstituciones');
+  el.innerHTML = INSTITUCIONES_DISPONIBLES.map(inst=>`
+    <button class="btn btn-outline" style="width:100%;justify-content:flex-start;padding:12px 14px;text-align:left;" onclick="elegirInstitucion('${inst.id}')">
+      <div>
+        <div style="font-weight:600;font-size:14px;">${inst.nombre}</div>
+        <div style="font-size:11px;color:var(--text3);">${inst.grupo}</div>
+      </div>
+    </button>`).join('');
+}
+
+function elegirInstitucion(id){
+  INSTITUCION_ID = id;
+  LS.set('fscc_institucion_id', id);
+  document.getElementById('selectInstitucionScreen').classList.remove('active');
+  arrancarConInstitucion();
+}
+
+function cambiarInstitucion(){
+  INSTITUCION_ID = null;
+  localStorage.removeItem('fscc_institucion_id');
+  document.getElementById('loginScreen').classList.remove('active');
+  renderListaInstituciones();
+  document.getElementById('selectInstitucionScreen').classList.add('active');
+}
+
+function arrancarConInstitucion(){
+  const inst = INSTITUCIONES_DISPONIBLES.find(i=>i.id===INSTITUCION_ID);
+  const nombreEl = document.getElementById('loginInstitucionNombre');
+  if(nombreEl) nombreEl.textContent = inst ? inst.nombre : INSTITUCION_ID;
+  document.getElementById('loginScreen').classList.add('active');
+  loadData();
+}
 
 async function fbLoad(colName){
   try{
@@ -3406,7 +3470,15 @@ async function enviarMailBienvenida(u, pass){
 // desde la app (ver nota en resetPass).
 function syntheticEmail(user){
   const gen = user.authGen || 1;
-  return (user.user||'').toLowerCase()+'.g'+gen+'@fscc-sanatorioparque.local';
+  // Sanatorio Parque mantiene EXACTAMENTE el formato de siempre — no se le
+  // suma la institución al email interno, para no invalidar ninguna cuenta
+  // de Firebase ya creada. Cualquier institución nueva usa un formato que
+  // incluye su propio id, así dos instituciones pueden tener cada una su
+  // propio usuario "admin" sin pisarse entre sí.
+  if(INSTITUCION_ID === 'sanatorio-parque'){
+    return (user.user||'').toLowerCase()+'.g'+gen+'@fscc-sanatorioparque.local';
+  }
+  return (user.user||'').toLowerCase()+'.g'+gen+'@fscc-'+INSTITUCION_ID+'.local';
 }
 
 // Crea la cuenta de Firebase Auth de un usuario usando la instancia
@@ -9208,7 +9280,7 @@ function renderAll(){
 // ═══════════════════════════════════════════════════
 //  INIT
 // ═══════════════════════════════════════════════════
-loadData();
+iniciarSeleccionInstitucion();
 </script>
 
 
