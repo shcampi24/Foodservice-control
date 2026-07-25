@@ -864,6 +864,17 @@ tbody td{padding:8px 10px;vertical-align:middle;}
       </div>
     </div>
     <div class="config-section" style="grid-column:1/-1;">
+      <h3>📅 Ciclo de menú</h3>
+      <div class="info-panel" style="font-size:11px;padding:7px 10px;margin-bottom:10px;">
+        El Menú Invierno 2026 rota cada 10 días (Menú 1 → Menú 10 → Menú 1 de nuevo). Marcá acá desde qué fecha arrancó el Menú 1 — con eso, el sistema sabe solo qué menú corresponde cualquier día, sin que nadie tenga que mirar la planilla.
+      </div>
+      <div class="fg" style="max-width:260px;margin:0 0 8px;">
+        <label>Fecha de inicio del Menú 1</label>
+        <input type="date" id="cfgCicloMenuInicio" onchange="guardarCicloMenuInicio(this.value)" />
+      </div>
+      <div id="cfgCicloMenuPreview" style="font-size:12px;color:var(--text2);"></div>
+    </div>
+    <div class="config-section" style="grid-column:1/-1;">
       <h3>🔁 Tareas automáticas (recurrentes)</h3>
       <div class="info-panel" style="font-size:11px;padding:7px 10px;margin-bottom:10px;">
         Por defecto todo se carga de forma manual. Estas son las únicas tareas que el sistema genera solo, todos los días, porque fueron marcadas con "🔁 Repetir automáticamente" al crearlas (ej. lavado de pisos). Podés desactivarlas acá.
@@ -1327,7 +1338,15 @@ tbody td{padding:8px 10px;vertical-align:middle;}
     <div class="form-grid" style="margin-bottom:10px;">
       <div class="fg">
         <label>Preparación</label>
-        <input type="text" id="prodPreparacion" placeholder="Ej: Milanesas al horno" />
+        <input type="text" id="prodPreparacion" placeholder="Ej: Milanesas al horno" oninput="chequearCambioMenu()" />
+      </div>
+      <div class="fg">
+        <label>Comida</label>
+        <select id="prodComida" onchange="actualizarPlanDelDia()">
+          <option value="almuerzo" selected>Almuerzo</option>
+          <option value="cena">Cena</option>
+          <option value="otro">Otro / colación</option>
+        </select>
       </div>
       <div class="fg">
         <label>Sector</label>
@@ -1335,7 +1354,7 @@ tbody td{padding:8px 10px;vertical-align:middle;}
       </div>
       <div class="fg">
         <label>Fecha</label>
-        <input type="date" id="prodFecha" />
+        <input type="date" id="prodFecha" onchange="actualizarPlanDelDia()" />
       </div>
       <div class="fg">
         <label>Turno</label>
@@ -1344,6 +1363,13 @@ tbody td{padding:8px 10px;vertical-align:middle;}
       <div class="fg">
         <label>Responsable</label>
         <input type="text" id="prodResponsable" placeholder="Nombre" />
+      </div>
+    </div>
+    <div id="prodPlanDelDia" style="display:none;margin-bottom:10px;"></div>
+    <div id="prodCambioMenuWrap" style="display:none;margin-bottom:10px;">
+      <div class="fg" style="margin:0;">
+        <label>⚠ Motivo del cambio (no coincide con lo planificado en el ciclo)</label>
+        <textarea id="prodCambioMenuMotivo" placeholder="Ej: el proveedor no entregó la milanesa, se sirvió pollo en su lugar"></textarea>
       </div>
     </div>
     <div id="prodRecetaRef" style="display:none;margin-bottom:10px;"></div>
@@ -1441,9 +1467,15 @@ tbody td{padding:8px 10px;vertical-align:middle;}
     <div class="modal-sub" style="margin-bottom:14px;font-size:11px;">Se guarda una porción de esta preparación durante el plazo configurado, por si hay que analizarla.</div>
     <div class="form-grid" style="margin-bottom:10px;">
       <div class="fg">
-        <label>Producción de hoy (opcional — completa todo solo)</label>
+        <label>Elegir del catálogo (las 30 preparaciones)</label>
+        <select id="mtPrepCatalogo" onchange="onMtPrepCatalogoChange()">
+          <option value="">— Elegir plato —</option>
+        </select>
+      </div>
+      <div class="fg">
+        <label>Producción de hoy (opcional — si la elegís, hereda también los lotes)</label>
         <select id="mtProduccion" onchange="onMtProduccionChange()">
-          <option value="">— Cargar a mano —</option>
+          <option value="">— Sin vincular a una producción —</option>
         </select>
       </div>
       <div class="fg">
@@ -2142,17 +2174,32 @@ const LS={
 };
 
 // ── Firebase helpers (async) ──────────────────────
+// ═══════════════════════════════════════════════════
+//  ESTRUCTURA MULTI-INSTITUCIÓN
+// ═══════════════════════════════════════════════════
+// Cada institución (Sanatorio Parque, y las que se sumen después) tiene sus
+// datos completamente separados bajo instituciones/{institucionId}/...
+// INSTITUCION_ID hoy está fijo — cuando exista la pantalla de selección de
+// institución, esto se va a completar dinámicamente antes de cargar datos.
+const INSTITUCION_ID = 'sanatorio-parque';
+function _rutaInstitucion(colName){ return 'instituciones/'+INSTITUCION_ID+'/'+colName+'/data'; }
+
 async function fbLoad(colName){
   try{
     if(!window._db)return null;
-    const snap=await window._fsGet(window._fsDoc(colName+'/data'));
-    return snap.exists()?snap.data().value:null;
+    const snap=await window._fsGet(window._fsDoc(_rutaInstitucion(colName)));
+    if(snap.exists()) return snap.data().value;
+    // Respaldo: si todavía no hay nada en la ruta nueva (por ejemplo, antes
+    // de que corra la migración por primera vez), se lee de la ruta vieja
+    // para que el sistema nunca se quede sin datos.
+    const snapVieja=await window._fsGet(window._fsDoc(colName+'/data'));
+    return snapVieja.exists()?snapVieja.data().value:null;
   }catch(e){console.warn('fbLoad error',colName,e);return null;}
 }
 async function fbSave(colName,value){
   try{
     if(!window._db)return;
-    await window._fsSet(window._fsDoc(colName+'/data'),{value},{ merge:false });
+    await window._fsSet(window._fsDoc(_rutaInstitucion(colName)),{value},{ merge:false });
   }catch(e){console.warn('fbSave error',colName,e);}
 }
 
@@ -2160,13 +2207,40 @@ async function fbSave(colName,value){
 let _snapListeners=[];
 function fbWatch(colName,callback){
   if(!window._db)return;
-  const unsub=window._fsSnap(window._fsDoc(colName+'/data'),(snap)=>{
+  const unsub=window._fsSnap(window._fsDoc(_rutaInstitucion(colName)),(snap)=>{
     if(snap.exists())callback(snap.data().value);
   });
   _snapListeners.push(unsub);
   return unsub;
 }
 function fbUnwatchAll(){_snapListeners.forEach(u=>u());_snapListeners=[];}
+
+// Copia (una sola vez, sin borrar nada) los datos de la ruta vieja a la
+// ruta nueva por institución. Se llama después de un login exitoso, porque
+// recién ahí el usuario está autenticado y puede leer todas las colecciones.
+// Es seguro correrla más de una vez: si una colección ya tiene datos en la
+// ruta nueva, no la vuelve a pisar.
+let _migracionInstitucionHecha = false;
+async function migrarAEstructuraInstituciones(){
+  if(!window._db || _migracionInstitucionHecha) return;
+  const colecciones = ['fscc_users','fscc_cfg','fscc_tasks','fscc_audit','fscc_notif','fscc_haccp','fscc_mant','fscc_traz','fscc_rondas','fscc_catalogo','fscc_cap'];
+  let huboCambios = false;
+  for(const col of colecciones){
+    try{
+      const refNueva = window._fsDoc(_rutaInstitucion(col));
+      const snapNueva = await window._fsGet(refNueva);
+      if(snapNueva.exists()) continue; // ya migrada, no pisar
+      const refVieja = window._fsDoc(col+'/data');
+      const snapVieja = await window._fsGet(refVieja);
+      if(snapVieja.exists()){
+        await window._fsSet(refNueva, snapVieja.data(), { merge:false });
+        huboCambios = true;
+      }
+    }catch(e){ console.warn('Error migrando', col, e); }
+  }
+  _migracionInstitucionHecha = true;
+  if(huboCambios) console.log('FSCC: datos migrados a instituciones/'+INSTITUCION_ID);
+}
 
 // ── Indicador de sincronización ──────────────────
 function showSyncStatus(msg,color='green'){
@@ -2247,6 +2321,10 @@ const DEFAULT_CFG={
   // 72hs es el estándar más usado en protocolos hospitalarios de la región —
   // ajustar según lo que indique Calidad/bromatología jurisdiccional.
   horasMuestraTestigo: 72,
+  // Fecha en la que arrancó el "Menú 1" del ciclo de 10 días. A partir de acá
+  // el sistema calcula solo qué menú corresponde a cualquier fecha (cíclico:
+  // día 1=Menú1 ... día10=Menú10, día11=Menú1 de nuevo). null = sin configurar.
+  cicloMenuFechaInicio: null,
   // recurrentes: tareas que se generan solas cada día. Vacío por defecto —
   // todo se carga manual salvo lo que el usuario marque explícitamente como recurrente.
   // Estructura: { equipoId: ['Tipo de tarea', ...] }
@@ -3164,8 +3242,8 @@ function renderNotifPanel(){
   const mine=getMyNotifs();
   if(!mine.length){el.innerHTML='<div class="notif-empty">Sin notificaciones.</div>';return;}
   el.innerHTML=mine.map(n=>{
-    const dotCls=n.tipo==='completed'?'green':n.tipo==='incident'?'red':(n.tipo==='mant_respuesta'||n.tipo==='mant_nueva')?'blue':(n.tipo==='alerta_vencida'||n.tipo==='lote_vencimiento'||n.tipo==='nc_pendiente')?'red':(n.tipo==='ronda_pendiente'||n.tipo==='muestra_lista')?'blue':'';
-    const icon=n.tipo==='completed'?'✅':n.tipo==='incident'?'⚠️':(n.tipo==='mant_respuesta'||n.tipo==='mant_nueva')?'🔧':n.tipo==='alerta_vencida'?'⏰':n.tipo==='lote_vencimiento'?'📦':n.tipo==='ronda_pendiente'?'📋':n.tipo==='nc_pendiente'?'⚠':n.tipo==='muestra_lista'?'🧪':'🔔';
+    const dotCls=n.tipo==='completed'?'green':n.tipo==='incident'?'red':(n.tipo==='mant_respuesta'||n.tipo==='mant_nueva')?'blue':(n.tipo==='alerta_vencida'||n.tipo==='lote_vencimiento'||n.tipo==='nc_pendiente'||n.tipo==='cambio_menu')?'red':(n.tipo==='ronda_pendiente'||n.tipo==='muestra_lista')?'blue':'';
+    const icon=n.tipo==='completed'?'✅':n.tipo==='incident'?'⚠️':(n.tipo==='mant_respuesta'||n.tipo==='mant_nueva')?'🔧':n.tipo==='alerta_vencida'?'⏰':n.tipo==='lote_vencimiento'?'📦':n.tipo==='ronda_pendiente'?'📋':n.tipo==='nc_pendiente'?'⚠':n.tipo==='muestra_lista'?'🧪':n.tipo==='cambio_menu'?'🔄':'🔔';
     return`<div class="notif-item${n.leida?'':' unread'}" onclick="markNotifRead('${n.id}')">
       <div class="notif-dot ${dotCls}"></div>
       <div class="notif-item-body">
@@ -3454,6 +3532,7 @@ function _completarLogin(found){
   currentUser=found;
   document.getElementById('loginScreen').classList.remove('active');
   document.getElementById('appWrap').classList.add('active');
+  migrarAEstructuraInstituciones();
 
   // Header info
   document.getElementById('hdrUserName').textContent=found.nombre;
@@ -5388,6 +5467,9 @@ function renderConfig(){
   renderRondasFijasConfig();
   const inpHoras = document.getElementById('cfgHorasMuestraTestigo');
   if(inpHoras) inpHoras.value = cfg.horasMuestraTestigo || 72;
+  const inpCiclo = document.getElementById('cfgCicloMenuInicio');
+  if(inpCiclo) inpCiclo.value = cfg.cicloMenuFechaInicio || '';
+  renderCicloMenuPreview();
 }
 
 function guardarHorasMuestraTestigo(val){
@@ -5396,6 +5478,50 @@ function guardarHorasMuestraTestigo(val){
   cfg.horasMuestraTestigo = n;
   audit('Horas de muestra testigo actualizadas', n+' horas', 'config');
   saveAll();
+}
+
+// ═══════════════════════════════════════════════════
+//  CICLO DE MENÚ (10 días, rotativo)
+// ═══════════════════════════════════════════════════
+// Devuelve el número de menú (1-10) que corresponde a una fecha dada, según
+// el ciclo configurado. null si no hay fecha de inicio configurada.
+function getMenuDelDia(fechaStr){
+  if(!cfg.cicloMenuFechaInicio) return null;
+  const inicio = new Date(cfg.cicloMenuFechaInicio+'T00:00:00');
+  const fecha = new Date((fechaStr||today())+'T00:00:00');
+  const dias = Math.floor((fecha - inicio) / 86400000);
+  if(dias < 0) return null; // la fecha es anterior al inicio del ciclo
+  return (dias % 10) + 1;
+}
+
+// Busca en el catálogo la preparación planificada para una fecha+tipo de comida
+function getPreparacionPlanificada(fechaStr, tipo){
+  const nroMenu = getMenuDelDia(fechaStr);
+  if(!nroMenu) return null;
+  const menuTxt = 'Menu '+nroMenu;
+  return catalogo.preparaciones.find(p=>p.menu===menuTxt && p.tipo===tipo) || null;
+}
+
+function guardarCicloMenuInicio(val){
+  cfg.cicloMenuFechaInicio = val || null;
+  audit('Fecha de inicio del ciclo de menú actualizada', val||'(sin configurar)', 'config');
+  saveAll();
+  renderCicloMenuPreview();
+}
+
+function renderCicloMenuPreview(){
+  const el = document.getElementById('cfgCicloMenuPreview');
+  if(!el) return;
+  if(!cfg.cicloMenuFechaInicio){
+    el.innerHTML = '<span style="color:var(--text3);">Sin configurar todavía — las Producciones no van a poder detectar cambios de menú hasta que fijes una fecha.</span>';
+    return;
+  }
+  const nroHoy = getMenuDelDia(today());
+  const almuerzo = getPreparacionPlanificada(today(),'almuerzo');
+  const cena = getPreparacionPlanificada(today(),'cena');
+  el.innerHTML = `Hoy corresponde <strong>Menú ${nroHoy}</strong> —
+    Almuerzo: <strong>${almuerzo?almuerzo.nombre:'—'}</strong> ·
+    Cena: <strong>${cena?cena.nombre:'—'}</strong>`;
 }
 
 // ── Equipo CRUD ──
@@ -6502,9 +6628,10 @@ function renderTrazProducciones(){
     }
     return `<div class="config-item" style="flex-wrap:wrap;gap:8px;">
       <div style="flex:1;min-width:220px;">
-        <div style="font-weight:600;font-size:13px;">${p.preparacion}</div>
+        <div style="font-weight:600;font-size:13px;">${p.preparacion} ${p.cambioMenu?'<span class="badge" style="background:#fff3cd;color:#8a6416;border:1px solid #f0d880;">🔄 Cambio de menú</span>':''}</div>
         <div style="font-size:11px;color:var(--text3);margin-top:2px;">${p.sector} · ${p.fecha} · ${p.turno} · Resp: ${p.responsable||'—'}</div>
         <div style="font-size:11px;color:var(--text3);font-family:var(--mono);">Lotes: ${lotesTxt}</div>
+        ${p.cambioMenu?`<div style="font-size:11px;color:#8a6416;margin-top:2px;">Correspondía "${p.cambioMenu.planificada}" (Menú ${p.cambioMenu.nroMenu}) — ${p.cambioMenu.motivo}</div>`:''}
       </div>
       <button class="btn btn-outline btn-sm" onclick="anularProduccion('${p.id}')">🚫 Anular</button>
     </div>`;
@@ -6515,10 +6642,13 @@ function openProduccionModal(){
   poblarTrazSelects();
   document.getElementById('prodPreparacion').value='';
   document.getElementById('prodFecha').value=today();
+  document.getElementById('prodComida').value='almuerzo';
   document.getElementById('prodResponsable').value= currentUser?currentUser.nombre:'';
   document.getElementById('prodObs').value='';
   document.getElementById('prodRecetaRef').style.display='none';
   document.getElementById('prodRecetaRef').innerHTML='';
+  document.getElementById('prodCambioMenuMotivo').value='';
+  document.getElementById('prodCambioMenuWrap').style.display='none';
 
   // Selector del catálogo de preparaciones
   const selPrep = document.getElementById('prodPrepCatalogo');
@@ -6540,6 +6670,7 @@ function openProduccionModal(){
       </label>`).join('');
   }
   document.getElementById('modalProduccion').classList.add('open');
+  actualizarPlanDelDia();
 }
 
 // Al elegir un plato del catálogo: completa el nombre, muestra la receta de
@@ -6577,6 +6708,46 @@ function onProdPrepCatalogoChange(){
     const coincide = nombresIngredientes.some(ni => ni.length>3 && label.includes(ni));
     if(coincide) chk.checked = true;
   });
+  chequearCambioMenu();
+}
+
+// ── Ciclo de menú: plan del día y detección de cambios ──
+let _prodPlanActual = null; // {nroMenu, preparacion} o null si no hay ciclo configurado / es "otro"
+
+function actualizarPlanDelDia(){
+  const fecha = document.getElementById('prodFecha').value || today();
+  const comida = document.getElementById('prodComida').value;
+  const panel = document.getElementById('prodPlanDelDia');
+  if(comida==='otro' || !cfg.cicloMenuFechaInicio){
+    _prodPlanActual = null;
+    panel.style.display = 'none';
+    chequearCambioMenu();
+    return;
+  }
+  const nroMenu = getMenuDelDia(fecha);
+  const planificada = getPreparacionPlanificada(fecha, comida);
+  _prodPlanActual = { nroMenu, preparacion: planificada };
+  if(!nroMenu){
+    panel.style.display = 'none';
+  } else {
+    panel.style.display = 'block';
+    panel.innerHTML = `<div class="info-panel" style="font-size:11px;padding:7px 10px;">
+      📅 Según el ciclo, para esta fecha corresponde <strong>Menú ${nroMenu}</strong> —
+      ${comida==='almuerzo'?'Almuerzo':'Cena'}: <strong>${planificada?planificada.nombre:'(no está cargado en el catálogo)'}</strong>
+    </div>`;
+  }
+  chequearCambioMenu();
+}
+
+function chequearCambioMenu(){
+  const wrap = document.getElementById('prodCambioMenuWrap');
+  const preparacion = document.getElementById('prodPreparacion').value.trim().toUpperCase();
+  if(!_prodPlanActual || !_prodPlanActual.preparacion || !preparacion){
+    wrap.style.display = 'none';
+    return;
+  }
+  const coincide = preparacion === _prodPlanActual.preparacion.nombre.toUpperCase();
+  wrap.style.display = coincide ? 'none' : 'block';
 }
 
 function guardarProduccion(){
@@ -6584,16 +6755,33 @@ function guardarProduccion(){
   const sector = document.getElementById('prodSector').value;
   const fecha = document.getElementById('prodFecha').value || today();
   const turno = document.getElementById('prodTurno').value;
+  const comida = document.getElementById('prodComida').value;
   const responsable = document.getElementById('prodResponsable').value.trim();
   const observaciones = document.getElementById('prodObs').value.trim();
   if(!preparacion){ alert('Ingresá qué se preparó.'); return; }
+
+  // Detección de cambio de menú (contra el ciclo de 10 días configurado)
+  let cambioMenu = null;
+  if(_prodPlanActual && _prodPlanActual.preparacion){
+    const coincide = preparacion.toUpperCase() === _prodPlanActual.preparacion.nombre.toUpperCase();
+    if(!coincide){
+      const motivo = document.getElementById('prodCambioMenuMotivo').value.trim();
+      if(!motivo){ alert('Este plato no coincide con lo que correspondía según el ciclo de menú. Indicá el motivo del cambio.'); return; }
+      cambioMenu = { nroMenu: _prodPlanActual.nroMenu, planificada: _prodPlanActual.preparacion.nombre, motivo };
+    }
+  }
+
   const lotesUsados = [...document.querySelectorAll('.prodLoteChk:checked')].map(c=>c.value);
   const p = {
     id: 'pr_'+Date.now()+'_'+Math.floor(Math.random()*1000),
-    fecha, turno, sector, preparacion, lotesUsados, responsable, observaciones
+    fecha, turno, sector, comida, preparacion, lotesUsados, responsable, observaciones, cambioMenu
   };
   traz.producciones.unshift(p);
   audit('Producción registrada: '+preparacion, sector+' — '+fecha+' — '+lotesUsados.length+' lote(s)', 'trazabilidad');
+  if(cambioMenu){
+    audit('Cambio de menú respecto al ciclo: '+preparacion, 'Correspondía "'+cambioMenu.planificada+'" (Menú '+cambioMenu.nroMenu+') — '+cambioMenu.motivo, 'trazabilidad');
+    pushNotif('cambio_menu', '🔄 Cambio de menú', `${fecha} — Correspondía "${cambioMenu.planificada}" y se sirvió "${preparacion}". Motivo: ${cambioMenu.motivo}`, null);
+  }
   saveTraz();
   closeModal('modalProduccion');
   renderTraz();
@@ -6864,8 +7052,32 @@ function poblarMtSelects(){
   const selProd = document.getElementById('mtProduccion');
   const t = today();
   const prodHoy = traz.producciones.filter(p=>p.fecha===t && !p.anulado);
-  selProd.innerHTML = '<option value="">— Cargar a mano —</option>' +
+  selProd.innerHTML = '<option value="">— Sin vincular a una producción —</option>' +
     prodHoy.map(p=>`<option value="${p.id}">${p.preparacion} — ${p.sector} (${p.turno})</option>`).join('');
+
+  // Las 30 preparaciones del catálogo (Menú Invierno 2026) — elegir acá completa
+  // el nombre solo; si además hay una Producción de hoy con ese mismo plato,
+  // se ofrece vincularla para heredar también los lotes.
+  const selCat = document.getElementById('mtPrepCatalogo');
+  const catOrdenado = [...catalogo.preparaciones].sort((a,b)=> a.menu.localeCompare(b.menu,'es',{numeric:true}) || a.tipo.localeCompare(b.tipo));
+  const tipoLabel = {almuerzo:'☀', cena:'🌙', especial:'⭐'};
+  selCat.innerHTML = '<option value="">— Elegir plato —</option>' +
+    catOrdenado.map(p=>`<option value="${p.id}">${tipoLabel[p.tipo]||''} ${p.menu} — ${p.nombre}</option>`).join('');
+}
+
+function onMtPrepCatalogoChange(){
+  const id = document.getElementById('mtPrepCatalogo').value;
+  if(!id) return;
+  const p = catalogo.preparaciones.find(x=>x.id===id);
+  if(!p) return;
+  document.getElementById('mtPreparacion').value = p.nombre;
+  // Si hay una Producción de hoy con este mismo plato, sugerirla para heredar lotes
+  const selProd = document.getElementById('mtProduccion');
+  const opcionMatch = [...selProd.options].find(o=>o.textContent.toUpperCase().startsWith(p.nombre.toUpperCase()));
+  if(opcionMatch){
+    selProd.value = opcionMatch.value;
+    onMtProduccionChange();
+  }
 }
 
 function openMuestraModal(){
@@ -6877,6 +7089,7 @@ function openMuestraModal(){
   document.getElementById('mtLotesInfo').style.display = 'none';
   document.getElementById('mtLotesInfo').innerHTML = '';
   document.getElementById('mtProduccion').value = '';
+  document.getElementById('mtPrepCatalogo').value = '';
   const horas = cfg.horasMuestraTestigo || 72;
   const previsto = new Date(Date.now() + horas*3600*1000);
   document.getElementById('mtFechaDescarte').value = fmtDatetime(previsto.toISOString()) + ' (' + horas + 'hs desde ahora)';
