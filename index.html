@@ -854,6 +854,16 @@ tbody td{padding:8px 10px;vertical-align:middle;}
       <div id="cfgFrecuencias" style="display:grid;grid-template-columns:1fr 1fr;gap:6px;"></div>
     </div>
     <div class="config-section" style="grid-column:1/-1;">
+      <h3>🧪 Muestra testigo</h3>
+      <div class="info-panel" style="font-size:11px;padding:7px 10px;margin-bottom:10px;">
+        Horas que se conserva una muestra testigo antes de poder descartarla. 72hs es el estándar más usado en protocolos hospitalarios de la región — confirmá el número con Calidad/bromatología si corresponde otro.
+      </div>
+      <div class="fg" style="max-width:220px;margin:0;">
+        <label>Horas de conservación</label>
+        <input type="number" min="1" id="cfgHorasMuestraTestigo" onchange="guardarHorasMuestraTestigo(this.value)" />
+      </div>
+    </div>
+    <div class="config-section" style="grid-column:1/-1;">
       <h3>🔁 Tareas automáticas (recurrentes)</h3>
       <div class="info-panel" style="font-size:11px;padding:7px 10px;margin-bottom:10px;">
         Por defecto todo se carga de forma manual. Estas son las únicas tareas que el sistema genera solo, todos los días, porque fueron marcadas con "🔁 Repetir automáticamente" al crearlas (ej. lavado de pisos). Podés desactivarlas acá.
@@ -1119,6 +1129,7 @@ tbody td{padding:8px 10px;vertical-align:middle;}
     <button class="haccp-subtab" id="trazTabBuscar" onclick="switchTrazTab('buscar',this)">🔎 Buscar trazabilidad</button>
     <button class="haccp-subtab" id="trazTabNC" onclick="switchTrazTab('nc',this)">⚠ No Conformidades</button>
     <button class="haccp-subtab" id="trazTabPrep" onclick="switchTrazTab('prep',this)">🍽 Preparaciones</button>
+    <button class="haccp-subtab" id="trazTabMuestras" onclick="switchTrazTab('muestras',this)">🧪 Muestras testigo</button>
     <button class="haccp-subtab" id="trazTabProveedores" onclick="switchTrazTab('proveedores',this)">🏭 Proveedores</button>
   </div>
   <div style="background:var(--surface);border:.5px solid var(--border-light);border-top:none;border-radius:0 0 var(--rl) var(--rl);padding:0.85rem 1.25rem 1rem;margin-bottom:1rem;">
@@ -1210,6 +1221,27 @@ tbody td{padding:8px 10px;vertical-align:middle;}
         </div>
       </div>
       <div id="trazListadoPrep"></div>
+    </div>
+
+    <!-- MUESTRAS TESTIGO -->
+    <div id="trazPanelMuestras" style="display:none;">
+      <div class="toolbar" style="margin-bottom:1rem;flex-wrap:wrap;gap:6px;">
+        <div class="toolbar-l" style="flex-wrap:wrap;gap:6px;">
+          <select class="flt" id="mtFiltroEstado" onchange="renderTrazMuestras()">
+            <option value="">Todos los estados</option>
+            <option value="guardada">🔵 Guardada</option>
+            <option value="lista">🟢 Lista para descartar</option>
+            <option value="descartada">⚫ Descartada</option>
+            <option value="analisis">🔬 En análisis</option>
+          </select>
+          <input type="text" class="flt" id="mtBuscar" placeholder="Buscar código o preparación..." oninput="renderTrazMuestras()" />
+        </div>
+        <div class="toolbar-r">
+          <button class="btn btn-outline" onclick="exportMuestrasCSV()">⬇ Exportar CSV</button>
+          <button class="btn btn-primary" onclick="openMuestraModal()">+ Nueva muestra testigo</button>
+        </div>
+      </div>
+      <div id="trazListadoMuestras"></div>
     </div>
 
     <!-- PROVEEDORES -->
@@ -1398,6 +1430,84 @@ tbody td{padding:8px 10px;vertical-align:middle;}
     <div class="modal-title" id="prepVerTitulo" style="margin-bottom:2px;">🍽 Receta</div>
     <div class="modal-sub" id="prepVerSub" style="margin-bottom:12px;"></div>
     <div id="prepVerBody"></div>
+  </div>
+</div>
+
+<!-- ══ MODAL: NUEVA MUESTRA TESTIGO ══ -->
+<div class="modal-bg" id="modalMuestra" onclick="handleModalClick(event,'modalMuestra')">
+  <div class="modal-box wide">
+    <button class="modal-close" onclick="closeModal('modalMuestra')">✕</button>
+    <div class="modal-title" style="margin-bottom:4px;">🧪 Nueva muestra testigo</div>
+    <div class="modal-sub" style="margin-bottom:14px;font-size:11px;">Se guarda una porción de esta preparación durante el plazo configurado, por si hay que analizarla.</div>
+    <div class="form-grid" style="margin-bottom:10px;">
+      <div class="fg">
+        <label>Producción de hoy (opcional — completa todo solo)</label>
+        <select id="mtProduccion" onchange="onMtProduccionChange()">
+          <option value="">— Cargar a mano —</option>
+        </select>
+      </div>
+      <div class="fg">
+        <label>Comida</label>
+        <select id="mtComida">
+          <option>Desayuno</option>
+          <option selected>Almuerzo</option>
+          <option>Merienda</option>
+          <option>Cena</option>
+        </select>
+      </div>
+      <div class="fg">
+        <label>Preparación</label>
+        <input type="text" id="mtPreparacion" placeholder="Ej: Milanesas al horno" />
+      </div>
+      <div class="fg">
+        <label>Sector</label>
+        <select id="mtSector"></select>
+      </div>
+      <div class="fg">
+        <label>Responsable</label>
+        <input type="text" id="mtResponsable" placeholder="Nombre" />
+      </div>
+      <div class="fg">
+        <label>Se puede descartar a partir de</label>
+        <input type="text" id="mtFechaDescarte" disabled placeholder="Se calcula sola al guardar" />
+      </div>
+    </div>
+    <div id="mtLotesInfo" style="display:none;margin-bottom:10px;"></div>
+    <div class="fg" style="margin-bottom:10px;">
+      <label>Observaciones</label>
+      <textarea id="mtObs" placeholder="Opcional..."></textarea>
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-ghost" onclick="closeModal('modalMuestra')">Cancelar</button>
+      <button class="btn btn-primary" onclick="guardarMuestra()">Guardar y generar código</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ MODAL: DETALLE DE MUESTRA TESTIGO ══ -->
+<div class="modal-bg" id="modalMuestraDetalle" onclick="handleModalClick(event,'modalMuestraDetalle')">
+  <div class="modal-box" style="max-width:480px;">
+    <button class="modal-close" onclick="closeModal('modalMuestraDetalle')">✕</button>
+    <div class="modal-title" id="mtDetalleTitulo" style="margin-bottom:2px;">🧪 Muestra testigo</div>
+    <div class="modal-sub" id="mtDetalleSub" style="margin-bottom:12px;"></div>
+    <div id="mtDetalleBody" style="font-size:13px;line-height:1.6;margin-bottom:14px;"></div>
+    <div class="form-actions" id="mtDetalleAcciones" style="flex-wrap:wrap;"></div>
+  </div>
+</div>
+
+<!-- ══ MODAL: RESULTADO DE ANÁLISIS DE MUESTRA ══ -->
+<div class="modal-bg" id="modalMuestraAnalisis" onclick="handleModalClick(event,'modalMuestraAnalisis')">
+  <div class="modal-box">
+    <button class="modal-close" onclick="closeModal('modalMuestraAnalisis')">✕</button>
+    <div class="modal-title" style="margin-bottom:14px;">🔬 Enviar a análisis</div>
+    <div class="fg" style="margin-bottom:10px;">
+      <label>Motivo / laboratorio / observaciones</label>
+      <textarea id="mtAnalisisObs" placeholder="¿Por qué se envía a analizar? ¿A qué laboratorio?"></textarea>
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-ghost" onclick="closeModal('modalMuestraAnalisis')">Cancelar</button>
+      <button class="btn btn-primary" onclick="confirmarEnvioAnalisis()">Confirmar envío</button>
+    </div>
   </div>
 </div>
 
@@ -2133,6 +2243,10 @@ const DEFAULT_CFG={
   turnos:["Mañana","Tarde"],
   turnosHorarios:{"Mañana":{inicio:"06:00",fin:"14:00",camerarosDesde:"06:30"},"Tarde":{inicio:"14:00",fin:"22:00",camerarosDesde:null}},
   frecuencias:{"Limpieza diaria":1,"Limpieza profunda":7,"Desinfección":3,"Control de temperatura":1,"Mantenimiento preventivo":30,"Control de plagas":14,"Registro HACCP":1},
+  // Horas que se conserva una muestra testigo antes de poder descartarla.
+  // 72hs es el estándar más usado en protocolos hospitalarios de la región —
+  // ajustar según lo que indique Calidad/bromatología jurisdiccional.
+  horasMuestraTestigo: 72,
   // recurrentes: tareas que se generan solas cada día. Vacío por defecto —
   // todo se carga manual salvo lo que el usuario marque explícitamente como recurrente.
   // Estructura: { equipoId: ['Tipo de tarea', ...] }
@@ -2212,7 +2326,7 @@ async function loadDataFromFirebase(){
     if(fbNotif){notifications=fbNotif;LS.set('fscc_notif',notifications);}
     if(fbHaccp){haccpLogs=fbHaccp;LS.set('fscc_haccp',haccpLogs);}
     if(fbMant){mantSolicitudes=fbMant;LS.set('fscc_mant',mantSolicitudes);}
-    if(fbTraz){traz=fbTraz;if(!traz.proveedores)traz.proveedores=[];if(!traz.lotes)traz.lotes=[];if(!traz.producciones)traz.producciones=[];if(!traz.noConformidades)traz.noConformidades=[];LS.set('fscc_traz',traz);}
+    if(fbTraz){traz=fbTraz;if(!traz.proveedores)traz.proveedores=[];if(!traz.lotes)traz.lotes=[];if(!traz.producciones)traz.producciones=[];if(!traz.noConformidades)traz.noConformidades=[];if(!traz.muestrasTestigo)traz.muestrasTestigo=[];LS.set('fscc_traz',traz);}
     if(fbRondas){rondas=fbRondas;if(!rondas.plantillas||!rondas.plantillas.length)rondas.plantillas=seedPlantillasRondas();if(!rondas.registros)rondas.registros=[];if(!rondas.asignaciones)rondas.asignaciones=[];if(!rondas.asignacionesRecurrentes)rondas.asignacionesRecurrentes=[];LS.set('fscc_rondas',rondas);}
     if(fbCatalogo){catalogo=fbCatalogo;if(!catalogo.preparaciones||!catalogo.preparaciones.length)catalogo.preparaciones=seedCatalogoPreparaciones();LS.set('fscc_catalogo',catalogo);}
 
@@ -2227,6 +2341,7 @@ async function loadDataFromFirebase(){
     // ── Generación diaria de tareas (solo después de tener datos frescos de Firebase) ──
     chequearGeneracionDiaria();
     chequearVencimientosLotes();
+    chequearMuestrasParaDescartar();
 
     // ── Listeners en tiempo real para TODAS las colecciones críticas ──
     // Solo actualizar si no hay un save local en curso (evita loop)
@@ -2261,8 +2376,9 @@ async function loadDataFromFirebase(){
     });
     fbWatch('fscc_traz',(val)=>{
       if(_localSaveInProgress)return;
-      traz=val||{proveedores:[],lotes:[],producciones:[],noConformidades:[]};
+      traz=val||{proveedores:[],lotes:[],producciones:[],noConformidades:[],muestrasTestigo:[]};
       if(!traz.noConformidades)traz.noConformidades=[];
+      if(!traz.muestrasTestigo)traz.muestrasTestigo=[];
       LS.set('fscc_traz',traz);
       if(currentUser && document.getElementById('view-trazabilidad') && document.getElementById('view-trazabilidad').classList.contains('active')) renderTraz();
     });
@@ -3048,8 +3164,8 @@ function renderNotifPanel(){
   const mine=getMyNotifs();
   if(!mine.length){el.innerHTML='<div class="notif-empty">Sin notificaciones.</div>';return;}
   el.innerHTML=mine.map(n=>{
-    const dotCls=n.tipo==='completed'?'green':n.tipo==='incident'?'red':(n.tipo==='mant_respuesta'||n.tipo==='mant_nueva')?'blue':(n.tipo==='alerta_vencida'||n.tipo==='lote_vencimiento'||n.tipo==='nc_pendiente')?'red':n.tipo==='ronda_pendiente'?'blue':'';
-    const icon=n.tipo==='completed'?'✅':n.tipo==='incident'?'⚠️':(n.tipo==='mant_respuesta'||n.tipo==='mant_nueva')?'🔧':n.tipo==='alerta_vencida'?'⏰':n.tipo==='lote_vencimiento'?'📦':n.tipo==='ronda_pendiente'?'📋':n.tipo==='nc_pendiente'?'⚠':'🔔';
+    const dotCls=n.tipo==='completed'?'green':n.tipo==='incident'?'red':(n.tipo==='mant_respuesta'||n.tipo==='mant_nueva')?'blue':(n.tipo==='alerta_vencida'||n.tipo==='lote_vencimiento'||n.tipo==='nc_pendiente')?'red':(n.tipo==='ronda_pendiente'||n.tipo==='muestra_lista')?'blue':'';
+    const icon=n.tipo==='completed'?'✅':n.tipo==='incident'?'⚠️':(n.tipo==='mant_respuesta'||n.tipo==='mant_nueva')?'🔧':n.tipo==='alerta_vencida'?'⏰':n.tipo==='lote_vencimiento'?'📦':n.tipo==='ronda_pendiente'?'📋':n.tipo==='nc_pendiente'?'⚠':n.tipo==='muestra_lista'?'🧪':'🔔';
     return`<div class="notif-item${n.leida?'':' unread'}" onclick="markNotifRead('${n.id}')">
       <div class="notif-dot ${dotCls}"></div>
       <div class="notif-item-body">
@@ -5270,6 +5386,16 @@ function renderConfig(){
   renderTurnosHorarios();
   renderPlantillasRondaConfig();
   renderRondasFijasConfig();
+  const inpHoras = document.getElementById('cfgHorasMuestraTestigo');
+  if(inpHoras) inpHoras.value = cfg.horasMuestraTestigo || 72;
+}
+
+function guardarHorasMuestraTestigo(val){
+  const n = parseInt(val,10);
+  if(!n || n<1){ alert('Ingresá un número de horas válido.'); return; }
+  cfg.horasMuestraTestigo = n;
+  audit('Horas de muestra testigo actualizadas', n+' horas', 'config');
+  saveAll();
 }
 
 // ── Equipo CRUD ──
@@ -5876,18 +6002,23 @@ let mantSolicitudes = [];
 // traz.noConformidades : [{id, fecha, producto, proveedorId, cantidad, loteId, motivo,
 //                        destino, observaciones, reportadoPor, reportadoTs,
 //                        cerrado, cerradoPor, cerradoTs}]
-let traz = {proveedores:[], lotes:[], producciones:[], noConformidades:[]};
+// traz.muestrasTestigo : [{id, codigo, fecha, comida, produccionId, preparacion, sector,
+//                        lotesUsados, responsable, tomadaTs, fechaDescarteProgramada,
+//                        estado:'guardada'|'descartada'|'analisis', descartadaPor, descartadaTs,
+//                        resultadoAnalisis, alertada, observaciones}]
+let traz = {proveedores:[], lotes:[], producciones:[], noConformidades:[], muestrasTestigo:[]};
 let trazActiveTab = 'lotes';
 let trazEditLoteId = null;
 let trazEditProveedorId = null;
 let _ncDetalleId = null;
 
 function loadTraz(){
-  traz = LS.get('fscc_traz') || {proveedores:[], lotes:[], producciones:[], noConformidades:[]};
+  traz = LS.get('fscc_traz') || {proveedores:[], lotes:[], producciones:[], noConformidades:[], muestrasTestigo:[]};
   if(!traz.proveedores) traz.proveedores=[];
   if(!traz.lotes) traz.lotes=[];
   if(!traz.producciones) traz.producciones=[];
   if(!traz.noConformidades) traz.noConformidades=[];
+  if(!traz.muestrasTestigo) traz.muestrasTestigo=[];
 }
 
 function saveTraz(){
@@ -6097,7 +6228,7 @@ function generarCodigoLote(){
 // ── Navegación entre sub-pestañas ──
 function switchTrazTab(tab, btn){
   trazActiveTab = tab;
-  const panelIds = {lotes:'trazPanelLotes', producciones:'trazPanelProducciones', buscar:'trazPanelBuscar', nc:'trazPanelNC', prep:'trazPanelPrep', proveedores:'trazPanelProveedores'};
+  const panelIds = {lotes:'trazPanelLotes', producciones:'trazPanelProducciones', buscar:'trazPanelBuscar', nc:'trazPanelNC', prep:'trazPanelPrep', muestras:'trazPanelMuestras', proveedores:'trazPanelProveedores'};
   Object.keys(panelIds).forEach(t=>{
     document.getElementById(panelIds[t]).style.display = (t===tab)?'block':'none';
   });
@@ -6112,6 +6243,7 @@ function renderTraz(){
   else if(trazActiveTab==='producciones') renderTrazProducciones();
   else if(trazActiveTab==='nc') renderTrazNC();
   else if(trazActiveTab==='prep') renderTrazPrep();
+  else if(trazActiveTab==='muestras') renderTrazMuestras();
   else if(trazActiveTab==='proveedores') renderTrazProveedores();
 }
 
@@ -6663,6 +6795,276 @@ function chequearVencimientosLotes(){
   });
   LS.set('fscc_ultimaChequeoLotes', t);
   if(huboAlertas) saveTraz();
+}
+
+function chequearMuestrasParaDescartar(){
+  const t = today();
+  const ultima = LS.get('fscc_ultimaChequeoMuestras');
+  if(ultima === t) return;
+  let huboAlertas = false;
+  traz.muestrasTestigo.forEach(m=>{
+    if(m.estado==='guardada' && !m.alertada && new Date() >= new Date(m.fechaDescarteProgramada)){
+      pushNotif('muestra_lista', '🧪 Muestra testigo lista', `La muestra ${m.codigo} (${m.preparacion}) ya cumplió el plazo — se puede descartar.`, null);
+      m.alertada = true;
+      huboAlertas = true;
+    }
+  });
+  LS.set('fscc_ultimaChequeoMuestras', t);
+  if(huboAlertas) saveTraz();
+}
+
+// ═══════════════════════════════════════════════════
+//  MUESTRAS TESTIGO
+// ═══════════════════════════════════════════════════
+function generarCodigoMuestra(){
+  const fecha = today().replace(/-/g,'');
+  const delDia = traz.muestrasTestigo.filter(m=>m.codigo && m.codigo.startsWith('MT-'+fecha)).length + 1;
+  return 'MT-'+fecha+'-'+String(delDia).padStart(3,'0');
+}
+
+// 'guardada' (todavía no cumplió el plazo) | 'lista' (ya se puede descartar) |
+// 'descartada' | 'analisis' (enviada a analizar)
+function estadoMuestra(m){
+  if(m.estado==='descartada') return 'descartada';
+  if(m.estado==='analisis') return 'analisis';
+  if(new Date() >= new Date(m.fechaDescarteProgramada)) return 'lista';
+  return 'guardada';
+}
+function badgeEstadoMuestra(estado){
+  if(estado==='lista') return '<span class="badge" style="background:#e8f5ee;color:#1a7a4a;border:1px solid #a8dbb8;">🟢 Lista para descartar</span>';
+  if(estado==='descartada') return '<span class="badge" style="background:#eee;color:#666;border:1px solid #ccc;">⚫ Descartada</span>';
+  if(estado==='analisis') return '<span class="badge" style="background:#fde8ff;color:#7a1a9a;border:1px solid #e0b0f0;">🔬 En análisis</span>';
+  return '<span class="badge" style="background:#e6eef8;color:#1a4a8a;border:1px solid #b8cbe8;">🔵 Guardada</span>';
+}
+
+function renderTrazMuestras(){
+  const filtroEstado = (document.getElementById('mtFiltroEstado')||{}).value || '';
+  const busq = ((document.getElementById('mtBuscar')||{}).value || '').toLowerCase();
+  let lista = [...traz.muestrasTestigo].sort((a,b)=>(b.tomadaTs||'').localeCompare(a.tomadaTs||''));
+  if(filtroEstado) lista = lista.filter(m=>estadoMuestra(m)===filtroEstado);
+  if(busq) lista = lista.filter(m=>(m.codigo||'').toLowerCase().includes(busq) || (m.preparacion||'').toLowerCase().includes(busq));
+  const el = document.getElementById('trazListadoMuestras');
+  if(!lista.length){ el.innerHTML = '<div style="font-size:12px;color:var(--text3);padding:12px;">No hay muestras testigo que coincidan con el filtro.</div>'; return; }
+  el.innerHTML = lista.map(m=>{
+    const est = estadoMuestra(m);
+    return `<div class="config-item" style="flex-wrap:wrap;gap:8px;">
+      <div style="flex:1;min-width:220px;">
+        <div style="font-weight:600;font-size:13px;">${m.preparacion} <span style="font-family:var(--mono);font-size:11px;color:var(--text3);">${m.codigo}</span></div>
+        <div style="font-size:11px;color:var(--text3);margin-top:2px;">${m.comida} · ${m.sector||'—'} · Tomada: ${fmtDatetime(m.tomadaTs)} · Responsable: ${m.responsable}</div>
+        <div style="font-size:11px;color:var(--text3);">Descartable desde: ${fmtDatetime(m.fechaDescarteProgramada)}</div>
+      </div>
+      ${badgeEstadoMuestra(est)}
+      <button class="btn btn-outline btn-sm" onclick="verDetalleMuestra('${m.id}')">Ver</button>
+    </div>`;
+  }).join('');
+}
+
+function poblarMtSelects(){
+  populateSel('mtSector', cfg.sectores);
+  const selProd = document.getElementById('mtProduccion');
+  const t = today();
+  const prodHoy = traz.producciones.filter(p=>p.fecha===t && !p.anulado);
+  selProd.innerHTML = '<option value="">— Cargar a mano —</option>' +
+    prodHoy.map(p=>`<option value="${p.id}">${p.preparacion} — ${p.sector} (${p.turno})</option>`).join('');
+}
+
+function openMuestraModal(){
+  poblarMtSelects();
+  document.getElementById('mtComida').value = 'Almuerzo';
+  document.getElementById('mtPreparacion').value = '';
+  document.getElementById('mtResponsable').value = currentUser ? currentUser.nombre : '';
+  document.getElementById('mtObs').value = '';
+  document.getElementById('mtLotesInfo').style.display = 'none';
+  document.getElementById('mtLotesInfo').innerHTML = '';
+  document.getElementById('mtProduccion').value = '';
+  const horas = cfg.horasMuestraTestigo || 72;
+  const previsto = new Date(Date.now() + horas*3600*1000);
+  document.getElementById('mtFechaDescarte').value = fmtDatetime(previsto.toISOString()) + ' (' + horas + 'hs desde ahora)';
+  document.getElementById('modalMuestra').classList.add('open');
+}
+
+function onMtProduccionChange(){
+  const id = document.getElementById('mtProduccion').value;
+  const info = document.getElementById('mtLotesInfo');
+  if(!id){ info.style.display='none'; info.innerHTML=''; return; }
+  const p = traz.producciones.find(x=>x.id===id);
+  if(!p) return;
+  document.getElementById('mtPreparacion').value = p.preparacion;
+  document.getElementById('mtSector').value = p.sector;
+  const lotesTxt = (p.lotesUsados||[]).map(lid=>{
+    const l = traz.lotes.find(x=>x.id===lid);
+    return l ? l.codigo+' — '+l.insumo : null;
+  }).filter(Boolean);
+  info.innerHTML = `<label style="font-size:11px;color:var(--text3);">Lotes heredados de la producción</label>
+    <div style="font-size:11px;font-family:var(--mono);color:var(--text2);background:var(--bg);border:.5px solid var(--border);border-radius:var(--r);padding:8px;margin-top:4px;">
+      ${lotesTxt.length ? lotesTxt.join('<br/>') : '(esta producción no tiene lotes vinculados)'}
+    </div>`;
+  info.style.display = 'block';
+}
+
+function guardarMuestra(){
+  const produccionId = document.getElementById('mtProduccion').value || null;
+  const comida = document.getElementById('mtComida').value;
+  const preparacion = document.getElementById('mtPreparacion').value.trim();
+  const sector = document.getElementById('mtSector').value;
+  const responsable = document.getElementById('mtResponsable').value.trim();
+  const observaciones = document.getElementById('mtObs').value.trim();
+  if(!preparacion){ alert('Ingresá la preparación de la que se toma la muestra.'); return; }
+  if(!responsable){ alert('Ingresá el responsable.'); return; }
+  const p = produccionId ? traz.producciones.find(x=>x.id===produccionId) : null;
+  const lotesUsados = p ? (p.lotesUsados||[]) : [];
+  const horas = cfg.horasMuestraTestigo || 72;
+  const tomadaTs = nowISO();
+  const fechaDescarteProgramada = new Date(Date.now() + horas*3600*1000).toISOString();
+  const m = {
+    id: 'mt_'+Date.now()+'_'+Math.floor(Math.random()*1000),
+    codigo: generarCodigoMuestra(),
+    fecha: today(), comida, produccionId, preparacion, sector, lotesUsados,
+    responsable, tomadaTs, fechaDescarteProgramada,
+    estado: 'guardada', descartadaPor: null, descartadaTs: null,
+    resultadoAnalisis: '', alertada: false, observaciones
+  };
+  traz.muestrasTestigo.unshift(m);
+  audit('Muestra testigo tomada: '+m.codigo, preparacion+' — '+comida, 'trazabilidad');
+  saveTraz();
+  closeModal('modalMuestra');
+  renderTraz();
+  if(confirm('Muestra '+m.codigo+' guardada. ¿Querés imprimir la etiqueta ahora?')){
+    imprimirEtiquetaMuestra(m.id);
+  }
+}
+
+let _mtDetalleId = null;
+function verDetalleMuestra(id){
+  const m = traz.muestrasTestigo.find(x=>x.id===id);
+  if(!m) return;
+  _mtDetalleId = id;
+  const est = estadoMuestra(m);
+  document.getElementById('mtDetalleTitulo').textContent = '🧪 '+m.preparacion;
+  document.getElementById('mtDetalleSub').textContent = m.codigo+' · '+m.comida+' · '+(m.sector||'—');
+  const lotesTxt = (m.lotesUsados||[]).map(lid=>{
+    const l = traz.lotes.find(x=>x.id===lid);
+    return l ? l.codigo+' — '+l.insumo : null;
+  }).filter(Boolean);
+  document.getElementById('mtDetalleBody').innerHTML = `
+    <div style="margin-bottom:8px;">${badgeEstadoMuestra(est)}</div>
+    <div style="font-size:12px;color:var(--text2);">
+      <div><strong>Tomada por:</strong> ${m.responsable} — ${fmtDatetime(m.tomadaTs)}</div>
+      <div><strong>Se puede descartar desde:</strong> ${fmtDatetime(m.fechaDescarteProgramada)}</div>
+      ${lotesTxt.length?`<div style="margin-top:6px;"><strong>Lotes:</strong><br/>${lotesTxt.join('<br/>')}</div>`:''}
+      ${m.observaciones?`<div style="margin-top:6px;"><strong>Observaciones:</strong><br/>${m.observaciones}</div>`:''}
+      ${m.estado==='descartada'?`<div style="margin-top:8px;color:var(--text3);">Descartada por ${m.descartadaPor} el ${fmtDatetime(m.descartadaTs)}</div>`:''}
+      ${m.estado==='analisis'?`<div style="margin-top:8px;color:#7a1a9a;">Enviada a análisis${m.resultadoAnalisis?': '+m.resultadoAnalisis:' — resultado pendiente de carga'}</div>`:''}
+    </div>`;
+  const acc = document.getElementById('mtDetalleAcciones');
+  let botones = `<button class="btn btn-outline" onclick="imprimirEtiquetaMuestra('${m.id}')">🖨 Imprimir etiqueta</button>`;
+  if(m.estado==='guardada'){
+    botones += `<button class="btn btn-outline" onclick="abrirEnvioAnalisis('${m.id}')">🔬 Enviar a análisis</button>`;
+    botones += `<button class="btn btn-danger" onclick="descartarMuestra('${m.id}')">🗑 Descartar</button>`;
+  } else if(m.estado==='analisis' && !m.resultadoAnalisis){
+    botones += `<button class="btn btn-primary" onclick="cargarResultadoAnalisis('${m.id}')">📝 Cargar resultado</button>`;
+  }
+  acc.innerHTML = botones;
+  document.getElementById('modalMuestraDetalle').classList.add('open');
+}
+
+function descartarMuestra(id){
+  const m = traz.muestrasTestigo.find(x=>x.id===id);
+  if(!m) return;
+  const est = estadoMuestra(m);
+  if(est==='guardada' && !confirm('Esta muestra todavía no cumplió el plazo de conservación ('+fmtDatetime(m.fechaDescarteProgramada)+'). ¿Descartarla igual?')) return;
+  if(est!=='guardada' && !confirm('¿Confirmás que descartaste la muestra '+m.codigo+'?')) return;
+  m.estado = 'descartada';
+  m.descartadaPor = currentUser.nombre;
+  m.descartadaTs = nowISO();
+  audit('Muestra testigo descartada: '+m.codigo, '', 'trazabilidad');
+  saveTraz();
+  closeModal('modalMuestraDetalle');
+  renderTraz();
+}
+
+function abrirEnvioAnalisis(id){
+  _mtDetalleId = id;
+  document.getElementById('mtAnalisisObs').value = '';
+  document.getElementById('modalMuestraAnalisis').classList.add('open');
+}
+function confirmarEnvioAnalisis(){
+  const m = traz.muestrasTestigo.find(x=>x.id===_mtDetalleId);
+  if(!m) return;
+  const obs = document.getElementById('mtAnalisisObs').value.trim();
+  m.estado = 'analisis';
+  m.observaciones = (m.observaciones ? m.observaciones+' | ' : '') + 'Enviada a análisis: '+(obs||'(sin detalle)');
+  audit('Muestra testigo enviada a análisis: '+m.codigo, obs, 'trazabilidad');
+  saveTraz();
+  closeModal('modalMuestraAnalisis');
+  closeModal('modalMuestraDetalle');
+  renderTraz();
+  pushNotif('muestra_lista', '🔬 Muestra enviada a análisis', m.codigo+' — '+m.preparacion, null);
+}
+
+function cargarResultadoAnalisis(id){
+  const m = traz.muestrasTestigo.find(x=>x.id===id);
+  if(!m) return;
+  const resultado = prompt('Resultado del análisis de '+m.codigo+':');
+  if(resultado===null || !resultado.trim()) return;
+  m.resultadoAnalisis = resultado.trim();
+  audit('Resultado de análisis cargado: '+m.codigo, resultado.trim(), 'trazabilidad');
+  saveTraz();
+  verDetalleMuestra(id);
+  renderTraz();
+}
+
+function exportMuestrasCSV(){
+  const h = ['Código','Fecha','Comida','Preparación','Sector','Responsable','Tomada','Descartable desde','Estado','Descartada por','Resultado análisis'];
+  const rows = traz.muestrasTestigo.map(m=>[
+    m.codigo, m.fecha, m.comida, m.preparacion, m.sector||'', m.responsable,
+    fmtDatetime(m.tomadaTs), fmtDatetime(m.fechaDescarteProgramada), estadoMuestra(m),
+    m.descartadaPor||'', m.resultadoAnalisis||''
+  ].map(v=>'"'+(v+'').replace(/"/g,'""')+'"').join(','));
+  dlBlob('\uFEFF'+[h.join(','),...rows].join('\r\n'),'text/csv','MuestrasTestigo_'+today()+'.csv');
+}
+
+// Etiqueta imprimible con código de barras real (Code39, vía JsBarcode —
+// se carga en la ventana de impresión, que corre en el navegador del usuario
+// con internet, no en este entorno).
+function imprimirEtiquetaMuestra(id){
+  const m = traz.muestrasTestigo.find(x=>x.id===id);
+  if(!m) return;
+  const w = window.open('','_blank','width=420,height=520');
+  if(!w) return;
+  w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${m.codigo}</title>
+  <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"><\/script>
+  <style>
+    body{font-family:Arial,sans-serif;margin:0;padding:16px;}
+    .label{border:2px solid #1a2744;border-radius:10px;padding:14px;text-align:center;}
+    .titulo{font-size:11px;color:#7A8AAA;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px;}
+    .codigo{font-size:22px;font-weight:800;color:#1a2744;font-family:'Courier New',monospace;margin-bottom:8px;}
+    .prep{font-size:14px;font-weight:700;margin-bottom:2px;}
+    .meta{font-size:11px;color:#444;margin-bottom:2px;}
+    .limite{margin-top:10px;padding:8px;background:#fde8e8;border-radius:6px;font-size:11px;color:#b02020;font-weight:700;}
+    svg{margin-top:8px;}
+    @media print{ body{padding:0;} }
+  </style></head><body>
+    <div class="label">
+      <div class="titulo">Muestra Testigo · Sanatorio Parque</div>
+      <div class="codigo">${m.codigo}</div>
+      <svg id="barcode"></svg>
+      <div class="prep">${m.preparacion}</div>
+      <div class="meta">${m.comida} · ${m.sector||'—'}</div>
+      <div class="meta">Tomada: ${fmtDatetime(m.tomadaTs)}</div>
+      <div class="meta">Por: ${m.responsable}</div>
+      <div class="limite">No descartar antes de:<br/>${fmtDatetime(m.fechaDescarteProgramada)}</div>
+    </div>
+    <script>
+      window.onload = function(){
+        try{
+          JsBarcode("#barcode", ${JSON.stringify(m.codigo)}, {format:"CODE39", width:1.6, height:42, fontSize:11, margin:4});
+        }catch(e){}
+        setTimeout(function(){ window.print(); }, 300);
+      };
+    <\/script>
+  </body></html>`);
+  w.document.close();
 }
 
 // ═══════════════════════════════════════════════════
