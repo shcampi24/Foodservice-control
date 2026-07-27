@@ -482,7 +482,7 @@ tbody td{padding:8px 10px;vertical-align:middle;}
 <header class="hdr">
   <div style="display:flex;align-items:baseline;gap:4px;cursor:pointer;" onclick="volverInicio()" title="Volver al inicio">
     <h1>FOOD SERVICE CONTROL CENTER</h1>
-    <span class="sub">Sanatorio Parque</span>
+    <span class="sub" id="hdrInstitucionNombre">Sanatorio Parque</span>
   </div>
   <div class="hdr-right">
     <span class="hdr-date" id="headerDate"></span>
@@ -1915,7 +1915,7 @@ tbody td{padding:8px 10px;vertical-align:middle;}
 
 
 </main>
-<footer class="footer">FOOD SERVICE CONTROL CENTER &middot; SANATORIO PARQUE &middot; v13</footer>
+<footer class="footer">FOOD SERVICE CONTROL CENTER &middot; <span id="footerInstitucionNombre">Sanatorio Parque</span> &middot; v13</footer>
 </div><!-- /app-wrap -->
 
 <!-- ══ MODAL FOTO ══ -->
@@ -2314,6 +2314,14 @@ async function cargarInstitucionesDisponibles(){
 
 // ── Selección de institución (pantalla previa al login) ──
 async function iniciarSeleccionInstitucion(){
+  // Si Firebase todavía no terminó de inicializar (pasa más seguido en una
+  // pestaña/ventana recién abierta, con caché fría), esperar el evento
+  // 'fbReady' antes de pedir la lista — si no, cargarInstitucionesDisponibles
+  // encuentra window._db vacío y cae al respaldo fijo (solo Sanatorio Parque),
+  // que es justo lo que se estaba viendo.
+  if(!window._fbReady){
+    await new Promise(resolve => document.addEventListener('fbReady', resolve, {once:true}));
+  }
   await cargarInstitucionesDisponibles();
   const guardada = LS.get('fscc_institucion_id');
   if(guardada && institucionesCache.some(i=>i.id===guardada)){
@@ -2351,6 +2359,11 @@ function cambiarInstitucion(){
   document.getElementById('selectInstitucionScreen').classList.add('active');
 }
 
+function nombreInstitucionActual(){
+  const inst = institucionesCache.find(i=>i.id===INSTITUCION_ID);
+  return inst ? inst.nombre : (INSTITUCION_ID||'');
+}
+
 function arrancarConInstitucion(){
   const inst = institucionesCache.find(i=>i.id===INSTITUCION_ID);
   const nombreEl = document.getElementById('loginInstitucionNombre');
@@ -2378,18 +2391,35 @@ function renderInstitucionesConfig(){
   wrap.style.display = 'block';
   const el = document.getElementById('cfgListaInstituciones');
   el.innerHTML = institucionesCache.map(inst=>`
-    <div class="config-item" style="flex-wrap:wrap;gap:8px;cursor:pointer;" onclick="abrirGestionInstitucion('${inst.id}')">
-      <div style="flex:1;min-width:200px;">
+    <div class="config-item" style="flex-wrap:wrap;gap:8px;">
+      <div style="flex:1;min-width:200px;cursor:${inst.id===INSTITUCION_ID?'default':'pointer'};" ${inst.id===INSTITUCION_ID?'':`onclick="entrarAInstitucionDesdeId('${inst.id}')"`}>
         <div style="font-weight:600;font-size:13px;">${inst.nombre}${inst.id===INSTITUCION_ID?' <span style="font-weight:400;color:var(--text3);">(acá estás ahora)</span>':''}</div>
         <div style="font-size:11px;color:var(--text3);">${inst.grupo||'—'} · <span style="font-family:var(--mono);">${inst.id}</span></div>
       </div>
-      <div style="font-size:11px;color:var(--text3);">Ver / editar →</div>
+      ${inst.id===INSTITUCION_ID?'':`<button class="btn btn-outline btn-sm" onclick="event.stopPropagation();entrarAInstitucionDesdeId('${inst.id}')">→ Entrar</button>`}
+      <button class="btn btn-ghost btn-sm" title="Editar nombre/grupo" onclick="event.stopPropagation();abrirGestionInstitucion('${inst.id}')">✏️</button>
     </div>`).join('');
   // Refrescar contra Firestore por si otro operador agregó una institución
   // desde otra sesión mientras tanto.
   cargarInstitucionesDisponibles().then(()=>{
     if(esOperadorDelSistema()) renderInstitucionesConfig();
   });
+}
+
+// Entrar directo a una institución desde su id, con un solo click en el
+// panel — sin pasar por el modal de edición. Es lo mismo que hace
+// entrarAInstitucionDirecto() pero sin depender de que el modal esté
+// abierto primero.
+async function entrarAInstitucionDesdeId(id){
+  if(!id || id===INSTITUCION_ID) return;
+  fbUnwatchAll();
+  if(window._auth) { try{ await window._fbSignOut(window._auth); }catch(e){} }
+  currentUser = null;
+  document.getElementById('appWrap').classList.remove('active');
+  document.getElementById('loginScreen').classList.remove('active');
+  INSTITUCION_ID = id;
+  LS.set('fscc_institucion_id', id);
+  arrancarConInstitucion();
 }
 
 // ── Gestión de una institución puntual (desde el panel de Instituciones del sistema) ──
@@ -3931,6 +3961,12 @@ function _completarLogin(found){
 
   // Header info
   document.getElementById('hdrUserName').textContent=found.nombre;
+  const hdrInst = institucionesCache.find(i=>i.id===INSTITUCION_ID);
+  const hdrInstNombre = hdrInst ? hdrInst.nombre : INSTITUCION_ID;
+  const hdrInstEl = document.getElementById('hdrInstitucionNombre');
+  if(hdrInstEl) hdrInstEl.textContent = hdrInstNombre;
+  const ftrInstEl = document.getElementById('footerInstitucionNombre');
+  if(ftrInstEl) ftrInstEl.textContent = hdrInstNombre;
   const rb=document.getElementById('hdrRoleBadge');
   const rolLabels={admin:'Admin',supervisor:'Supervisor',operario:'Operario',cubre:'Cubre'};
   rb.textContent=rolLabels[found.rol]||found.rol;
@@ -5491,7 +5527,7 @@ tbody tr{border-bottom:1px solid #e4e3dd;}tbody td{padding:7px 10px;vertical-ali
   <thead><tr><th>Tipo</th><th>Responsable</th><th>Turno</th><th>Estado</th><th>Hora Registro</th><th>Fecha</th><th>Vencimiento</th><th>Observaciones</th><th>Foto</th></tr></thead>
   <tbody>${rows||'<tr><td colspan="9" style="text-align:center;padding:20px;color:#9a9995">Sin registros</td></tr>'}</tbody>
 </table></div>
-<div class="footer">FOOD SERVICE CONTROL CENTER · SANATORIO PARQUE · ${ts}</div></body></html>`,now};
+<div class="footer">FOOD SERVICE CONTROL CENTER · ${nombreInstitucionActual()} · ${ts}</div></body></html>`,now};
 }
 
 function downloadSectorReport(sector,filtro){
@@ -5636,7 +5672,7 @@ tbody tr{border-bottom:1px solid #e4e3dd;}tbody td{padding:7px 10px;vertical-ali
     </div>
   </div>
 </div>
-<div class="footer">FOOD SERVICE CONTROL CENTER · SANATORIO PARQUE · Generado el ${ts}</div></body></html>`,now};
+<div class="footer">FOOD SERVICE CONTROL CENTER · ${nombreInstitucionActual()} · Generado el ${ts}</div></body></html>`,now};
 }
 
 async function generarReporteOperario(modo){
@@ -5759,7 +5795,7 @@ tbody tr{border-bottom:1px solid #e4e3dd;}tbody td{padding:8px 10px;vertical-ali
 <div class="content"><table>
 <thead><tr><th>Sector</th><th>Tipo</th><th>Responsable</th><th>Turno</th><th>Estado</th><th>Hora Reg.</th><th>Fecha</th><th>Vencimiento</th><th>Observaciones</th><th>Foto</th></tr></thead>
 <tbody>${rows}</tbody></table></div>
-<div class="footer">FOOD SERVICE CONTROL CENTER · SANATORIO PARQUE · ${ts}</div></body></html>`;
+<div class="footer">FOOD SERVICE CONTROL CENTER · ${nombreInstitucionActual()} · ${ts}</div></body></html>`;
   return{html,now};
 }
 
