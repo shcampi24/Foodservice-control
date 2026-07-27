@@ -368,7 +368,7 @@ tbody td{padding:8px 10px;vertical-align:middle;}
 <!-- Firebase SDK -->
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-  import { getFirestore, doc, getDoc, setDoc, onSnapshot, collection, getDocs } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+  import { getFirestore, doc, getDoc, setDoc, deleteDoc, onSnapshot, collection, getDocs } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
   import {
     getAuth, signInWithEmailAndPassword, signOut, updatePassword,
     createUserWithEmailAndPassword, EmailAuthProvider, reauthenticateWithCredential
@@ -401,6 +401,7 @@ tbody td{padding:8px 10px;vertical-align:middle;}
   window._fsCol      = (path) => collection(db, path);
   window._fsGet      = getDoc;
   window._fsSet      = setDoc;
+  window._fsDelete   = deleteDoc;
   window._fsSnap     = onSnapshot;
   window._fsGetDocs  = getDocs;
 
@@ -1865,6 +1866,34 @@ tbody td{padding:8px 10px;vertical-align:middle;}
   </div>
 </div>
 
+<!-- ══ MODAL: GESTIONAR INSTITUCIÓN ══ -->
+<div class="modal-bg" id="modalGestionInstitucion" onclick="handleModalClick(event,'modalGestionInstitucion')">
+  <div class="modal-box wide">
+    <button class="modal-close" onclick="closeModal('modalGestionInstitucion')">✕</button>
+    <div class="modal-title" style="margin-bottom:4px;">🏢 <span id="giNombreTitulo"></span></div>
+    <div class="modal-sub" style="margin-bottom:14px;font-size:11px;font-family:var(--mono);" id="giIdSub"></div>
+    <div class="form-grid" style="margin-bottom:10px;">
+      <div class="fg">
+        <label>Nombre</label>
+        <input type="text" id="giNombre" />
+      </div>
+      <div class="fg">
+        <label>Grupo / referencia (opcional)</label>
+        <input type="text" id="giGrupo" />
+      </div>
+    </div>
+    <div id="giMsg" style="display:none;font-size:12px;padding:8px 10px;border-radius:6px;margin-bottom:8px;"></div>
+    <div class="form-actions" style="justify-content:space-between;">
+      <button class="btn btn-primary" id="giBtnEntrar" onclick="entrarAInstitucionDirecto()">→ Entrar a esta institución</button>
+      <button class="btn btn-ghost" onclick="guardarEdicionInstitucion()">Guardar cambios</button>
+    </div>
+    <div style="border-top:.5px solid var(--border-light);margin-top:14px;padding-top:12px;">
+      <div style="font-size:11px;color:var(--text3);margin-bottom:6px;">Zona de riesgo: borra TODOS los datos de esta institución (usuarios, tareas, trazabilidad, HACCP, todo). No se puede deshacer.</div>
+      <button class="btn btn-danger btn-sm" id="giBtnEliminar" onclick="eliminarInstitucion()">🗑️ Eliminar institución</button>
+    </div>
+  </div>
+</div>
+
 <!-- ══ MODAL: FIRMA DE SUPERVISOR (segunda firma) ══ -->
 <div class="modal-bg" id="modalFirmaSupervisorRonda" onclick="handleModalClick(event,'modalFirmaSupervisorRonda')">
   <div class="modal-box" style="max-width:360px;">
@@ -2230,9 +2259,17 @@ tbody td{padding:8px 10px;vertical-align:middle;}
 // ═══════════════════════════════════════════════════
 //  STORAGE — localStorage (cache local) + Firebase (sync cloud)
 // ═══════════════════════════════════════════════════
+// IMPORTANTE: todas las claves (salvo 'fscc_institucion_id', que es la única
+// que debe ser global — guarda CUÁL institución elegiste) se namespacean con
+// la institución activa. Sin esto, el caché local de una institución se pisa
+// con el de otra al cambiar entre empresas, y como el login (doLogin) busca
+// el usuario en el array 'users' que puede venir de ese caché viejo mientras
+// Firebase todavía está sincronizando, el resultado es exactamente lo que
+// pasó: a veces entra, a veces no, según qué institución quedó cacheada.
 const LS={
-  get(k){try{const v=localStorage.getItem(k);return v?JSON.parse(v):null;}catch(e){return null;}},
-  set(k,v){try{localStorage.setItem(k,JSON.stringify(v));}catch(e){}}
+  _key(k){ return (k==='fscc_institucion_id' || !INSTITUCION_ID) ? k : (INSTITUCION_ID+'::'+k); },
+  get(k){try{const v=localStorage.getItem(this._key(k));return v?JSON.parse(v):null;}catch(e){return null;}},
+  set(k,v){try{localStorage.setItem(this._key(k),JSON.stringify(v));}catch(e){}}
 };
 
 // ── Firebase helpers (async) ──────────────────────
@@ -2341,17 +2378,116 @@ function renderInstitucionesConfig(){
   wrap.style.display = 'block';
   const el = document.getElementById('cfgListaInstituciones');
   el.innerHTML = institucionesCache.map(inst=>`
-    <div class="config-item" style="flex-wrap:wrap;gap:8px;">
+    <div class="config-item" style="flex-wrap:wrap;gap:8px;cursor:pointer;" onclick="abrirGestionInstitucion('${inst.id}')">
       <div style="flex:1;min-width:200px;">
-        <div style="font-weight:600;font-size:13px;">${inst.nombre}</div>
+        <div style="font-weight:600;font-size:13px;">${inst.nombre}${inst.id===INSTITUCION_ID?' <span style="font-weight:400;color:var(--text3);">(acá estás ahora)</span>':''}</div>
         <div style="font-size:11px;color:var(--text3);">${inst.grupo||'—'} · <span style="font-family:var(--mono);">${inst.id}</span></div>
       </div>
+      <div style="font-size:11px;color:var(--text3);">Ver / editar →</div>
     </div>`).join('');
   // Refrescar contra Firestore por si otro operador agregó una institución
   // desde otra sesión mientras tanto.
   cargarInstitucionesDisponibles().then(()=>{
     if(esOperadorDelSistema()) renderInstitucionesConfig();
   });
+}
+
+// ── Gestión de una institución puntual (desde el panel de Instituciones del sistema) ──
+let _giInstId = null;
+function abrirGestionInstitucion(id){
+  const inst = institucionesCache.find(i=>i.id===id);
+  if(!inst) return;
+  _giInstId = id;
+  document.getElementById('giNombreTitulo').textContent = inst.nombre;
+  document.getElementById('giIdSub').textContent = inst.id;
+  document.getElementById('giNombre').value = inst.nombre;
+  document.getElementById('giGrupo').value = inst.grupo || '';
+  document.getElementById('giMsg').style.display = 'none';
+  const btnEliminar = document.getElementById('giBtnEliminar');
+  const btnEntrar = document.getElementById('giBtnEntrar');
+  const esLaPropia = id === 'sanatorio-parque';
+  btnEliminar.disabled = esLaPropia;
+  btnEliminar.title = esLaPropia ? 'No se puede eliminar la institución base del sistema.' : '';
+  const yaEstasAca = id === INSTITUCION_ID;
+  btnEntrar.disabled = yaEstasAca;
+  btnEntrar.textContent = yaEstasAca ? '→ Ya estás en esta institución' : '→ Entrar a esta institución';
+  document.getElementById('modalGestionInstitucion').classList.add('open');
+}
+
+function _giMostrarMsg(texto, esError){
+  const msg = document.getElementById('giMsg');
+  msg.textContent = texto;
+  msg.style.background = esError ? '#fde8e8' : '#e8f5ee';
+  msg.style.color = esError ? '#b02020' : '#1a7a4a';
+  msg.style.display = 'block';
+}
+
+async function guardarEdicionInstitucion(){
+  if(!_giInstId) return;
+  const nombre = document.getElementById('giNombre').value.trim();
+  const grupo = document.getElementById('giGrupo').value.trim();
+  if(!nombre){ _giMostrarMsg('El nombre no puede quedar vacío.', true); return; }
+  try{
+    const listaNueva = institucionesCache.map(i=> i.id===_giInstId ? {...i, nombre, grupo} : i);
+    await window._fsSet(window._fsDoc('registro_instituciones/lista'), { instituciones: listaNueva }, { merge:false });
+    institucionesCache = listaNueva;
+    if(_giInstId===INSTITUCION_ID){
+      const nombreEl = document.getElementById('loginInstitucionNombre');
+      if(nombreEl) nombreEl.textContent = nombre;
+    }
+    audit('Institución editada: '+nombre, _giInstId, 'config');
+    renderInstitucionesConfig();
+    _giMostrarMsg('Cambios guardados.', false);
+  }catch(e){
+    console.error(e);
+    _giMostrarMsg('No se pudieron guardar los cambios. Revisá la conexión.', true);
+  }
+}
+
+// Te lleva directo a la pantalla de login de la institución elegida, sin
+// pasar por el selector. Cierra la sesión actual (cada institución tiene
+// sus propios usuarios/credenciales, así que hace falta loguearse de nuevo
+// ahí) pero te ahorra el paso de "¿Qué institución sos?".
+async function entrarAInstitucionDirecto(){
+  if(!_giInstId || _giInstId===INSTITUCION_ID) return;
+  const idDestino = _giInstId;
+  closeModal('modalGestionInstitucion');
+  fbUnwatchAll();
+  if(window._auth) { try{ await window._fbSignOut(window._auth); }catch(e){} }
+  currentUser = null;
+  document.getElementById('appWrap').classList.remove('active');
+  document.getElementById('loginScreen').classList.remove('active');
+  INSTITUCION_ID = idDestino;
+  LS.set('fscc_institucion_id', idDestino);
+  arrancarConInstitucion();
+}
+
+async function eliminarInstitucion(){
+  if(!_giInstId || _giInstId==='sanatorio-parque') return;
+  const inst = institucionesCache.find(i=>i.id===_giInstId);
+  const confirmacion = prompt('Esto borra TODOS los datos de "'+(inst?inst.nombre:_giInstId)+'" (usuarios, tareas, trazabilidad, HACCP, todo) y no se puede deshacer.\n\nEscribí el identificador de la institución para confirmar:\n\n'+_giInstId);
+  if(confirmacion !== _giInstId){
+    if(confirmacion !== null) _giMostrarMsg('El identificador no coincide — no se eliminó nada.', true);
+    return;
+  }
+  const btn = document.getElementById('giBtnEliminar');
+  btn.disabled = true; btn.textContent = 'Eliminando...';
+  try{
+    const colecciones = ['fscc_users','fscc_cfg','fscc_tasks','fscc_audit','fscc_notif','fscc_haccp','fscc_mant','fscc_traz','fscc_rondas','fscc_catalogo','fscc_cap'];
+    await Promise.all(colecciones.map(col =>
+      window._fsDelete(window._fsDoc('instituciones/'+_giInstId+'/'+col+'/data')).catch(()=>{})
+    ));
+    const listaNueva = institucionesCache.filter(i=>i.id!==_giInstId);
+    await window._fsSet(window._fsDoc('registro_instituciones/lista'), { instituciones: listaNueva }, { merge:false });
+    institucionesCache = listaNueva;
+    audit('Institución eliminada: '+_giInstId, '', 'config');
+    closeModal('modalGestionInstitucion');
+    renderInstitucionesConfig();
+  }catch(e){
+    console.error(e);
+    _giMostrarMsg('No se pudo eliminar. Revisá la conexión e intentá de nuevo.', true);
+    btn.disabled = false; btn.textContent = '🗑️ Eliminar institución';
+  }
 }
 
 function openNuevaInstitucionModal(){
