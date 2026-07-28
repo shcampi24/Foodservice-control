@@ -883,6 +883,31 @@ tbody td{padding:8px 10px;vertical-align:middle;}
         <label>Fecha de inicio del Menú 1</label>
         <input type="date" id="cfgCicloMenuInicio" onchange="guardarCicloMenuInicio(this.value)" />
       </div>
+      <div class="info-panel" style="font-size:11px;padding:7px 10px;margin:0 0 8px;">
+        ¿No sabés la fecha exacta en que arrancó el Menú 1, pero sabés qué Menú corresponde a una fecha puntual (ej. hoy)? Cargalo acá y el sistema calcula solo la fecha de inicio.
+      </div>
+      <div class="form-grid" style="grid-template-columns:1fr 1fr auto;gap:8px;align-items:end;max-width:480px;margin:0 0 8px;">
+        <div class="fg" style="margin:0;">
+          <label>Esta fecha</label>
+          <input type="date" id="cfgCicloAjusteFecha" />
+        </div>
+        <div class="fg" style="margin:0;">
+          <label>Corresponde a</label>
+          <select id="cfgCicloAjusteMenu">
+            <option value="1">Menu 1</option>
+            <option value="2">Menu 2</option>
+            <option value="3">Menu 3</option>
+            <option value="4">Menu 4</option>
+            <option value="5">Menu 5</option>
+            <option value="6">Menu 6</option>
+            <option value="7">Menu 7</option>
+            <option value="8">Menu 8</option>
+            <option value="9">Menu 9</option>
+            <option value="10">Menu 10</option>
+          </select>
+        </div>
+        <button class="btn btn-outline btn-sm" onclick="ajustarCicloMenuPorFecha()">Ajustar</button>
+      </div>
       <div id="cfgCicloMenuPreview" style="font-size:12px;color:var(--text2);"></div>
     </div>
     <div class="config-section" style="grid-column:1/-1;">
@@ -5952,6 +5977,20 @@ function guardarCicloMenuInicio(val){
   renderCicloMenuPreview();
 }
 
+// Permite fijar "esta fecha corresponde a este Menú" en vez de tener que
+// calcular a mano la fecha de inicio del ciclo — recalcula cicloMenuFechaInicio
+// para que la correspondencia cargada quede exacta.
+function ajustarCicloMenuPorFecha(){
+  const fecha = document.getElementById('cfgCicloAjusteFecha').value;
+  const nro = parseInt(document.getElementById('cfgCicloAjusteMenu').value, 10);
+  if(!fecha){ alert('Elegí la fecha a la que le vas a fijar el Menú.'); return; }
+  const f = new Date(fecha+'T00:00:00');
+  f.setDate(f.getDate() - (nro - 1));
+  const inicioStr = f.toISOString().slice(0,10);
+  document.getElementById('cfgCicloMenuInicio').value = inicioStr;
+  guardarCicloMenuInicio(inicioStr);
+}
+
 function renderCicloMenuPreview(){
   const el = document.getElementById('cfgCicloMenuPreview');
   if(!el) return;
@@ -6670,12 +6709,18 @@ function renderTrazPrep(){
   if(!lista.length){ el.innerHTML = '<div style="font-size:12px;color:var(--text3);padding:12px;">No hay preparaciones que coincidan con el filtro.</div>'; return; }
   const tipoLabel = {almuerzo:'☀ Almuerzo', cena:'🌙 Cena', especial:'⭐ Especial'};
   const ordenTipo = {almuerzo:0, especial:1, cena:2};
+  // Cuál Menú corresponde hoy según el ciclo configurado, para resaltarlo
+  const menuHoyNro = getMenuDelDia(today());
+  const menuHoyTxt = menuHoyNro ? ('Menu '+menuHoyNro) : null;
   // Agrupar por Día de menú (campo "menu": "Menu 1".."Menu 10") — Almuerzo + Especial + Cena juntos
   const dias = [...new Set(lista.map(p=>p.menu))].sort((a,b)=>a.localeCompare(b,'es',{numeric:true}));
   el.innerHTML = dias.map(dia=>{
+    const esHoy = dia === menuHoyTxt;
     const platos = [...lista.filter(p=>p.menu===dia)].sort((a,b)=>(ordenTipo[a.tipo]??9)-(ordenTipo[b.tipo]??9));
-    return `<div style="margin-bottom:16px;">
-      <div style="font-size:12px;font-weight:700;color:var(--gold,#c4922a);text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px;padding-bottom:4px;border-bottom:1px solid var(--border);">📅 ${dia}</div>
+    return `<div style="margin-bottom:16px;${esHoy?'background:#fff8e6;border:1.5px solid var(--gold,#c4922a);border-radius:var(--r);padding:10px;':''}">
+      <div style="font-size:12px;font-weight:700;color:${esHoy?'#8a6416':'var(--gold,#c4922a)'};text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px;padding-bottom:4px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:6px;">
+        📅 ${dia} ${esHoy?'<span class="badge" style="background:#c4922a;color:#fff;border:none;">★ HOY</span>':''}
+      </div>
       <div style="display:flex;flex-direction:column;gap:6px;">
       ${platos.map(p=>`
         <div class="config-item" style="flex-wrap:wrap;gap:8px;">
