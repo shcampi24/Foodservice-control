@@ -1364,6 +1364,7 @@ tbody td{padding:8px 10px;vertical-align:middle;}
         <label>Comida</label>
         <select id="prodComida" onchange="actualizarPlanDelDia()">
           <option value="almuerzo" selected>Almuerzo</option>
+          <option value="especial">Especial</option>
           <option value="cena">Cena</option>
           <option value="otro">Otro / colación</option>
         </select>
@@ -1500,16 +1501,17 @@ tbody td{padding:8px 10px;vertical-align:middle;}
       </div>
       <div class="fg">
         <label>Comida</label>
-        <select id="mtComida">
+        <select id="mtComida" onchange="actualizarPlanDelDiaMT()">
           <option>Desayuno</option>
           <option selected>Almuerzo</option>
+          <option>Especial</option>
           <option>Merienda</option>
           <option>Cena</option>
         </select>
       </div>
       <div class="fg">
         <label>Preparación</label>
-        <input type="text" id="mtPreparacion" placeholder="Ej: Milanesas al horno" />
+        <input type="text" id="mtPreparacion" placeholder="Ej: Milanesas al horno" oninput="chequearCambioMenuMT()" />
       </div>
       <div class="fg">
         <label>Sector</label>
@@ -1522,6 +1524,13 @@ tbody td{padding:8px 10px;vertical-align:middle;}
       <div class="fg">
         <label>Se puede descartar a partir de</label>
         <input type="text" id="mtFechaDescarte" disabled placeholder="Se calcula sola al guardar" />
+      </div>
+    </div>
+    <div id="mtPlanDelDia" style="display:none;margin-bottom:10px;"></div>
+    <div id="mtCambioMenuWrap" style="display:none;margin-bottom:10px;">
+      <div class="fg" style="margin:0;">
+        <label>⚠ Motivo del cambio (no coincide con lo planificado en el ciclo)</label>
+        <textarea id="mtCambioMenuMotivo" placeholder="Ej: el proveedor no entregó la milanesa, se sirvió pollo en su lugar"></textarea>
       </div>
     </div>
     <div id="mtLotesInfo" style="display:none;margin-bottom:10px;"></div>
@@ -5950,9 +5959,11 @@ function renderCicloMenuPreview(){
   }
   const nroHoy = getMenuDelDia(today());
   const almuerzo = getPreparacionPlanificada(today(),'almuerzo');
+  const especial = getPreparacionPlanificada(today(),'especial');
   const cena = getPreparacionPlanificada(today(),'cena');
   el.innerHTML = `Hoy corresponde <strong>Menú ${nroHoy}</strong> —
     Almuerzo: <strong>${almuerzo?almuerzo.nombre:'—'}</strong> ·
+    Especial: <strong>${especial?especial.nombre:'—'}</strong> ·
     Cena: <strong>${cena?cena.nombre:'—'}</strong>`;
 }
 
@@ -6640,8 +6651,8 @@ function saveCatalogo(){
 function renderTrazPrep(){
   const selMenu = document.getElementById('prepFiltroMenu');
   if(selMenu && selMenu.options.length<=1){
-    const menus = [...new Set(catalogo.preparaciones.map(p=>p.menu))].sort();
-    selMenu.innerHTML = '<option value="">Todos los menús</option>' + menus.map(m=>`<option value="${m}">${m}</option>`).join('');
+    const menus = [...new Set(catalogo.preparaciones.map(p=>p.menu))].sort((a,b)=>a.localeCompare(b,'es',{numeric:true}));
+    selMenu.innerHTML = '<option value="">Todos los días</option>' + menus.map(m=>`<option value="${m}">${m}</option>`).join('');
   }
   const filtroMenu = (document.getElementById('prepFiltroMenu')||{}).value || '';
   const filtroTipo = (document.getElementById('prepFiltroTipo')||{}).value || '';
@@ -6656,16 +6667,27 @@ function renderTrazPrep(){
   const el = document.getElementById('trazListadoPrep');
   if(!lista.length){ el.innerHTML = '<div style="font-size:12px;color:var(--text3);padding:12px;">No hay preparaciones que coincidan con el filtro.</div>'; return; }
   const tipoLabel = {almuerzo:'☀ Almuerzo', cena:'🌙 Cena', especial:'⭐ Especial'};
-  el.innerHTML = lista.map(p=>`
-    <div class="config-item" style="flex-wrap:wrap;gap:8px;">
-      <div style="flex:1;min-width:220px;">
-        <div style="font-weight:600;font-size:13px;">${p.nombre}</div>
-        <div style="font-size:11px;color:var(--text3);margin-top:2px;">${p.menu} · ${tipoLabel[p.tipo]||p.tipo} · ${p.ingredientes.length} ingrediente(s)</div>
+  const ordenTipo = {almuerzo:0, especial:1, cena:2};
+  // Agrupar por Día de menú (campo "menu": "Menu 1".."Menu 10") — Almuerzo + Especial + Cena juntos
+  const dias = [...new Set(lista.map(p=>p.menu))].sort((a,b)=>a.localeCompare(b,'es',{numeric:true}));
+  el.innerHTML = dias.map(dia=>{
+    const platos = [...lista.filter(p=>p.menu===dia)].sort((a,b)=>(ordenTipo[a.tipo]??9)-(ordenTipo[b.tipo]??9));
+    return `<div style="margin-bottom:16px;">
+      <div style="font-size:12px;font-weight:700;color:var(--gold,#c4922a);text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px;padding-bottom:4px;border-bottom:1px solid var(--border);">📅 ${dia}</div>
+      <div style="display:flex;flex-direction:column;gap:6px;">
+      ${platos.map(p=>`
+        <div class="config-item" style="flex-wrap:wrap;gap:8px;">
+          <div style="flex:1;min-width:220px;">
+            <div style="font-weight:600;font-size:13px;">${p.nombre}</div>
+            <div style="font-size:11px;color:var(--text3);margin-top:2px;">${tipoLabel[p.tipo]||p.tipo} · ${p.ingredientes.length} ingrediente(s)</div>
+          </div>
+          <button class="btn btn-outline btn-sm" onclick="verPrep('${p.id}')">Ver receta</button>
+          <button class="btn btn-outline btn-sm" onclick="openPrepModal('${p.id}')">Editar</button>
+          <button class="btn btn-danger btn-sm" onclick="eliminarPrep('${p.id}')">✕</button>
+        </div>`).join('')}
       </div>
-      <button class="btn btn-outline btn-sm" onclick="verPrep('${p.id}')">Ver receta</button>
-      <button class="btn btn-outline btn-sm" onclick="openPrepModal('${p.id}')">Editar</button>
-      <button class="btn btn-danger btn-sm" onclick="eliminarPrep('${p.id}')">✕</button>
-    </div>`).join('');
+    </div>`;
+  }).join('');
 }
 
 // Redondea valores numéricos de peso a 2 decimales (limpia errores de coma
@@ -7163,9 +7185,10 @@ function actualizarPlanDelDia(){
     panel.style.display = 'none';
   } else {
     panel.style.display = 'block';
+    const comidaLabelMap = {almuerzo:'Almuerzo', especial:'Especial', cena:'Cena'};
     panel.innerHTML = `<div class="info-panel" style="font-size:11px;padding:7px 10px;">
       📅 Según el ciclo, para esta fecha corresponde <strong>Menú ${nroMenu}</strong> —
-      ${comida==='almuerzo'?'Almuerzo':'Cena'}: <strong>${planificada?planificada.nombre:'(no está cargado en el catálogo)'}</strong>
+      ${comidaLabelMap[comida]||comida}: <strong>${planificada?planificada.nombre:'(no está cargado en el catálogo)'}</strong>
     </div>`;
   }
   chequearCambioMenu();
@@ -7510,6 +7533,7 @@ function onMtPrepCatalogoChange(){
     selProd.value = opcionMatch.value;
     onMtProduccionChange();
   }
+  chequearCambioMenuMT();
 }
 
 function openMuestraModal(){
@@ -7522,10 +7546,53 @@ function openMuestraModal(){
   document.getElementById('mtLotesInfo').innerHTML = '';
   document.getElementById('mtProduccion').value = '';
   document.getElementById('mtPrepCatalogo').value = '';
+  document.getElementById('mtCambioMenuMotivo').value = '';
+  document.getElementById('mtCambioMenuWrap').style.display = 'none';
   const horas = cfg.horasMuestraTestigo || 72;
   const previsto = new Date(Date.now() + horas*3600*1000);
   document.getElementById('mtFechaDescarte').value = fmtDatetime(previsto.toISOString()) + ' (' + horas + 'hs desde ahora)';
   document.getElementById('modalMuestra').classList.add('open');
+  actualizarPlanDelDiaMT();
+}
+
+// ── Ciclo de menú en Muestra testigo (misma lógica que en Producción) ──
+const _mtComidaToTipo = {'Almuerzo':'almuerzo', 'Especial':'especial', 'Cena':'cena'};
+let _mtPlanActual = null;
+
+function actualizarPlanDelDiaMT(){
+  const comidaTxt = document.getElementById('mtComida').value;
+  const tipo = _mtComidaToTipo[comidaTxt];
+  const panel = document.getElementById('mtPlanDelDia');
+  if(!tipo || !cfg.cicloMenuFechaInicio){
+    _mtPlanActual = null;
+    panel.style.display = 'none';
+    chequearCambioMenuMT();
+    return;
+  }
+  const nroMenu = getMenuDelDia(today());
+  const planificada = getPreparacionPlanificada(today(), tipo);
+  _mtPlanActual = { nroMenu, preparacion: planificada };
+  if(!nroMenu){
+    panel.style.display = 'none';
+  } else {
+    panel.style.display = 'block';
+    panel.innerHTML = `<div class="info-panel" style="font-size:11px;padding:7px 10px;">
+      📅 Según el ciclo, para hoy corresponde <strong>Menú ${nroMenu}</strong> —
+      ${comidaTxt}: <strong>${planificada?planificada.nombre:'(no está cargado en el catálogo)'}</strong>
+    </div>`;
+  }
+  chequearCambioMenuMT();
+}
+
+function chequearCambioMenuMT(){
+  const wrap = document.getElementById('mtCambioMenuWrap');
+  const preparacion = document.getElementById('mtPreparacion').value.trim().toUpperCase();
+  if(!_mtPlanActual || !_mtPlanActual.preparacion || !preparacion){
+    wrap.style.display = 'none';
+    return;
+  }
+  const coincide = preparacion === _mtPlanActual.preparacion.nombre.toUpperCase();
+  wrap.style.display = coincide ? 'none' : 'block';
 }
 
 function onMtProduccionChange(){
@@ -7556,6 +7623,18 @@ function guardarMuestra(){
   const observaciones = document.getElementById('mtObs').value.trim();
   if(!preparacion){ alert('Ingresá la preparación de la que se toma la muestra.'); return; }
   if(!responsable){ alert('Ingresá el responsable.'); return; }
+
+  // Detección de cambio de menú (contra el ciclo de 10 días configurado)
+  let cambioMenu = null;
+  if(_mtPlanActual && _mtPlanActual.preparacion){
+    const coincide = preparacion.toUpperCase() === _mtPlanActual.preparacion.nombre.toUpperCase();
+    if(!coincide){
+      const motivo = document.getElementById('mtCambioMenuMotivo').value.trim();
+      if(!motivo){ alert('Este plato no coincide con lo que correspondía según el ciclo de menú. Indicá el motivo del cambio.'); return; }
+      cambioMenu = { nroMenu: _mtPlanActual.nroMenu, planificada: _mtPlanActual.preparacion.nombre, motivo };
+    }
+  }
+
   const p = produccionId ? traz.producciones.find(x=>x.id===produccionId) : null;
   const lotesUsados = p ? (p.lotesUsados||[]) : [];
   const horas = cfg.horasMuestraTestigo || 72;
@@ -7565,7 +7644,7 @@ function guardarMuestra(){
     id: 'mt_'+Date.now()+'_'+Math.floor(Math.random()*1000),
     codigo: generarCodigoMuestra(),
     fecha: today(), comida, produccionId, preparacion, sector, lotesUsados,
-    responsable, tomadaTs, fechaDescarteProgramada,
+    responsable, tomadaTs, fechaDescarteProgramada, cambioMenu,
     estado: 'guardada', descartadaPor: null, descartadaTs: null,
     resultadoAnalisis: '', alertada: false, observaciones
   };
@@ -7585,7 +7664,7 @@ function verDetalleMuestra(id){
   if(!m) return;
   _mtDetalleId = id;
   const est = estadoMuestra(m);
-  document.getElementById('mtDetalleTitulo').textContent = '🧪 '+m.preparacion;
+  document.getElementById('mtDetalleTitulo').innerHTML = '🧪 '+m.preparacion+(m.cambioMenu?' <span class="badge" style="background:#fff3cd;color:#8a6416;border:1px solid #f0d880;">🔄 Cambio de menú</span>':'');
   document.getElementById('mtDetalleSub').textContent = m.codigo+' · '+m.comida+' · '+(m.sector||'—');
   const lotesTxt = (m.lotesUsados||[]).map(lid=>{
     const l = traz.lotes.find(x=>x.id===lid);
@@ -7597,6 +7676,7 @@ function verDetalleMuestra(id){
       <div><strong>Tomada por:</strong> ${m.responsable} — ${fmtDatetime(m.tomadaTs)}</div>
       <div><strong>Se puede descartar desde:</strong> ${fmtDatetime(m.fechaDescarteProgramada)}</div>
       ${lotesTxt.length?`<div style="margin-top:6px;"><strong>Lotes:</strong><br/>${lotesTxt.join('<br/>')}</div>`:''}
+      ${m.cambioMenu?`<div style="margin-top:6px;color:#8a6416;">Correspondía "${m.cambioMenu.planificada}" (Menú ${m.cambioMenu.nroMenu}) — ${m.cambioMenu.motivo}</div>`:''}
       ${m.observaciones?`<div style="margin-top:6px;"><strong>Observaciones:</strong><br/>${m.observaciones}</div>`:''}
       ${m.estado==='descartada'?`<div style="margin-top:8px;color:var(--text3);">Descartada por ${m.descartadaPor} el ${fmtDatetime(m.descartadaTs)}</div>`:''}
       ${m.estado==='analisis'?`<div style="margin-top:8px;color:#7a1a9a;">Enviada a análisis${m.resultadoAnalisis?': '+m.resultadoAnalisis:' — resultado pendiente de carga'}</div>`:''}
