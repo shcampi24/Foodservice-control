@@ -2361,6 +2361,7 @@ function elegirInstitucion(id){
 }
 
 function cambiarInstitucion(){
+  fbUnwatchAll();
   INSTITUCION_ID = null;
   localStorage.removeItem('fscc_institucion_id');
   document.getElementById('loginScreen').classList.remove('active');
@@ -2805,7 +2806,7 @@ async function loadDataFromFirebase(){
     const fbVacio = !fbTasks && !fbUsers && !fbCfg;
 
     if(fbUsers){users=fbUsers;LS.set('fscc_users',users);}
-    if(fbCfg){cfg=fbCfg;if(!cfg.recurrentes)cfg.recurrentes={};LS.set('fscc_cfg',cfg);}
+    if(fbCfg){cfg=fbCfg;if(!cfg.recurrentes)cfg.recurrentes={};if(!cfg.equipos)cfg.equipos=[];if(!cfg.sectores)cfg.sectores=[];LS.set('fscc_cfg',cfg);}
     if(fbTasks){
       tasks=fbTasks;LS.set('fscc_tasks',tasks);
     } else if(fbVacio){
@@ -2856,7 +2857,8 @@ async function loadDataFromFirebase(){
     });
     fbWatch('fscc_cfg',(val)=>{
       if(_localSaveInProgress)return;
-      cfg=val;if(!cfg.recurrentes)cfg.recurrentes={};LS.set('fscc_cfg',cfg);
+      if(!val)return; // documento vacío/inexistente — no pisar el cfg local válido
+      cfg=val;if(!cfg.recurrentes)cfg.recurrentes={};if(!cfg.equipos)cfg.equipos=[];if(!cfg.sectores)cfg.sectores=[];LS.set('fscc_cfg',cfg);
       if(currentUser)renderAll();
     });
     fbWatch('fscc_users',(val)=>{
