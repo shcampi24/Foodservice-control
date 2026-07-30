@@ -2419,12 +2419,9 @@ function esOperadorDelSistema(){
   return !!currentUser && currentUser.user === 'admin' && INSTITUCION_ID === 'sanatorio-parque';
 }
 
-function renderInstitucionesConfig(){
-  const wrap = document.getElementById('cfgInstitucionesWrap');
-  if(!wrap) return;
-  if(!esOperadorDelSistema()){ wrap.style.display = 'none'; return; }
-  wrap.style.display = 'block';
+function _pintarListaInstitucionesConfig(){
   const el = document.getElementById('cfgListaInstituciones');
+  if(!el) return;
   el.innerHTML = institucionesCache.map(inst=>`
     <div class="config-item" style="flex-wrap:wrap;gap:8px;">
       <div style="flex:1;min-width:200px;cursor:${inst.id===INSTITUCION_ID?'default':'pointer'};" ${inst.id===INSTITUCION_ID?'':`onclick="entrarAInstitucionDesdeId('${inst.id}')"`}>
@@ -2434,10 +2431,23 @@ function renderInstitucionesConfig(){
       ${inst.id===INSTITUCION_ID?'':`<button class="btn btn-outline btn-sm" onclick="event.stopPropagation();entrarAInstitucionDesdeId('${inst.id}')">→ Entrar</button>`}
       <button class="btn btn-ghost btn-sm" title="Editar nombre/grupo" onclick="event.stopPropagation();abrirGestionInstitucion('${inst.id}')">✏️</button>
     </div>`).join('');
+}
+
+function renderInstitucionesConfig(){
+  const wrap = document.getElementById('cfgInstitucionesWrap');
+  if(!wrap) return;
+  if(!esOperadorDelSistema()){ wrap.style.display = 'none'; return; }
+  wrap.style.display = 'block';
+  _pintarListaInstitucionesConfig();
   // Refrescar contra Firestore por si otro operador agregó una institución
-  // desde otra sesión mientras tanto.
+  // desde otra sesión mientras tanto. OJO: repinta directo, NO vuelve a
+  // llamar a renderInstitucionesConfig() — antes lo hacía y eso generaba
+  // un bucle infinito render → fetch → render → fetch..., que borraba y
+  // reconstruía la lista todo el tiempo (por eso los clicks en "Entrar"/
+  // "Editar" a veces no hacían nada: el botón se reemplazaba a mitad del
+  // click).
   cargarInstitucionesDisponibles().then(()=>{
-    if(esOperadorDelSistema()) renderInstitucionesConfig();
+    if(esOperadorDelSistema()) _pintarListaInstitucionesConfig();
   });
 }
 
