@@ -33,6 +33,7 @@ body{font-family:var(--sans);background:var(--bg);color:var(--text);min-height:1
 .task-turno-badge{display:inline-block;font-size:9px;font-family:var(--mono);padding:1px 6px;border-radius:3px;margin-left:6px;font-weight:500;}
 .task-turno-badge.activo{background:rgba(196,146,42,.18);color:var(--amber);}
 .task-turno-badge.otro{background:var(--bg2);color:var(--text3);}
+.badge-pendiente-sync{display:inline-block;font-size:9px;font-family:var(--mono);padding:1px 6px;border-radius:3px;font-weight:500;background:var(--amber-bg);color:var(--amber);border:1px solid #f0d880;white-space:nowrap;}
 
 /* ── SYNC INDICATOR ── */
 .offline-banner{display:none;position:fixed;bottom:0;left:0;right:0;background:#a05c10;color:#fff;font-size:12px;font-family:var(--mono);padding:6px 16px;text-align:center;z-index:9999;}
@@ -2660,9 +2661,17 @@ async function fbLoad(colName){
 }
 async function fbSave(colName,value){
   try{
-    if(!window._db)return;
+    if(!window._db){ marcarPendienteSync(colName); return false; }
     await window._fsSet(window._fsDoc(_rutaInstitucion(colName)),{value},{ merge:false });
-  }catch(e){console.warn('fbSave error',colName,e);}
+    confirmarSync(colName);
+    return true;
+  }catch(e){
+    console.warn('fbSave error',colName,e);
+    // No perdemos el dato: ya está en localStorage (LS.set corre antes de
+    // llamar a fbSave en todos los callers) — solo queda pendiente de subir.
+    marcarPendienteSync(colName);
+    return false;
+  }
 }
 
 // Listener de sincronización en tiempo real (para tasks y notificaciones)
@@ -2717,6 +2726,116 @@ function showSyncStatus(msg,color='green'){
       el.textContent='☁ Sincronizado '+ts;
       el.style.color='rgba(255,255,255,0.35)';
     },4000);
+  }
+}
+
+// ═══════════════════════════════════════════════════
+//  MODO OFFLINE — cola de reintento de sincronización
+// ═══════════════════════════════════════════════════
+// fbSave() ya nunca pierde un dato en silencio: cuando falla (sin conexión,
+// timeout, etc.) marca acá la colección como "pendiente" en vez de solo
+// loguear el error. El dato en sí nunca corre riesgo porque LS.set(...) ya lo
+// dejó en localStorage ANTES de intentar la nube (así guardan saveAll/
+// saveTraz/saveRondas) — lo único que puede faltar es la subida a Firestore,
+// y eso se reintenta solo, mandando siempre el estado ACTUAL en memoria (no
+// una copia vieja), así que nada de lo cargado mientras tanto se pisa.
+let _pendientesSync = {};                                    // { [colName]: tsDesde }
+let _pendientesIds = {producciones:[], muestrasTestigo:[], rondas:[]}; // ids para el badge por fila
+
+function cargarColaPendiente(){
+  _pendientesSync = LS.get('fscc_pendientes_sync') || {};
+  _pendientesIds  = LS.get('fscc_pendientes_ids') || {producciones:[], muestrasTestigo:[], rondas:[]};
+}
+
+function hayPendientes(){ return Object.keys(_pendientesSync).length>0; }
+
+// Cómo leer el estado ACTUAL en memoria de cada colección que puede quedar
+// pendiente, para reintentar siempre con lo último cargado.
+const _gettersColeccionSync = {
+  fscc_cfg:()=>cfg, fscc_tasks:()=>tasks, fscc_users:()=>users, fscc_audit:()=>auditLog,
+  fscc_notif:()=>notifications, fscc_haccp:()=>haccpLogs, fscc_mant:()=>mantSolicitudes,
+  fscc_traz:()=>traz, fscc_rondas:()=>rondas, fscc_catalogo:()=>catalogo
+};
+
+function marcarPendienteSync(colName){
+  if(!_pendientesSync[colName]) _pendientesSync[colName] = Date.now();
+  LS.set('fscc_pendientes_sync', _pendientesSync);
+  actualizarIndicadorPendientes();
+}
+
+function confirmarSync(colName){
+  if(!(colName in _pendientesSync)) return;
+  delete _pendientesSync[colName];
+  LS.set('fscc_pendientes_sync', _pendientesSync);
+  // La colección quedó confirmada completa en la nube — cualquier registro
+  // puntual que estuviera esperando ese guardado también queda confirmado.
+  // Se refresca la lista visible para que el badge "Pendiente de sync"
+  // desaparezca solo, sin que el usuario tenga que hacer nada.
+  try{
+    if(colName==='fscc_traz'){ _pendientesIds.producciones=[]; _pendientesIds.muestrasTestigo=[]; if(currentUser) renderTraz(); }
+    if(colName==='fscc_rondas'){ _pendientesIds.rondas=[]; if(currentUser) renderRondas(); }
+  }catch(e){ console.warn('Error re-renderizando tras confirmar sync', colName, e); }
+  LS.set('fscc_pendientes_ids', _pendientesIds);
+  actualizarIndicadorPendientes();
+}
+
+// Marca un registro puntual (producción/muestra/ronda) como pendiente ANTES
+// de intentar guardarlo — así, aunque el guardado tarde unos cientos de ms
+// estando online, la interfaz nunca miente sobre el estado real.
+function marcarRegistroPendiente(tipo, id){
+  if(!_pendientesIds[tipo]) _pendientesIds[tipo]=[];
+  if(!_pendientesIds[tipo].includes(id)) _pendientesIds[tipo].push(id);
+  LS.set('fscc_pendientes_ids', _pendientesIds);
+}
+function esRegistroPendiente(tipo, id){
+  return (_pendientesIds[tipo]||[]).includes(id);
+}
+
+// Reintenta subir cada colección pendiente con su estado actual en memoria.
+// Se llama al reconectar y desde un timer de respaldo (por si el evento
+// 'online' del navegador no llega a disparar).
+let _reintentandoSync = false;
+async function reintentarTodoPendiente(){
+  if(_reintentandoSync || !hayPendientes() || !navigator.onLine) return;
+  _reintentandoSync = true;
+  try{
+    const cols = Object.keys(_pendientesSync);
+    await Promise.all(cols.map(col=>{
+      const getter = _gettersColeccionSync[col];
+      return getter ? fbSave(col, getter()) : Promise.resolve();
+    }));
+  } finally {
+    _reintentandoSync = false;
+  }
+}
+
+let _colaSyncTimer = null;
+function startColaSyncTimer(){
+  if(_colaSyncTimer) clearInterval(_colaSyncTimer);
+  _colaSyncTimer = setInterval(()=>{ if(hayPendientes()) reintentarTodoPendiente(); }, 20000);
+}
+
+// Único punto que decide qué dice el banner inferior y el indicador de sync
+// de arriba, según conexión real del navegador + cola pendiente.
+function actualizarIndicadorPendientes(){
+  const banner = document.getElementById('offlineBanner');
+  const n = Object.keys(_pendientesSync).length;
+  if(!navigator.onLine){
+    if(banner){
+      banner.textContent = n>0
+        ? `⚠ Sin conexión a internet — ${n} cambio${n===1?'':'s'} guardado${n===1?'':'s'} en este dispositivo, pendiente${n===1?'':'s'} de sincronizar. Se suben solos al reconectar.`
+        : '⚠ Sin conexión a internet — trabajando en modo local. Los cambios se sincronizarán al reconectarse.';
+      banner.classList.add('show');
+    }
+    showSyncStatus(n>0?`⚠ Sin conexión — ${n} pendiente${n===1?'':'s'}`:'⚠ Sin conexión','amber');
+  } else if(n>0){
+    if(banner){
+      banner.textContent = `☁ Sincronizando ${n} cambio${n===1?'':'s'} pendiente${n===1?'':'s'}...`;
+      banner.classList.add('show');
+    }
+    showSyncStatus(`⏳ ${n} pendiente${n===1?'':'s'} de sincronizar`,'amber');
+  } else if(banner){
+    banner.classList.remove('show');
   }
 }
 
@@ -3275,6 +3394,11 @@ function chequearGeneracionDiaria(){
 }
 
 function loadData(){
+  // Cola de cambios sin confirmar en Firestore (sobrevive a un reload si se
+  // quedó offline con algo pendiente) + estado real de conexión al arrancar.
+  cargarColaPendiente();
+  if(!navigator.onLine) document.getElementById('offlineBanner').classList.add('show');
+  actualizarIndicadorPendientes();
   // Cargar desde localStorage primero (instantáneo, para no bloquear UI)
   users        = LS.get('fscc_users')  || JSON.parse(JSON.stringify(DEFAULT_USERS));
   cfg          = LS.get('fscc_cfg')    || JSON.parse(JSON.stringify(DEFAULT_CFG));
@@ -4054,6 +4178,7 @@ function _completarLogin(found){
   setDate();
   startTurnoTimer();
   startAlertasTimer();
+  startColaSyncTimer();
   // NO llamar saveAll() al login — evita pisar datos de Firebase con LS local
 
   // Vista inicial por rol
@@ -6643,7 +6768,7 @@ function loadTraz(){
 
 function saveTraz(){
   LS.set('fscc_traz', traz);
-  fbSave('fscc_traz', traz).catch(()=>{});
+  fbSave('fscc_traz', traz); // fbSave nunca rechaza: si falla, queda encolada sola
 }
 
 // ═══════════════════════════════════════════════════
@@ -7139,7 +7264,7 @@ function renderTrazProducciones(){
     }
     return `<div class="config-item" style="flex-wrap:wrap;gap:8px;">
       <div style="flex:1;min-width:220px;">
-        <div style="font-weight:600;font-size:13px;">${p.preparacion} ${p.cambioMenu?'<span class="badge" style="background:#fff3cd;color:#8a6416;border:1px solid #f0d880;">🔄 Cambio de menú</span>':''}</div>
+        <div style="font-weight:600;font-size:13px;">${p.preparacion} ${p.cambioMenu?'<span class="badge" style="background:#fff3cd;color:#8a6416;border:1px solid #f0d880;">🔄 Cambio de menú</span>':''} ${esRegistroPendiente('producciones',p.id)?'<span class="badge-pendiente-sync">⏳ Pendiente de sync</span>':''}</div>
         <div style="font-size:11px;color:var(--text3);margin-top:2px;">${p.sector} · ${p.fecha} · ${p.turno} · Resp: ${p.responsable||'—'}</div>
         <div style="font-size:11px;color:var(--text3);font-family:var(--mono);">Lotes: ${lotesTxt}</div>
         ${p.cambioMenu?`<div style="font-size:11px;color:#8a6416;margin-top:2px;">Correspondía "${p.cambioMenu.planificada}" (Menú ${p.cambioMenu.nroMenu}) — ${p.cambioMenu.motivo}</div>`:''}
@@ -7294,6 +7419,10 @@ function guardarProduccion(){
     audit('Cambio de menú respecto al ciclo: '+preparacion, 'Correspondía "'+cambioMenu.planificada+'" (Menú '+cambioMenu.nroMenu+') — '+cambioMenu.motivo, 'trazabilidad');
     pushNotif('cambio_menu', '🔄 Cambio de menú', `${fecha} — Correspondía "${cambioMenu.planificada}" y se sirvió "${preparacion}". Motivo: ${cambioMenu.motivo}`, null);
   }
+  // Se marca pendiente ANTES de intentar guardar: el dato ya está seguro acá
+  // (en memoria + a punto de ir a localStorage) y el badge de la lista va a
+  // reflejar el estado real hasta que se confirme la subida a la nube.
+  marcarRegistroPendiente('producciones', p.id);
   saveTraz();
   closeModal('modalProduccion');
   renderTraz();
@@ -7549,7 +7678,7 @@ function renderTrazMuestras(){
     const est = estadoMuestra(m);
     return `<div class="config-item" style="flex-wrap:wrap;gap:8px;">
       <div style="flex:1;min-width:220px;">
-        <div style="font-weight:600;font-size:13px;">${m.preparacion} <span style="font-family:var(--mono);font-size:11px;color:var(--text3);">${m.codigo}</span></div>
+        <div style="font-weight:600;font-size:13px;">${m.preparacion} <span style="font-family:var(--mono);font-size:11px;color:var(--text3);">${m.codigo}</span> ${esRegistroPendiente('muestrasTestigo',m.id)?'<span class="badge-pendiente-sync">⏳ Pendiente de sync</span>':''}</div>
         <div style="font-size:11px;color:var(--text3);margin-top:2px;">${m.comida} · ${m.sector||'—'} · Tomada: ${fmtDatetime(m.tomadaTs)} · Responsable: ${m.responsable}</div>
         <div style="font-size:11px;color:var(--text3);">Descartable desde: ${fmtDatetime(m.fechaDescarteProgramada)}</div>
       </div>
@@ -7707,10 +7836,13 @@ function guardarMuestra(){
   };
   traz.muestrasTestigo.unshift(m);
   audit('Muestra testigo tomada: '+m.codigo, preparacion+' — '+comida, 'trazabilidad');
+  // Igual que en producción: se marca pendiente antes de intentar guardar.
+  marcarRegistroPendiente('muestrasTestigo', m.id);
   saveTraz();
   closeModal('modalMuestra');
   renderTraz();
-  if(confirm('Muestra '+m.codigo+' guardada. ¿Querés imprimir la etiqueta ahora?')){
+  const avisoSync = navigator.onLine ? '' : ' (sin conexión — se sincroniza sola cuando vuelva la señal)';
+  if(confirm('Muestra '+m.codigo+' guardada'+avisoSync+'. ¿Querés imprimir la etiqueta ahora?')){
     imprimirEtiquetaMuestra(m.id);
   }
 }
@@ -8299,7 +8431,21 @@ function loadRondas(){
 
 function saveRondas(){
   LS.set('fscc_rondas', rondas);
-  fbSave('fscc_rondas', rondas).catch(()=>{});
+  fbSave('fscc_rondas', rondas); // fbSave nunca rechaza: si falla, queda encolada sola
+}
+
+// ── Borrador local de la ronda en curso ──────────────────────────────────
+// _rondaEnCurso vive en memoria mientras se marcan ítems; acá se espeja a
+// localStorage en cada marca para que el progreso sobreviva a un cierre de
+// pestaña o corte de conexión a mitad de la ronda (la firma en sí sigue
+// necesitando conexión, pero lo ya marcado no se vuelve a perder).
+function _claveBorradorRonda(){ return 'fscc_ronda_borrador'; }
+function guardarBorradorRonda(){
+  if(!_rondaEnCurso) return;
+  LS.set(_claveBorradorRonda(), _rondaEnCurso);
+}
+function limpiarBorradorRonda(){
+  LS.set(_claveBorradorRonda(), null);
 }
 
 const DIAS_SEMANA = ['domingo','lunes','martes','miercoles','miércoles','jueves','viernes','sabado','sábado'];
@@ -8384,7 +8530,7 @@ function rondaCardHtml(p, turno, t, borde){
       return `<div class="config-item" style="flex-direction:column;align-items:flex-start;gap:6px;">
         <div style="display:flex;justify-content:space-between;width:100%;align-items:center;">
           <div>
-            <div style="font-weight:600;font-size:14px;">✅ ${p.nombre}</div>
+            <div style="font-weight:600;font-size:14px;">✅ ${p.nombre} ${esRegistroPendiente('rondas',registro.id)?'<span class="badge-pendiente-sync">⏳ Pendiente de sync</span>':''}</div>
             <div style="font-size:11px;color:var(--text3);">${p.codigo} · ${turno||'—'} · Completada a las ${fmtDatetime(registro.firmaTs).split(' ')[1]||''}</div>
           </div>
           <button class="btn btn-outline btn-sm" onclick="verDetalleRonda('${registro.id}')">Ver</button>
@@ -8408,7 +8554,7 @@ function rondaCardHtml(p, turno, t, borde){
     const registro = rondas.registros.find(r=>r.plantillaId===p.id && r.fecha===t && r.turno===turno && r.momento===m);
     if(registro){
       return `<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;">
-        <div style="font-size:12px;">✅ ${label} — completada a las ${fmtDatetime(registro.firmaTs).split(' ')[1]||''}</div>
+        <div style="font-size:12px;">✅ ${label} — completada a las ${fmtDatetime(registro.firmaTs).split(' ')[1]||''} ${esRegistroPendiente('rondas',registro.id)?'<span class="badge-pendiente-sync">⏳ Pendiente de sync</span>':''}</div>
         <button class="btn btn-outline btn-sm" onclick="verDetalleRonda('${registro.id}')">Ver</button>
       </div>`;
     }
@@ -8498,20 +8644,31 @@ function _iniciarRondaReal(plantillaId, asignacionId, momento){
   const p = rondas.plantillas.find(x=>x.id===plantillaId);
   if(!p) return;
   const turno = getTurnoActivoNombre();
-  const items = itemsDelDia(p, turno);
-  _rondaEnCurso = {
-    id: 'rd_'+Date.now()+'_'+Math.floor(Math.random()*1000),
-    plantillaId: p.id, codigo: p.codigo, nombre: p.nombre, destino: p.destino||'rondas',
-    escala: p.escala||'binaria', momento: momento||null,
-    fecha: today(), turno, sector: p.sector,
-    items: items.map(it=>({
-      itemId:it.id, texto:it.texto, estado:null, motivo:'', accionCorrectiva:'', hora:null,
-      tipo: it.tipo||'check', valor:null,
-      ...(it.tipo==='temp' ? {limiteMin:it.limiteMin, limiteMax:it.limiteMax, unidad:it.unidad||'°C', pcc:it.pcc||''} : {})
-    })),
-    responsable: currentUser.nombre, responsableUser: currentUser.user,
-    asignacionId: asignacionId || null,
-  };
+
+  // Si se cortó la conexión o se cerró la app a mitad de esta misma ronda,
+  // hay un borrador autoguardado localmente — se ofrece continuar en vez de
+  // volver a marcar todo desde cero.
+  const borrador = LS.get(_claveBorradorRonda());
+  const coincideBorrador = borrador && borrador.plantillaId===plantillaId && borrador.fecha===today() && borrador.turno===turno && (borrador.momento||null)===(momento||null);
+  if(coincideBorrador && confirm(`Hay una ronda de hoy sin terminar con ${borrador.items.filter(i=>i.estado).length}/${borrador.items.length} ítem(s) ya marcados (quedó guardada en este dispositivo). ¿Continuar donde quedaste?`)){
+    _rondaEnCurso = borrador;
+  } else {
+    const items = itemsDelDia(p, turno);
+    _rondaEnCurso = {
+      id: 'rd_'+Date.now()+'_'+Math.floor(Math.random()*1000),
+      plantillaId: p.id, codigo: p.codigo, nombre: p.nombre, destino: p.destino||'rondas',
+      escala: p.escala||'binaria', momento: momento||null,
+      fecha: today(), turno, sector: p.sector,
+      items: items.map(it=>({
+        itemId:it.id, texto:it.texto, estado:null, motivo:'', accionCorrectiva:'', hora:null,
+        tipo: it.tipo||'check', valor:null,
+        ...(it.tipo==='temp' ? {limiteMin:it.limiteMin, limiteMax:it.limiteMax, unidad:it.unidad||'°C', pcc:it.pcc||''} : {})
+      })),
+      responsable: currentUser.nombre, responsableUser: currentUser.user,
+      asignacionId: asignacionId || null,
+    };
+    guardarBorradorRonda();
+  }
   const momentoLabel = momento==='preoperacional' ? ' · 🌅 Pre-operacional' : momento==='operacional' ? ' · 🍽 Operacional' : '';
   document.getElementById('rondaModalTitulo').textContent = '📋 '+p.nombre;
   document.getElementById('rondaModalSub').textContent = p.codigo+' · '+p.sector+' · '+turno+momentoLabel;
@@ -8524,7 +8681,7 @@ function _iniciarRondaReal(plantillaId, asignacionId, momento){
 
 function cerrarModalRondaSinGuardar(){
   if(_rondaEnCurso && _rondaEnCurso.items.some(i=>i.estado)){
-    if(!confirm('Tenés ítems marcados sin firmar. Si salís ahora se pierden. ¿Salir igual?')) return;
+    if(!confirm('Tenés ítems marcados sin firmar. Quedan guardados en este dispositivo y vas a poder continuar más tarde desde donde quedaste. ¿Salir igual?')) return;
   }
   if(_rondaRelojInterval) clearInterval(_rondaRelojInterval);
   _rondaEnCurso = null;
@@ -8551,7 +8708,7 @@ function renderRondaItemsModal(){
             <input type="number" step="0.1" value="${it.valor!=null?it.valor:''}" placeholder="${it.unidad}" style="width:80px;font-size:13px;text-align:center;" onchange="marcarValorTemperatura(${i},this.value)" />
           </div>
         </div>
-        ${esEstadoMal(it.estado) ? `<textarea placeholder="Acción correctiva tomada..." style="margin-top:8px;width:100%;font-size:12px;" oninput="_rondaEnCurso.items[${i}].motivo=this.value">${it.motivo||''}</textarea>` : ''}
+        ${esEstadoMal(it.estado) ? `<textarea placeholder="Acción correctiva tomada..." style="margin-top:8px;width:100%;font-size:12px;" oninput="_rondaEnCurso.items[${i}].motivo=this.value;guardarBorradorRonda()">${it.motivo||''}</textarea>` : ''}
         ${it.hora ? `<div style="font-size:10px;color:var(--text3);margin-top:4px;">Medido a las ${it.hora}</div>` : ''}
       </div>`;
     }
@@ -8569,7 +8726,7 @@ function renderRondaItemsModal(){
         <div style="display:flex;gap:6px;flex-shrink:0;">${botones}</div>
       </div>
       ${esEstadoMal(it.estado) ? `
-      <select style="margin-top:8px;width:100%;" onchange="_rondaEnCurso.items[${i}].motivo=this.value">
+      <select style="margin-top:8px;width:100%;" onchange="_rondaEnCurso.items[${i}].motivo=this.value;guardarBorradorRonda()">
         <option value="">¿Por qué no está aceptable?...</option>
         <option>Restos de comida</option>
         <option>Falta desinfección</option>
@@ -8578,7 +8735,7 @@ function renderRondaItemsModal(){
         <option>Faltante de insumo de limpieza</option>
         <option>Otro (ver observación)</option>
       </select>
-      <textarea placeholder="¿Qué acción correctiva se tomó?" style="margin-top:6px;width:100%;font-size:12px;" oninput="_rondaEnCurso.items[${i}].accionCorrectiva=this.value">${it.accionCorrectiva||''}</textarea>` : ''}
+      <textarea placeholder="¿Qué acción correctiva se tomó?" style="margin-top:6px;width:100%;font-size:12px;" oninput="_rondaEnCurso.items[${i}].accionCorrectiva=this.value;guardarBorradorRonda()">${it.accionCorrectiva||''}</textarea>` : ''}
       ${it.hora ? `<div style="font-size:10px;color:var(--text3);margin-top:4px;">Marcado a las ${it.hora}</div>` : ''}
     </div>`;
   }).join('');
@@ -8603,13 +8760,14 @@ function renderRondaItemsModal(){
 
 function marcarValorTemperatura(i, valorStr){
   const it = _rondaEnCurso.items[i];
-  if(valorStr===''){ it.valor=null; it.estado=null; it.hora=null; renderRondaItemsModal(); return; }
+  if(valorStr===''){ it.valor=null; it.estado=null; it.hora=null; renderRondaItemsModal(); guardarBorradorRonda(); return; }
   const valor = parseFloat(valorStr);
   it.valor = valor;
   const dentroDeRango = (it.limiteMin==null||valor>=it.limiteMin) && (it.limiteMax==null||valor<=it.limiteMax);
   it.estado = dentroDeRango ? 'ok' : 'mal';
   it.hora = new Date().toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'});
   renderRondaItemsModal();
+  guardarBorradorRonda();
 }
 
 function marcarItemRonda(i, val){
@@ -8619,6 +8777,7 @@ function marcarItemRonda(i, val){
   it.hora = it.estado ? new Date().toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'}) : null;
   if(!it.estado) it.motivo='';
   renderRondaItemsModal();
+  guardarBorradorRonda();
 }
 
 function abrirFirmaRonda(){
@@ -8663,7 +8822,12 @@ async function confirmarFirmaRonda(){
     saveHaccp();
   }
 
+  // Se marca pendiente antes de intentar guardar — si la reautenticación
+  // (que sí exige red) tuvo éxito pero la conexión se corta justo después,
+  // el registro ya firmado no se pierde: queda en la cola y se reintenta solo.
+  marcarRegistroPendiente('rondas', _rondaEnCurso.id);
   saveRondas();
+  limpiarBorradorRonda();
   if(_rondaRelojInterval) clearInterval(_rondaRelojInterval);
   closeModal('modalFirmaRonda');
   closeModal('modalRonda');
@@ -8754,7 +8918,7 @@ function renderRondasHistorial(){
   el.innerHTML = lista.map(r=>`
     <div class="config-item" style="flex-wrap:wrap;gap:8px;">
       <div style="flex:1;min-width:200px;">
-        <div style="font-weight:600;font-size:13px;">${r.nombre} <span style="font-family:var(--mono);font-size:11px;color:var(--text3);">${r.codigo}</span></div>
+        <div style="font-weight:600;font-size:13px;">${r.nombre} <span style="font-family:var(--mono);font-size:11px;color:var(--text3);">${r.codigo}</span> ${esRegistroPendiente('rondas',r.id)?'<span class="badge-pendiente-sync">⏳ Pendiente de sync</span>':''}</div>
         <div style="font-size:11px;color:var(--text3);">${r.sector} · ${r.fecha} · ${r.turno}${r.momento?' · '+(r.momento==='preoperacional'?'🌅 Pre-op':'🍽 Operacional'):''} · Responsable: ${r.responsable}</div>
       </div>
       ${r.supervisorTs ? '<span class="badge" style="background:#e8f5ee;color:#1a7a4a;border:1px solid #a8dbb8;">🟢 Aprobada</span>' : '<span class="badge" style="background:#fff3cd;color:#8a6416;border:1px solid #f0d880;">🟡 Pendiente</span>'}
@@ -9919,13 +10083,19 @@ iniciarSeleccionInstitucion();
 <script>
 // Detector online/offline
 window.addEventListener('offline',()=>{
-  document.getElementById('offlineBanner').classList.add('show');
-  showSyncStatus('⚠ Sin conexión','amber');
+  actualizarIndicadorPendientes();
 });
 window.addEventListener('online',()=>{
-  document.getElementById('offlineBanner').classList.remove('show');
+  // Importante: acá NO se vuelve a pedir todo con loadDataFromFirebase()+
+  // saveAll() como antes — eso era lo que pisaba (y perdía) los cambios
+  // cargados offline, porque loadDataFromFirebase() hace ganar siempre a lo
+  // que ya había en Firebase. En cambio: se sube primero lo que quedó
+  // pendiente (con el estado actual en memoria, así no se pisa nada), y los
+  // cambios remotos hechos por otros dispositivos mientras tanto los trae
+  // solo el propio listener en tiempo real (fbWatch/onSnapshot), que
+  // reconecta nativo apenas vuelve la red.
   showSyncStatus('☁ Reconectado — sincronizando...','amber');
-  loadDataFromFirebase().then(()=>saveAll());
+  reintentarTodoPendiente().then(()=>actualizarIndicadorPendientes());
 });
 </script>
 
