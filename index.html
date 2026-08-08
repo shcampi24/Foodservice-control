@@ -6256,6 +6256,12 @@ function addCfgItem(key,inputId){
 //  HACCP / CAA MODULE
 // ═══════════════════════════════════════════════════
 
+// Rango físico de sanity-check para cualquier lectura de temperatura (HACCP y
+// Rondas) — NO es un límite de negocio (eso lo define cada PCC/ítem con sus
+// propios minOk/maxOk o limiteMin/limiteMax), es solo el piso para atajar
+// errores de tipeo obvios (ej. cargar 500 en vez de 50, o el signo invertido).
+const TEMP_MIN_FISICO = -30, TEMP_MAX_FISICO = 100;
+
 // Límites críticos CAA por tipo de PCC
 const HACCP_PCC_CONFIG = {
   'Cocción / Recalentamiento': {
@@ -6629,12 +6635,31 @@ function saveHaccpLog(){
   if(!operario){alert('Seleccioná el operario.');return;}
   const conformidad=document.getElementById('hConformidad').value;
   const accion=document.getElementById('hAccionCorrectiva').value.trim();
+  const cfg2=HACCP_PCC_CONFIG[pcc]||{};
+  const valorRaw=document.getElementById('hValor').value;
+  let valor=null;
+  if(cfg2.tipo!=='cualitativo'){
+    // Antes esto se guardaba en null sin avisar si quedaba vacío — es
+    // justo el caso de "campo obligatorio que se guarda igual" a evitar.
+    if(valorRaw===''){ alert('Ingresá el valor medido.'); return; }
+    valor=parseFloat(valorRaw);
+    if(isNaN(valor)){ alert('El valor medido no es un número válido.'); return; }
+    if(valor<TEMP_MIN_FISICO || valor>TEMP_MAX_FISICO){
+      alert(`${valor}${cfg2.unidad||''} no es una temperatura físicamente posible en cocina. Revisá el valor cargado.`);
+      return;
+    }
+    // El valor está fuera del límite de negocio del PCC (ej. Cocción < 74°C)
+    // pero es un dato válido: puede ser justo lo que hay que registrar como
+    // no conforme. Solo se avisa (sin bloquear) cuando el operario lo tildó
+    // "Conforme" a pesar de estar fuera de límite — ahí sí puede ser un error.
+    const fueraDeLimite = (cfg2.minOk!=null && valor<cfg2.minOk) || (cfg2.maxOk!=null && valor>cfg2.maxOk);
+    if(fueraDeLimite && conformidad==='conforme'){
+      if(!confirm(`El valor cargado (${valor}${cfg2.unidad||''}) está fuera del límite esperado para "${pcc}" (${cfg2.limite}). ¿Confirmás que es Conforme?`)) return;
+    }
+  }
   if(conformidad==='no-conforme'&&!accion){
     if(!confirm('No ingresaste una acción correctiva. ¿Continuar igual?'))return;
   }
-  const cfg2=HACCP_PCC_CONFIG[pcc]||{};
-  const valorRaw=document.getElementById('hValor').value;
-  const valor=cfg2.tipo!=='cualitativo'&&valorRaw!==''?parseFloat(valorRaw):null;
   const log={
     id:Date.now(),
     pcc,sector,operario,
@@ -6952,7 +6977,28 @@ function guardarPrep(){
   const menu = document.getElementById('prepMenu').value.trim();
   const tipo = document.getElementById('prepTipo').value;
   if(!nombre){ alert('Ingresá el nombre del plato.'); return; }
-  const ingredientes = _catIngredientesEdit.filter(i=>i.nombre&&i.nombre.trim()).map(i=>({
+  const ingredientesFiltrados = _catIngredientesEdit.filter(i=>i.nombre&&i.nombre.trim());
+  const nombreCampo = {pesoNeto:'peso neto', fc:'factor de corrección', pesoBruto:'peso bruto'};
+  for(const ing of ingredientesFiltrados){
+    for(const campo of ['pesoNeto','fc','pesoBruto']){
+      const raw = ing[campo];
+      if(raw===''||raw==null) continue; // campo opcional: no se exige completarlo
+      const num = parseFloat(raw);
+      if(isNaN(num)||num<0){
+        alert(`"${ing.nombre}": el campo ${nombreCampo[campo]} tiene que ser un número mayor o igual a 0.`);
+        return;
+      }
+    }
+    const pn=parseFloat(ing.pesoNeto), fc=parseFloat(ing.fc), pb=parseFloat(ing.pesoBruto);
+    if(!isNaN(pn)&&!isNaN(fc)&&!isNaN(pb)&&pn>0&&fc>0){
+      const esperado = pn*fc;
+      const desvio = Math.abs(pb-esperado)/esperado;
+      if(desvio>0.15){
+        if(!confirm(`"${ing.nombre}": el peso bruto (${pb}) no coincide con peso neto × FC (${esperado.toFixed(2)}). ¿Guardás igual?`)) return;
+      }
+    }
+  }
+  const ingredientes = ingredientesFiltrados.map(i=>({
     grupo: i.grupo&&i.grupo.trim() ? i.grupo.trim() : null,
     nombre: i.nombre.trim(), pesoNeto: i.pesoNeto||'', fc: i.fc||'', pesoBruto: i.pesoBruto||''
   }));
@@ -7145,17 +7191,20 @@ function guardarLote(){
   const fechaVencimiento = document.getElementById('loteFechaVencimiento').value;
   const observaciones = document.getElementById('loteObs').value.trim();
   if(!insumo){ alert('Ingresá el insumo.'); return; }
+  const cantidadNum = parseFloat(cantidad);
+  if(cantidad===''||isNaN(cantidadNum)||cantidadNum<=0){ alert('La cantidad tiene que ser un número mayor a 0.'); return; }
+  if(fechaVencimiento && fechaVencimiento<fechaRecepcion){ alert('La fecha de vencimiento no puede ser anterior a la fecha de recepción.'); return; }
 
   if(trazEditLoteId){
     const l = traz.lotes.find(x=>x.id===trazEditLoteId);
     if(!l) return;
-    Object.assign(l, {insumo,proveedorId,loteProveedor,sector,cantidad,unidad,fechaRecepcion,fechaVencimiento,observaciones});
+    Object.assign(l, {insumo,proveedorId,loteProveedor,sector,cantidad:cantidadNum,unidad,fechaRecepcion,fechaVencimiento,observaciones});
     audit('Lote editado: '+l.codigo, insumo, 'trazabilidad');
   } else {
     const l = {
       id: 'lt_'+Date.now()+'_'+Math.floor(Math.random()*1000),
       codigo: generarCodigoLote(),
-      insumo, proveedorId, loteProveedor, sector, cantidad, unidad,
+      insumo, proveedorId, loteProveedor, sector, cantidad:cantidadNum, unidad,
       fechaRecepcion, fechaVencimiento, observaciones, alertado:false
     };
     traz.lotes.unshift(l);
@@ -8762,6 +8811,11 @@ function marcarValorTemperatura(i, valorStr){
   const it = _rondaEnCurso.items[i];
   if(valorStr===''){ it.valor=null; it.estado=null; it.hora=null; renderRondaItemsModal(); guardarBorradorRonda(); return; }
   const valor = parseFloat(valorStr);
+  if(isNaN(valor) || valor<TEMP_MIN_FISICO || valor>TEMP_MAX_FISICO){
+    alert(`${valorStr}${it.unidad||'°C'} no es una temperatura físicamente posible en cocina. Revisá el valor.`);
+    renderRondaItemsModal(); // repinta el input con el último valor válido (it.valor no se tocó)
+    return;
+  }
   it.valor = valor;
   const dentroDeRango = (it.limiteMin==null||valor>=it.limiteMin) && (it.limiteMax==null||valor<=it.limiteMax);
   it.estado = dentroDeRango ? 'ok' : 'mal';
