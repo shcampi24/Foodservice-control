@@ -3895,60 +3895,153 @@ function openRecuperarPass(){
   msg.style.display='none';
   msg.textContent='';
   document.getElementById('recupBtn').disabled=false;
-  document.getElementById('recupBtn').textContent='Enviar nueva contraseña';
+  document.getElementById('recupBtn').textContent='Enviar código';
   document.getElementById('modalRecuperarPass').classList.add('open');
   setTimeout(()=>document.getElementById('recupUser').focus(),200);
 }
 
+// Mensaje SIEMPRE igual, exista o no el usuario / tenga o no mail cargado —
+// a propósito, para que este formulario no sirva para averiguar qué
+// usuarios existen en el sistema (antes daba un mensaje distinto para cada
+// caso, lo cual permitía enumerarlos uno por uno).
+const RECUP_MSG_GENERICO = 'Si el usuario existe y tiene un mail registrado, te enviamos un código a esa dirección. Revisá tu bandeja de entrada (vence en 15 minutos).';
+
+// PASO 1 — pedir el código. Ya NO rota la cuenta de nadie acá: solo genera
+// un código de un solo uso con vencimiento corto y lo manda por mail. La
+// cuenta recién se toca en confirmarRecupPass(), cuando ese código se
+// confirma — así, con solo saber (o adivinar) un username ya no alcanza
+// para dejar a alguien afuera del sistema.
 async function enviarRecupPass(){
   const userInput = document.getElementById('recupUser').value.trim().toLowerCase();
-  const msg = document.getElementById('recupMsg');
   const btn = document.getElementById('recupBtn');
+  if(!userInput){ mostrarRecupMsg('Ingresá tu usuario.','warn'); return; }
 
-  if(!userInput){
-    mostrarRecupMsg('Ingresá tu usuario.','warn');
-    return;
-  }
-
-  // Buscar usuario en la lista
   const u = users.find(x=>x.user.toLowerCase()===userInput);
-  if(!u){
-    mostrarRecupMsg('No encontramos ese usuario. Verificá que esté bien escrito o contactá al Administrador.','error');
-    return;
-  }
-  if(!u.email){
-    mostrarRecupMsg('Este usuario no tiene un mail registrado. Contactá al Administrador para que te resetee la clave.','error');
+  if(!u || !u.email){
+    // No hay nada que mandar, pero se muestra el mismo mensaje "de éxito"
+    // a propósito — ver comentario de RECUP_MSG_GENERICO.
+    mostrarRecupMsg(RECUP_MSG_GENERICO,'ok');
     return;
   }
 
   btn.disabled=true;
   btn.textContent='Enviando...';
 
-  const nuevaPass = generarPassAleatoria();
-
   try{
-    // Inicializar EmailJS
-    emailjs.init(EMAILJS_PUBKEY);
+    const refCodigo = window._fsDoc('instituciones/'+INSTITUCION_ID+'/fscc_reset_codes/'+u.user);
+    // Cooldown simple: si ya se pidió un código para este usuario hace
+    // menos de 60s, no generamos ni mandamos uno nuevo (evita reenvíos en
+    // loop, aunque el mensaje mostrado sea el mismo de siempre).
+    const snapPrevio = await window._fsGet(refCodigo);
+    if(snapPrevio.exists() && snapPrevio.data().pedidoTs && (Date.now()-snapPrevio.data().pedidoTs)<60000){
+      mostrarRecupMsg(RECUP_MSG_GENERICO,'ok');
+      btn.disabled=false; btn.textContent='Enviar código';
+      return;
+    }
 
+    const codigo = generarPassAleatoria(); // mismo generador que ya usa el sistema (8 caracteres, sin ambigüedades)
+    await window._fsSet(refCodigo, {codigo, expira:Date.now()+15*60*1000, intentos:0, pedidoTs:Date.now()}, {merge:false});
+
+    emailjs.init(EMAILJS_PUBKEY);
     await emailjs.send(EMAILJS_SERVICE, EMAILJS_TEMPLATE, {
       to_email: u.email,
       nombre: u.nombre,
-      nueva_pass: nuevaPass,
+      nueva_pass: codigo, // compatibilidad con la plantilla actual de EmailJS
+      codigo: codigo,     // ver nota: hay que actualizar el texto de la plantilla en EmailJS
     });
 
-    // Crear la credencial nueva en Firebase (no se puede editar la vieja sin backend propio)
-    await recrearCuentaAuth(u, nuevaPass);
-    await saveAll();
-    audit(`Reset de contraseña por mail: @${u.user}`,'','usuario');
-
-    mostrarRecupMsg(`✅ ¡Listo! Se envió una nueva contraseña al mail de ${u.nombre}. Revisá la bandeja de entrada.`,'ok');
-    btn.textContent='Enviado ✓';
-
+    mostrarRecupMsg(RECUP_MSG_GENERICO,'ok');
+    closeModal('modalRecuperarPass');
+    abrirConfirmarRecupPass(u.user);
   }catch(e){
-    console.error('EmailJS error:',e);
+    console.error('Error pidiendo código de recuperación:',e);
+    mostrarRecupMsg('No se pudo procesar el pedido. Revisá tu conexión e intentá de nuevo.','error');
+  }finally{
     btn.disabled=false;
-    btn.textContent='Enviar nueva contraseña';
-    mostrarRecupMsg('No se pudo enviar el mail. Verificá tu conexión o contactá al Administrador.','error');
+    btn.textContent='Enviar código';
+  }
+}
+
+// PASO 2 — confirmar el código recibido por mail y elegir la contraseña
+// nueva ahí mismo (en vez de generarla nosotros y volver a mandarla por
+// mail, que es una vuelta de más y una exposición extra).
+let _recupUserPendiente = null;
+function abrirConfirmarRecupPass(username){
+  _recupUserPendiente = username;
+  document.getElementById('recupCodigo').value='';
+  document.getElementById('recupNuevaPass').value='';
+  document.getElementById('recupNuevaPass2').value='';
+  document.getElementById('recupConfirmMsg').style.display='none';
+  document.getElementById('recupConfirmBtn').disabled=false;
+  document.getElementById('recupConfirmBtn').textContent='Confirmar y entrar';
+  document.getElementById('modalConfirmarRecupPass').classList.add('open');
+  setTimeout(()=>document.getElementById('recupCodigo').focus(),200);
+}
+
+async function confirmarRecupPass(){
+  const codigo = document.getElementById('recupCodigo').value.trim();
+  const n1 = document.getElementById('recupNuevaPass').value;
+  const n2 = document.getElementById('recupNuevaPass2').value;
+  const msg = document.getElementById('recupConfirmMsg');
+  const mostrar = (t)=>{ msg.textContent=t; msg.style.display='block'; };
+
+  if(!codigo){ mostrar('Ingresá el código que te llegó por mail.'); return; }
+  if(!n1 || n1.length<6){ mostrar('La contraseña nueva tiene que tener al menos 6 caracteres.'); return; }
+  if(n1!==n2){ mostrar('Las contraseñas no coinciden.'); return; }
+
+  const username = _recupUserPendiente;
+  const u = users.find(x=>x.user===username);
+  if(!u){ mostrar('Se perdió la referencia al usuario — cerrá esta ventana y volvé a pedir el código.'); return; }
+
+  const btn = document.getElementById('recupConfirmBtn');
+  btn.disabled=true; btn.textContent='Verificando...';
+
+  try{
+    const refCodigo = window._fsDoc('instituciones/'+INSTITUCION_ID+'/fscc_reset_codes/'+username);
+    const snap = await window._fsGet(refCodigo);
+    if(!snap.exists()){
+      mostrar('Este código ya no es válido. Cerrá esta ventana y pedí uno nuevo.');
+      btn.disabled=false; btn.textContent='Confirmar y entrar';
+      return;
+    }
+    const data = snap.data();
+    if(Date.now() > data.expira){
+      await window._fsDelete(refCodigo).catch(()=>{});
+      mostrar('El código venció (duran 15 minutos). Cerrá esta ventana y pedí uno nuevo.');
+      btn.disabled=false; btn.textContent='Confirmar y entrar';
+      return;
+    }
+    if((data.intentos||0) >= 5){
+      await window._fsDelete(refCodigo).catch(()=>{});
+      mostrar('Demasiados intentos con este código. Cerrá esta ventana y pedí uno nuevo.');
+      btn.disabled=false; btn.textContent='Confirmar y entrar';
+      return;
+    }
+    if(codigo !== data.codigo){
+      await window._fsSet(refCodigo, {...data, intentos:(data.intentos||0)+1}, {merge:false}).catch(()=>{});
+      mostrar('El código no es correcto. Te quedan '+(4-(data.intentos||0))+' intento(s).');
+      btn.disabled=false; btn.textContent='Confirmar y entrar';
+      return;
+    }
+
+    // Código correcto: recrear la cuenta con la contraseña que eligió y
+    // firmar sesión ya mismo con esa cuenta nueva en la app principal —
+    // hace falta para poder guardar el authGen/debeCambiarPass actualizados
+    // (las reglas de Firestore exigen estar autenticado como esa misma
+    // institución para escribir en fscc_users).
+    await recrearCuentaAuth(u, n1);
+    u.debeCambiarPass = false; // ya la eligió recién, no hace falta pedirla de nuevo
+    await window._fbSignIn(window._auth, syntheticEmail(u), n1);
+    await saveAll();
+    await window._fsDelete(refCodigo).catch(()=>{});
+    audit(`Contraseña recuperada por el propio usuario: @${u.user}`,'','usuario');
+
+    document.getElementById('modalConfirmarRecupPass').classList.remove('open');
+    _completarLogin(u);
+  }catch(e){
+    console.error('Error confirmando recuperación:',e);
+    mostrar('No se pudo completar. Revisá tu conexión e intentá de nuevo.');
+    btn.disabled=false; btn.textContent='Confirmar y entrar';
   }
 }
 
@@ -6451,7 +6544,7 @@ function renderHaccpRegistro(){
         <span style="font-family:var(--mono);font-size:10px;color:var(--text3);min-width:50px;text-align:right;">${horaStr}</span>
         <span class="badge ${l.conformidad==='conforme'?'b-ok':'b-late'}">${l.conformidad==='conforme'?'✓ OK':'✗ NC'}</span>
         ${l.accionCorrectiva?`<button class="icon-btn" title="${l.accionCorrectiva}" onclick="alert('Acción correctiva:\n${l.accionCorrectiva.replace(/'/g,"'")}')">📋</button>`:''}
-        <button class="icon-btn del" onclick="deleteHaccpLog(${l.id})" title="Eliminar">🗑</button>
+        ${esAdmin(currentUser)?`<button class="icon-btn del" onclick="deleteHaccpLog(${l.id})" title="Eliminar">🗑</button>`:''}
       </div>`;
     }).join('');
 
@@ -6504,7 +6597,7 @@ function renderHaccpHistorial(){
         <td style="font-size:11px;color:var(--text2)">${l.equipoMed||'—'}</td>
         <td style="font-size:11px;color:${l.accionCorrectiva?'var(--amber)':'var(--text3)'}">${l.accionCorrectiva||'—'}</td>
         <td style="font-size:11px;color:var(--text3)">${l.obs||'—'}</td>
-        <td style="text-align:center;"><button class="icon-btn del" onclick="deleteHaccpLog(${l.id})">🗑</button></td>
+        <td style="text-align:center;">${esAdmin(currentUser)?`<button class="icon-btn del" onclick="deleteHaccpLog(${l.id})">🗑</button>`:'—'}</td>
       </tr>`;
     }).join('')}</tbody>
   </table></div>`;
@@ -6685,10 +6778,16 @@ function saveHaccpLog(){
 }
 
 function deleteHaccpLog(id){
-  if(!confirm('¿Eliminar este registro HACCP?'))return;
+  // Un registro HACCP es un dato de cumplimiento — borrarlo es irreversible,
+  // así que se restringe a Admin/Coordinador (antes cualquiera con acceso a
+  // la vista podía borrar cualquier registro, sin ningún chequeo).
+  if(!esAdmin(currentUser)){ alert('Solo un Administrador puede eliminar un registro HACCP.'); return; }
+  const log = haccpLogs.find(l=>l.id===id);
+  if(!log) return;
+  if(!confirm('¿Eliminar este registro HACCP? Esta acción no se puede deshacer.'))return;
   haccpLogs=haccpLogs.filter(l=>l.id!==id);
   saveHaccp();
-  audit('HACCP: registro eliminado','','haccp');
+  audit('HACCP: registro eliminado', `${log.pcc} — ${log.sector} — ${fmtDate(log.fecha)} — eliminado por ${currentUser.nombre}`, 'haccp');
   renderHaccpActive();
 }
 
@@ -10094,17 +10193,44 @@ iniciarSeleccionInstitucion();
   <div class="modal-box" style="max-width:380px;">
     <button class="modal-close" onclick="closeModal('modalRecuperarPass')">✕</button>
     <div class="modal-title">🔑 Recuperar contraseña</div>
-    <div class="modal-sub">Ingresá tu usuario y te enviamos una nueva contraseña por mail.</div>
+    <div class="modal-sub">Ingresá tu usuario y te mandamos un código por mail para confirmar que sos vos.</div>
     <div style="margin:16px 0;">
       <div class="fg">
         <label>Tu usuario</label>
-        <input type="text" id="recupUser" placeholder="ej: maxicocina" />
+        <input type="text" id="recupUser" placeholder="ej: maxicocina" onkeydown="if(event.key==='Enter')enviarRecupPass()" />
       </div>
       <div id="recupMsg" style="display:none;font-size:12px;padding:10px;border-radius:6px;margin-top:8px;"></div>
     </div>
     <div class="form-actions">
       <button class="btn btn-ghost" onclick="closeModal('modalRecuperarPass')">Cancelar</button>
-      <button class="btn btn-primary" id="recupBtn" onclick="enviarRecupPass()">Enviar nueva contraseña</button>
+      <button class="btn btn-primary" id="recupBtn" onclick="enviarRecupPass()">Enviar código</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-bg" id="modalConfirmarRecupPass" onclick="handleModalClick(event,'modalConfirmarRecupPass')">
+  <div class="modal-box" style="max-width:380px;">
+    <button class="modal-close" onclick="closeModal('modalConfirmarRecupPass')">✕</button>
+    <div class="modal-title">📩 Confirmá el código</div>
+    <div class="modal-sub">Te mandamos un código por mail (vence en 15 minutos). Ingresalo acá junto con tu contraseña nueva.</div>
+    <div style="margin:16px 0;">
+      <div class="fg">
+        <label>Código recibido por mail</label>
+        <input type="text" id="recupCodigo" placeholder="ej: aB3dE9fK" onkeydown="if(event.key==='Enter')confirmarRecupPass()" />
+      </div>
+      <div class="fg">
+        <label>Contraseña nueva</label>
+        <input type="password" id="recupNuevaPass" placeholder="mínimo 6 caracteres" onkeydown="if(event.key==='Enter')confirmarRecupPass()" />
+      </div>
+      <div class="fg">
+        <label>Confirmar contraseña</label>
+        <input type="password" id="recupNuevaPass2" placeholder="repetí la contraseña" onkeydown="if(event.key==='Enter')confirmarRecupPass()" />
+      </div>
+      <div id="recupConfirmMsg" style="display:none;font-size:12px;padding:10px;border-radius:6px;margin-top:8px;background:#fde8e8;color:#b02020;border:1px solid #f0b8b8;"></div>
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-ghost" onclick="closeModal('modalConfirmarRecupPass')">Cancelar</button>
+      <button class="btn btn-primary" id="recupConfirmBtn" onclick="confirmarRecupPass()">Confirmar y entrar</button>
     </div>
   </div>
 </div>
