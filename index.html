@@ -986,6 +986,33 @@ tbody td{padding:8px 10px;vertical-align:middle;}
     <div style="font-size:11px;color:var(--text3);margin-top:8px;">💡 Guardá los archivos de backup en una carpeta de red o Google Drive con el nombre de fecha que viene incluido.</div>
   </div>
 
+  <!-- EXPORTACIÓN: panel central de CSV para auditoría/reportes -->
+  <div class="config-section" style="margin-top:1rem;">
+    <h3>📤 Exportación de datos</h3>
+    <div class="info-panel" style="font-size:11px;padding:7px 10px;margin-bottom:12px;">
+      Exportá varias tablas a la vez, cada una en su propio CSV (se abren directo en Excel con doble clic). Dejá el rango de fechas vacío para exportar todo el histórico.
+    </div>
+    <div class="form-grid" style="margin-bottom:10px;">
+      <div class="fg">
+        <label>Desde</label>
+        <input type="date" id="expDesde" />
+      </div>
+      <div class="fg">
+        <label>Hasta</label>
+        <input type="date" id="expHasta" />
+      </div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:12px;">
+      <label style="display:flex;align-items:center;gap:6px;font-size:12px;"><input type="checkbox" id="expChkLotes" checked/> 📥 Lotes recibidos</label>
+      <label style="display:flex;align-items:center;gap:6px;font-size:12px;"><input type="checkbox" id="expChkProducciones" checked/> 🍽 Producciones</label>
+      <label style="display:flex;align-items:center;gap:6px;font-size:12px;"><input type="checkbox" id="expChkNC" checked/> ⚠ No Conformidades</label>
+      <label style="display:flex;align-items:center;gap:6px;font-size:12px;"><input type="checkbox" id="expChkMuestras" checked/> 🧪 Muestras testigo</label>
+      <label style="display:flex;align-items:center;gap:6px;font-size:12px;"><input type="checkbox" id="expChkRondas" checked/> 📋 Rondas (resumen)</label>
+      <label style="display:flex;align-items:center;gap:6px;font-size:12px;"><input type="checkbox" id="expChkHaccp" checked/> 🌡 HACCP/CAA</label>
+    </div>
+    <button class="btn btn-primary" onclick="exportarSeleccionados()">⬇ Exportar seleccionados</button>
+  </div>
+
   <div style="text-align:right;margin-top:8px;">
     <button class="btn btn-danger btn-sm" onclick="resetData()">Restablecer datos de ejemplo</button>
     <button class="btn btn-outline btn-sm" onclick="importarOperariosReales()">⬆ Importar operarios reales</button>
@@ -1767,6 +1794,10 @@ tbody td{padding:8px 10px;vertical-align:middle;}
           <option value="pendiente">🟡 Pendiente de aprobación</option>
           <option value="aprobada">🟢 Aprobada</option>
         </select>
+      </div>
+      <div class="toolbar-r">
+        <button class="btn btn-outline" onclick="exportRondasResumenCSV()">⬇ Exportar CSV (resumen)</button>
+        <button class="btn btn-outline" onclick="exportRondasDetalleCSV()">⬇ Exportar CSV (detalle)</button>
       </div>
     </div>
     <div id="rondaListado"></div>
@@ -6803,8 +6834,8 @@ function deleteHaccpLog(id){
   renderHaccpActive();
 }
 
-function exportHaccpCSV(){
-  const logs=getHaccpFiltered();
+function exportHaccpCSV(logsArr){
+  const logs=logsArr || getHaccpFiltered();
   const h=['Fecha','Hora','PCC','Sector','Operario','Turno','Valor','Unidad','Conformidad','Equipo medición','Acción correctiva','Observaciones','Registrado por'];
   const rows=logs.map(l=>[
     l.fecha,l.hora?fmtDatetime(l.hora).split(' ')[1]:'',l.pcc,l.sector,l.operario,l.turno,
@@ -7418,11 +7449,12 @@ function verHistorialLote(id){
   document.getElementById('modalHistorialLote').classList.add('open');
 }
 
-function exportLotesCSV(){
-  const h = ['Código','Insumo','Proveedor','Lote proveedor','Sector','Cantidad','Unidad','Fecha recepción','Fecha vencimiento','Estado','Anulado','Motivo anulación','Observaciones'];
-  const rows = traz.lotes.map(l=>{
+function exportLotesCSV(lista){
+  const arr = lista || traz.lotes;
+  const h = ['Código','Insumo','Proveedor','Lote proveedor','Sector','Cantidad','Unidad','Fecha recepción','Fecha vencimiento','Estado','Anulado','Motivo anulación','Anulado por','Fecha anulación','Corregido','Observaciones'];
+  const rows = arr.map(l=>{
     const prov = traz.proveedores.find(p=>p.id===l.proveedorId);
-    return [l.codigo,l.insumo,prov?prov.nombre:'',l.loteProveedor||'',l.sector||'',l.cantidad||'',l.unidad||'',l.fechaRecepcion||'',l.fechaVencimiento||'',estadoLote(l),l.anulado?'Sí':'No',l.anuladoMotivo||'',l.observaciones||'']
+    return [l.codigo,l.insumo,prov?prov.nombre:'',l.loteProveedor||'',l.sector||'',l.cantidad||'',l.unidad||'',l.fechaRecepcion||'',l.fechaVencimiento||'',estadoLote(l),l.anulado?'Sí':'No',l.anuladoMotivo||'',l.anuladoPor||'',l.anuladoTs?fmtDatetime(l.anuladoTs):'',(l.historialCambios&&l.historialCambios.length)?'Sí ('+l.historialCambios.length+')':'No',l.observaciones||'']
       .map(v=>'"'+(v+'').replace(/"/g,'""')+'"').join(',');
   });
   dlBlob('\uFEFF'+[h.join(','),...rows].join('\r\n'),'text/csv','Lotes_'+today()+'.csv');
@@ -7678,11 +7710,12 @@ function anularProduccion(id){
   renderTraz();
 }
 
-function exportProduccionesCSV(){
-  const h = ['Fecha','Turno','Sector','Preparación','Responsable','Lotes usados','Anulada','Motivo anulación','Observaciones'];
-  const rows = traz.producciones.map(p=>{
+function exportProduccionesCSV(lista){
+  const arr = lista || traz.producciones;
+  const h = ['Fecha','Turno','Sector','Preparación','Responsable','Lotes usados','Anulada','Motivo anulación','Anulado por','Fecha anulación','Observaciones'];
+  const rows = arr.map(p=>{
     const lotesTxt = (p.lotesUsados||[]).map(lid=>{const l=traz.lotes.find(x=>x.id===lid);return l?l.codigo:'';}).filter(Boolean).join(' | ');
-    return [p.fecha,p.turno,p.sector,p.preparacion,p.responsable||'',lotesTxt,p.anulado?'Sí':'No',p.anuladoMotivo||'',p.observaciones||'']
+    return [p.fecha,p.turno,p.sector,p.preparacion,p.responsable||'',lotesTxt,p.anulado?'Sí':'No',p.anuladoMotivo||'',p.anuladoPor||'',p.anuladoTs?fmtDatetime(p.anuladoTs):'',p.observaciones||'']
       .map(v=>'"'+(v+'').replace(/"/g,'""')+'"').join(',');
   });
   dlBlob('\uFEFF'+[h.join(','),...rows].join('\r\n'),'text/csv','Producciones_'+today()+'.csv');
@@ -8163,13 +8196,17 @@ function cargarResultadoAnalisis(id){
   renderTraz();
 }
 
-function exportMuestrasCSV(){
-  const h = ['Código','Fecha','Comida','Preparación','Sector','Responsable','Tomada','Descartable desde','Estado','Descartada por','Resultado análisis'];
-  const rows = traz.muestrasTestigo.map(m=>[
-    m.codigo, m.fecha, m.comida, m.preparacion, m.sector||'', m.responsable,
-    fmtDatetime(m.tomadaTs), fmtDatetime(m.fechaDescarteProgramada), estadoMuestra(m),
-    m.descartadaPor||'', m.resultadoAnalisis||''
-  ].map(v=>'"'+(v+'').replace(/"/g,'""')+'"').join(','));
+function exportMuestrasCSV(lista){
+  const arr = lista || traz.muestrasTestigo;
+  const h = ['Código','Fecha','Comida','Preparación','Sector','Lotes usados','Responsable','Tomada','Descartable desde','Estado','Descartada por','Resultado análisis','Cambio de menú'];
+  const rows = arr.map(m=>{
+    const lotesTxt = (m.lotesUsados||[]).map(lid=>{const l=traz.lotes.find(x=>x.id===lid);return l?l.codigo:'';}).filter(Boolean).join(' | ');
+    return [
+      m.codigo, m.fecha, m.comida, m.preparacion, m.sector||'', lotesTxt, m.responsable,
+      fmtDatetime(m.tomadaTs), fmtDatetime(m.fechaDescarteProgramada), estadoMuestra(m),
+      m.descartadaPor||'', m.resultadoAnalisis||'', m.cambioMenu?('Sí — '+m.cambioMenu.motivo):'No'
+    ].map(v=>'"'+(v+'').replace(/"/g,'""')+'"').join(',');
+  });
   dlBlob('\uFEFF'+[h.join(','),...rows].join('\r\n'),'text/csv','MuestrasTestigo_'+today()+'.csv');
 }
 
@@ -8339,12 +8376,13 @@ async function confirmarCierreNC(){
   renderTraz();
 }
 
-function exportNCCSV(){
-  const h = ['Fecha','Producto','Proveedor','Cantidad','Lote','Motivo','Seguimiento del destino','Reportado por','Estado','Cerrado por'];
-  const rows = traz.noConformidades.map(n=>{
+function exportNCCSV(lista){
+  const arr = lista || traz.noConformidades;
+  const h = ['Fecha','Producto','Proveedor','Cantidad','Lote','Motivo','Seguimiento del destino','Reportado por','Estado','Cerrado por','Fecha cierre'];
+  const rows = arr.map(n=>{
     const prov = traz.proveedores.find(p=>p.id===n.proveedorId);
     const lote = traz.lotes.find(l=>l.id===n.loteId);
-    return [n.fecha,n.producto,prov?prov.nombre:'',n.cantidad||'',lote?lote.codigo:'',n.motivo,n.destino||'',n.reportadoPor,n.cerrado?'Cerrada':'Abierta',n.cerradoPor||'']
+    return [n.fecha,n.producto,prov?prov.nombre:'',n.cantidad||'',lote?lote.codigo:'',n.motivo,n.destino||'',n.reportadoPor,n.cerrado?'Cerrada':'Abierta',n.cerradoPor||'',n.cerradoTs?fmtDatetime(n.cerradoTs):'']
       .map(v=>'"'+(v+'').replace(/"/g,'""')+'"').join(',');
   });
   dlBlob('\uFEFF'+[h.join(','),...rows].join('\r\n'),'text/csv','NoConformidades_'+today()+'.csv');
@@ -9164,6 +9202,70 @@ function renderRondasHistorial(){
       ${r.supervisorTs ? '<span class="badge" style="background:#e8f5ee;color:#1a7a4a;border:1px solid #a8dbb8;">🟢 Aprobada</span>' : '<span class="badge" style="background:#fff3cd;color:#8a6416;border:1px solid #f0d880;">🟡 Pendiente</span>'}
       <button class="btn btn-outline btn-sm" onclick="verDetalleRonda('${r.id}')">Ver</button>
     </div>`).join('');
+}
+
+// Resumen: una fila por ronda (cantidad de ítems OK/deficientes/inaceptables).
+function exportRondasResumenCSV(lista){
+  const arr = lista || rondas.registros;
+  const h = ['Fecha','Código','Nombre','Sector','Turno','Momento','Responsable','Total ítems','OK','Deficientes','Inaceptables','Estado','Aprobado por','Fecha aprobación'];
+  const rows = arr.map(r=>{
+    const items = r.items||[];
+    const ok = items.filter(it=>it.estado==='ok').length;
+    const def = items.filter(it=>it.estado==='deficiente').length;
+    const inac = items.filter(it=>it.estado==='inaceptable').length;
+    const momento = r.momento==='preoperacional'?'Pre-operacional':r.momento==='operacional'?'Operacional':'';
+    return [r.fecha,r.codigo,r.nombre,r.sector,r.turno,momento,r.responsable,items.length,ok,def,inac,
+      r.supervisorTs?'Aprobada':'Pendiente',r.supervisorNombre||'',r.supervisorTs?fmtDatetime(r.supervisorTs):'']
+      .map(v=>'"'+(v+'').replace(/"/g,'""')+'"').join(',');
+  });
+  dlBlob('\uFEFF'+[h.join(','),...rows].join('\r\n'),'text/csv','Rondas_resumen_'+today()+'.csv');
+}
+
+// Detalle: una fila por cada ítem del checklist de cada ronda — para auditoría ítem por ítem.
+function exportRondasDetalleCSV(lista){
+  const arr = lista || rondas.registros;
+  const h = ['Fecha','Código ronda','Nombre','Sector','Turno','Responsable','Ítem','Estado','Valor','Unidad','Hora','Motivo','Acción correctiva'];
+  const rows = [];
+  arr.forEach(r=>{
+    (r.items||[]).forEach(it=>{
+      rows.push([r.fecha,r.codigo,r.nombre,r.sector,r.turno,r.responsable,it.texto,it.estado,
+        (it.valor!==null&&it.valor!==undefined?it.valor:''),it.unidad||'',it.hora||'',it.motivo||'',it.accionCorrectiva||'']
+        .map(v=>'"'+(v+'').replace(/"/g,'""')+'"').join(','));
+    });
+  });
+  dlBlob('\uFEFF'+[h.join(','),...rows].join('\r\n'),'text/csv','Rondas_detalle_'+today()+'.csv');
+}
+
+// \u2550\u2550\u2550 PANEL CENTRAL DE EXPORTACI\u00D3N (Configuraci\u00F3n \u2192 Exportaci\u00F3n de datos) \u2550\u2550\u2550
+// Dispara varios CSV en secuencia, cada uno filtrado por el mismo rango de
+// fechas \u2014 el filtro es propio de este panel (Desde/Hasta), no depende de
+// lo que est\u00E9 filtrado en pantalla en cada m\u00F3dulo.
+function exportarSeleccionados(){
+  const desde = document.getElementById('expDesde').value || null;
+  const hasta = document.getElementById('expHasta').value || null;
+  if(desde && hasta && hasta<desde){ alert('"Hasta" no puede ser anterior a "Desde".'); return; }
+  const enRango = (fecha) => !!fecha && (!desde || fecha>=desde) && (!hasta || fecha<=hasta);
+
+  let n = 0;
+  if(document.getElementById('expChkLotes').checked){
+    exportLotesCSV(traz.lotes.filter(l=>enRango(l.fechaRecepcion))); n++;
+  }
+  if(document.getElementById('expChkProducciones').checked){
+    exportProduccionesCSV(traz.producciones.filter(p=>enRango(p.fecha))); n++;
+  }
+  if(document.getElementById('expChkNC').checked){
+    exportNCCSV(traz.noConformidades.filter(x=>enRango(x.fecha))); n++;
+  }
+  if(document.getElementById('expChkMuestras').checked){
+    exportMuestrasCSV(traz.muestrasTestigo.filter(m=>enRango(m.fecha))); n++;
+  }
+  if(document.getElementById('expChkRondas').checked){
+    exportRondasResumenCSV(rondas.registros.filter(r=>enRango(r.fecha))); n++;
+  }
+  if(document.getElementById('expChkHaccp').checked){
+    exportHaccpCSV(haccpLogs.filter(l=>enRango(l.fecha))); n++;
+  }
+  if(n===0){ alert('Marc\u00E1 al menos una tabla para exportar.'); return; }
 }
 
 function verDetalleRonda(id){
