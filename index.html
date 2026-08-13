@@ -1369,6 +1369,18 @@ tbody td{padding:8px 10px;vertical-align:middle;}
   </div>
 </div>
 
+<div class="modal-bg" id="modalHistorialLote" onclick="handleModalClick(event,'modalHistorialLote')">
+  <div class="modal-box wide">
+    <button class="modal-close" onclick="closeModal('modalHistorialLote')">✕</button>
+    <div class="modal-title" id="historialLoteTitulo" style="margin-bottom:4px;">🕐 Historial</div>
+    <div class="modal-sub" style="margin-bottom:14px;font-size:11px;">Correcciones hechas después de que el lote quedó cerrado (anulado o vencido). Solo lectura — no se puede editar ni borrar.</div>
+    <div id="historialLoteBody"></div>
+    <div class="form-actions">
+      <button class="btn btn-ghost" onclick="closeModal('modalHistorialLote')">Cerrar</button>
+    </div>
+  </div>
+</div>
+
 <!-- ══ MODAL: NUEVA PRODUCCIÓN ══ -->
 <div class="modal-bg" id="modalProduccion" onclick="handleModalClick(event,'modalProduccion')">
   <div class="modal-box wide">
@@ -7225,6 +7237,7 @@ function renderTrazLotes(){
   if(!lista.length){ el.innerHTML = '<div style="font-size:12px;color:var(--text3);padding:12px;">No hay lotes que coincidan con el filtro.</div>'; return; }
   el.innerHTML = lista.map(l=>{
     const prov = traz.proveedores.find(p=>p.id===l.proveedorId);
+    const btnHistorial = (l.historialCambios&&l.historialCambios.length) ? `<button class="btn btn-outline btn-sm" onclick="verHistorialLote('${l.id}')">🕐 Historial (${l.historialCambios.length})</button>` : '';
     if(l.anulado){
       return `<div class="config-item" style="flex-wrap:wrap;gap:8px;opacity:.55;">
         <div style="flex:1;min-width:220px;">
@@ -7232,6 +7245,8 @@ function renderTrazLotes(){
           <div style="font-size:11px;color:var(--text3);margin-top:2px;">${prov?prov.nombre:'(proveedor no especificado)'} · lote prov. ${l.loteProveedor||'—'} · ${l.sector||'—'}</div>
           <div style="font-size:11px;color:#b02020;">🚫 Anulado por ${l.anuladoPor} el ${fmtDatetime(l.anuladoTs)} — ${l.anuladoMotivo}</div>
         </div>
+        ${btnHistorial}
+        <button class="btn btn-outline btn-sm" style="opacity:1;" onclick="openLoteModal('${l.id}')">✏️ Corregir</button>
         <button class="btn btn-outline btn-sm" style="opacity:1;" onclick="openNCModal('${l.id}')">⚠ Generar No Conformidad</button>
       </div>`;
     }
@@ -7243,8 +7258,9 @@ function renderTrazLotes(){
         <div style="font-size:11px;color:var(--text3);">Recibido: ${l.fechaRecepcion||'—'} · Vence: ${l.fechaVencimiento||'—'}</div>
       </div>
       ${badgeEstadoLote(estL)}
+      ${btnHistorial}
       ${estL==='vencido'?`<button class="btn btn-outline btn-sm" onclick="openNCModal('${l.id}')">⚠ Generar No Conformidad</button>`:''}
-      <button class="btn btn-outline btn-sm" onclick="openLoteModal('${l.id}')">Editar</button>
+      <button class="btn btn-outline btn-sm" onclick="openLoteModal('${l.id}')">${estL==='vencido'?'✏️ Corregir':'Editar'}</button>
       <button class="btn btn-danger btn-sm" onclick="anularLote('${l.id}')">🚫 Anular</button>
     </div>`;
   }).join('');
@@ -7279,6 +7295,28 @@ function openLoteModal(id){
   document.getElementById('modalLote').classList.add('open');
 }
 
+// Nombres de campo → etiqueta legible + cómo mostrar el valor, para el
+// historial de correcciones de lotes cerrados (ver diffCamposLote).
+const LOTE_CAMPOS_ETIQUETA = {
+  insumo: 'Insumo', proveedorId: 'Proveedor', loteProveedor: 'N° lote proveedor',
+  sector: 'Sector', cantidad: 'Cantidad', unidad: 'Unidad',
+  fechaRecepcion: 'Fecha de recepción', fechaVencimiento: 'Fecha de vencimiento',
+  observaciones: 'Observaciones'
+};
+
+// Compara los campos editables de un lote antes/después de un guardado y
+// devuelve solo los que realmente cambiaron — se usa para armar la
+// entrada de historialCambios cuando se corrige un lote ya cerrado.
+function diffCamposLote(antes, despues){
+  const cambios = [];
+  for(const campo in LOTE_CAMPOS_ETIQUETA){
+    if(String(antes[campo]??'') !== String(despues[campo]??'')){
+      cambios.push({campo, etiqueta: LOTE_CAMPOS_ETIQUETA[campo], antes: antes[campo], despues: despues[campo]});
+    }
+  }
+  return cambios;
+}
+
 function guardarLote(){
   const insumo = document.getElementById('loteInsumo').value.trim();
   const proveedorId = document.getElementById('loteProveedor').value;
@@ -7297,8 +7335,29 @@ function guardarLote(){
   if(trazEditLoteId){
     const l = traz.lotes.find(x=>x.id===trazEditLoteId);
     if(!l) return;
-    Object.assign(l, {insumo,proveedorId,loteProveedor,sector,cantidad:cantidadNum,unidad,fechaRecepcion,fechaVencimiento,observaciones});
-    audit('Lote editado: '+l.codigo, insumo, 'trazabilidad');
+    // Un lote anulado o vencido ya es, en la práctica, un registro
+    // "cerrado" — se puede seguir corrigiendo, pero exige motivo y queda
+    // historial (no se bloquea, mismo criterio que anularLote()).
+    const yaEstaCerrado = l.anulado || estadoLote(l)==='vencido';
+    const antes = {insumo:l.insumo, proveedorId:l.proveedorId, loteProveedor:l.loteProveedor, sector:l.sector, cantidad:l.cantidad, unidad:l.unidad, fechaRecepcion:l.fechaRecepcion, fechaVencimiento:l.fechaVencimiento, observaciones:l.observaciones};
+    const despues = {insumo,proveedorId,loteProveedor,sector,cantidad:cantidadNum,unidad,fechaRecepcion,fechaVencimiento,observaciones};
+    let motivo = null;
+    if(yaEstaCerrado){
+      motivo = prompt('Este lote ya está '+(l.anulado?'anulado':'vencido')+'. Indicá el motivo de esta corrección (queda en el historial, no se puede borrar):');
+      if(motivo === null) return; // canceló, no se guarda nada
+      if(!motivo.trim()){ alert('Tenés que indicar un motivo para corregir un lote cerrado.'); return; }
+    }
+    Object.assign(l, despues);
+    if(yaEstaCerrado){
+      const cambios = diffCamposLote(antes, despues);
+      if(cambios.length){
+        if(!l.historialCambios) l.historialCambios = [];
+        l.historialCambios.push({ts: nowISO(), usuario: currentUser.nombre, motivo: motivo.trim(), cambios});
+      }
+      audit('Lote cerrado corregido: '+l.codigo, motivo.trim(), 'trazabilidad');
+    } else {
+      audit('Lote editado: '+l.codigo, insumo, 'trazabilidad');
+    }
   } else {
     const l = {
       id: 'lt_'+Date.now()+'_'+Math.floor(Math.random()*1000),
@@ -7329,6 +7388,34 @@ function anularLote(id){
   saveTraz();
   renderTraz();
   updateTrazBadge();
+}
+
+// Historial de correcciones de un lote ya cerrado (anulado o vencido) —
+// de solo lectura, no hay ninguna acción para editar/borrar una entrada.
+function verHistorialLote(id){
+  const l = traz.lotes.find(x=>x.id===id);
+  if(!l || !l.historialCambios || !l.historialCambios.length) return;
+  document.getElementById('historialLoteTitulo').textContent = '🕐 Historial — '+l.insumo+' ('+l.codigo+')';
+  const entradas = [...l.historialCambios].reverse(); // más reciente primero
+  document.getElementById('historialLoteBody').innerHTML = entradas.map(h=>{
+    const filas = h.cambios.map(c=>{
+      const fmtVal = (campo, val)=>{
+        if(campo==='proveedorId'){ const p = traz.proveedores.find(x=>x.id===val); return p?p.nombre:(val||'—'); }
+        return (val===''||val==null) ? '—' : val;
+      };
+      return `<div style="display:flex;gap:8px;font-size:12px;padding:4px 0;border-top:.5px solid var(--border-light);">
+        <div style="flex:0 0 140px;color:var(--text3);">${c.etiqueta}</div>
+        <div style="flex:1;text-decoration:line-through;color:var(--text3);">${fmtVal(c.campo,c.antes)}</div>
+        <div style="flex:1;font-weight:600;">${fmtVal(c.campo,c.despues)}</div>
+      </div>`;
+    }).join('');
+    return `<div style="background:var(--bg2);border-radius:var(--r);padding:10px 12px;margin-bottom:8px;">
+      <div style="font-size:12px;"><strong>${h.usuario}</strong> — ${fmtDatetime(h.ts)}</div>
+      <div style="font-size:12px;color:var(--text2);margin-top:2px;"><strong>Motivo:</strong> ${h.motivo}</div>
+      <div style="margin-top:6px;">${filas}</div>
+    </div>`;
+  }).join('');
+  document.getElementById('modalHistorialLote').classList.add('open');
 }
 
 function exportLotesCSV(){
