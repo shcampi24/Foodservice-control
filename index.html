@@ -1185,6 +1185,7 @@ tbody td{padding:8px 10px;vertical-align:middle;}
     <button class="haccp-subtab" id="trazTabBuscar" onclick="switchTrazTab('buscar',this)">🔎 Buscar trazabilidad</button>
     <button class="haccp-subtab" id="trazTabNC" onclick="switchTrazTab('nc',this)">⚠ No Conformidades</button>
     <button class="haccp-subtab" id="trazTabPrep" onclick="switchTrazTab('prep',this)">🍽 Preparaciones</button>
+    <button class="haccp-subtab" id="trazTabInsumos" onclick="switchTrazTab('insumos',this)">🧂 Insumos</button>
     <button class="haccp-subtab" id="trazTabMuestras" onclick="switchTrazTab('muestras',this)">🧪 Muestras testigo</button>
     <button class="haccp-subtab" id="trazTabProveedores" onclick="switchTrazTab('proveedores',this)">🏭 Proveedores</button>
   </div>
@@ -1279,6 +1280,22 @@ tbody td{padding:8px 10px;vertical-align:middle;}
       <div id="trazListadoPrep"></div>
     </div>
 
+    <!-- INSUMOS -->
+    <div id="trazPanelInsumos" style="display:none;">
+      <div class="info-panel" style="font-size:11px;padding:7px 10px;margin-bottom:10px;">
+        Catálogo maestro de insumos: es lo que conecta de verdad un lote recibido con el ingrediente de una receta (antes era solo "se parece el nombre"). Se van creando solos al cargar un lote o una receta — acá podés renombrarlos o fusionar duplicados (ej. "Cebolla" y "cebolla" quedaron separados). Renombrar no cambia lo que ya está escrito en lotes/recetas guardados, solo el catálogo hacia adelante.
+      </div>
+      <div class="toolbar" style="margin-bottom:1rem;flex-wrap:wrap;gap:6px;">
+        <div class="toolbar-l" style="flex-wrap:wrap;gap:6px;">
+          <input type="text" class="flt" id="insBuscar" placeholder="Buscar insumo..." oninput="renderTrazInsumos()" />
+        </div>
+        <div class="toolbar-r">
+          <button class="btn btn-primary" onclick="agregarInsumoManual()">+ Nuevo insumo</button>
+        </div>
+      </div>
+      <div id="trazListadoInsumos"></div>
+    </div>
+
     <!-- MUESTRAS TESTIGO -->
     <div id="trazPanelMuestras" style="display:none;">
       <div class="toolbar" style="margin-bottom:1rem;flex-wrap:wrap;gap:6px;">
@@ -1323,7 +1340,7 @@ tbody td{padding:8px 10px;vertical-align:middle;}
     <div class="form-grid" style="margin-bottom:10px;">
       <div class="fg">
         <label>Insumo</label>
-        <input type="text" id="loteInsumo" placeholder="Ej: Pechuga de pollo" />
+        <input type="text" id="loteInsumo" list="dlInsumos" placeholder="Ej: Pechuga de pollo" />
       </div>
       <div class="fg">
         <label>Proveedor</label>
@@ -1368,6 +1385,9 @@ tbody td{padding:8px 10px;vertical-align:middle;}
     </div>
   </div>
 </div>
+<!-- Sugerencias del catálogo de insumos — se usa desde el campo Insumo (lote)
+     y desde cada línea de ingrediente en Nueva preparación -->
+<datalist id="dlInsumos"></datalist>
 
 <!-- ══ MODAL: NUEVA PRODUCCIÓN ══ -->
 <div class="modal-bg" id="modalProduccion" onclick="handleModalClick(event,'modalProduccion')">
@@ -1423,6 +1443,7 @@ tbody td{padding:8px 10px;vertical-align:middle;}
     <div class="fg" style="margin-bottom:10px;">
       <label>Lotes utilizados (elegí los insumos que usaste)</label>
       <div id="prodLotesCheck" style="display:flex;flex-direction:column;gap:6px;max-height:220px;overflow-y:auto;margin-top:4px;padding:8px;background:var(--bg);border:.5px solid var(--border);border-radius:var(--r);"></div>
+      <div id="prodFaltantesLotes" style="display:none;margin-top:6px;font-size:11px;color:#8a6416;background:#fff3cd;border:1px solid #f0d880;border-radius:6px;padding:6px 8px;"></div>
     </div>
     <div class="fg" style="margin-bottom:10px;">
       <label>Observaciones</label>
@@ -1503,6 +1524,26 @@ tbody td{padding:8px 10px;vertical-align:middle;}
     <div class="modal-title" id="prepVerTitulo" style="margin-bottom:2px;">🍽 Receta</div>
     <div class="modal-sub" id="prepVerSub" style="margin-bottom:12px;"></div>
     <div id="prepVerBody"></div>
+  </div>
+</div>
+
+<!-- ══ MODAL: FUSIONAR INSUMO ══ -->
+<div class="modal-bg" id="modalFusionarInsumo" onclick="handleModalClick(event,'modalFusionarInsumo')">
+  <div class="modal-box" style="max-width:420px;">
+    <button class="modal-close" onclick="closeModal('modalFusionarInsumo')">✕</button>
+    <div class="modal-title" style="margin-bottom:4px;">🔗 Fusionar insumo</div>
+    <div class="modal-sub" id="fusInsumoSub" style="margin-bottom:14px;font-size:11px;"></div>
+    <div class="fg" style="margin-bottom:10px;">
+      <label>Fusionar con</label>
+      <select id="fusInsumoDestino"></select>
+    </div>
+    <div class="info-panel" style="font-size:11px;padding:7px 10px;margin-bottom:10px;">
+      Todos los lotes y recetas que usaban este insumo van a pasar a usar el que elijas acá. No se puede deshacer.
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-ghost" onclick="closeModal('modalFusionarInsumo')">Cancelar</button>
+      <button class="btn btn-primary" onclick="confirmarFusionInsumo()">Fusionar</button>
+    </div>
   </div>
 </div>
 
@@ -2119,6 +2160,16 @@ tbody td{padding:8px 10px;vertical-align:middle;}
       <button class="btn btn-ghost" onclick="closeModal('modalReasignar')">Cancelar</button>
       <button class="btn btn-primary" onclick="confirmarReasignar()">Reasignar</button>
     </div>
+  </div>
+</div>
+
+<!-- ══ MODAL: HISTORIAL DE LA TAREA ══ -->
+<div class="modal-bg" id="modalTareaHistorial" onclick="handleModalClick(event,'modalTareaHistorial')">
+  <div class="modal-box" style="max-width:480px;">
+    <button class="modal-close" onclick="closeModal('modalTareaHistorial')">✕</button>
+    <div class="modal-title" id="histTareaTitulo" style="margin-bottom:2px;">🕘 Historial de la tarea</div>
+    <div class="modal-sub" id="histTareaSub" style="margin-bottom:12px;"></div>
+    <div id="histTareaBody" style="max-height:50vh;overflow-y:auto;"></div>
   </div>
 </div>
 
@@ -2886,6 +2937,10 @@ async function loadDataFromFirebase(){
     if(!fbTasks && !fbVacio && tasks && tasks.length>0){
       await fbSave('fscc_tasks',tasks);
     }
+    // Historial de eventos por tarea: a las que ya existían se les
+    // reconstruye uno mínimo (ver migrarHistorialTareas). Corre acá porque
+    // recién ahora `tasks` tiene los datos definitivos de esta carga.
+    migrarHistorialTareas();
 
     if(fbAudit){auditLog=fbAudit;LS.set('fscc_audit',auditLog);}
     if(fbNotif){notifications=fbNotif;LS.set('fscc_notif',notifications);}
@@ -2893,7 +2948,10 @@ async function loadDataFromFirebase(){
     if(fbMant){mantSolicitudes=fbMant;LS.set('fscc_mant',mantSolicitudes);}
     if(fbTraz){traz=fbTraz;if(!traz.proveedores)traz.proveedores=[];if(!traz.lotes)traz.lotes=[];if(!traz.producciones)traz.producciones=[];if(!traz.noConformidades)traz.noConformidades=[];if(!traz.muestrasTestigo)traz.muestrasTestigo=[];LS.set('fscc_traz',traz);}
     if(fbRondas){rondas=fbRondas;if(!rondas.plantillas||!rondas.plantillas.length)rondas.plantillas=seedPlantillasRondas();if(!rondas.registros)rondas.registros=[];if(!rondas.asignaciones)rondas.asignaciones=[];if(!rondas.asignacionesRecurrentes)rondas.asignacionesRecurrentes=[];LS.set('fscc_rondas',rondas);}
-    if(fbCatalogo){catalogo=fbCatalogo;if(!catalogo.preparaciones||!catalogo.preparaciones.length)catalogo.preparaciones=seedCatalogoPreparaciones();LS.set('fscc_catalogo',catalogo);}
+    if(fbCatalogo){catalogo=fbCatalogo;if(!catalogo.preparaciones||!catalogo.preparaciones.length)catalogo.preparaciones=seedCatalogoPreparaciones();if(!catalogo.insumos)catalogo.insumos=[];LS.set('fscc_catalogo',catalogo);}
+    // Catálogo de insumos: lo arma solo, una vez, a partir de lo que ya
+    // había en lotes/recetas como texto libre (ver migrarCatalogoInsumos).
+    migrarCatalogoInsumos();
 
     // Capacitaciones
     const fbCap = await fbLoad('fscc_cap');
@@ -3205,15 +3263,15 @@ function generarTareasDelDia(){
         obsHeredada = `Pendiente desde ${fmtDate(ultima.fechaReg)} — motivo: ${ultima.incidencia.motivo}${ultima.incidencia.desc?': '+ultima.incidencia.desc:''}`;
       }
 
-      tasks.push({
+      const turnoNueva = ultima ? ultima.turno : (cfg.turnos?cfg.turnos[0]:'');
+      const nuevaTarea = {
         id: Date.now()+(ctr++)+Math.random(),
         sector: sectorFinal,
         equipo: eq.nombre,
         equipoId: eq.id,
         tipo,
         responsable: responsableFinal,
-        turno: ultima ? ultima.turno : (cfg.turnos?cfg.turnos[0]:''),
-        estado: 'Pendiente',
+        turno: turnoNueva,
         prioridad: obsHeredada ? 'alta' : 'normal',
         asignadoPor: 'Sistema',
         fechaReg: t,
@@ -3222,7 +3280,9 @@ function generarTareasDelDia(){
         obs: obsHeredada,
         foto: '',
         arrastrada: !!obsHeredada
-      });
+      };
+      agregarEventoTarea(nuevaTarea, 'creacion', {responsable:responsableFinal, turno:turnoNueva, estadoInicial:'Pendiente'});
+      tasks.push(nuevaTarea);
       generadas++;
     });
   });
@@ -4328,12 +4388,12 @@ function confirmarRealizada(){
   const t=tasks.find(x=>x.id===editingId);if(!t)return;
   const resp=document.getElementById('realResp').value.trim();
   if(!resp){alert('Indicá quién realizó la tarea.');return;}
-  t.estado='Cumplido';
   t.horaRegistro=nowISO();
   t.hechoPor=resp;
   t.obs=document.getElementById('realObs').value.trim()||t.obs;
   t.foto=document.getElementById('realFotoData').value||t.foto||'';
   t.incidencia=null;
+  agregarEventoTarea(t, 'cumplido', {resp, obs:t.obs});
   audit(`Tarea realizada: ${t.sector} — ${t.tipo}`,`por ${resp}`,'tarea');
 
   // Notificación a admin + supervisor
@@ -4350,7 +4410,8 @@ function confirmarRealizada(){
 function deshacerEstado(id){
   const t=tasks.find(x=>x.id===id);if(!t)return;
   const prev=t.estado;
-  t.estado='Pendiente';t.horaRegistro=null;t.incidencia=null;t.hechoPor=null;
+  t.horaRegistro=null;t.incidencia=null;t.hechoPor=null;
+  agregarEventoTarea(t, 'deshacer', {estadoAnterior:prev});
   audit(`Estado revertido: ${t.sector} — ${t.tipo}`,`de "${prev}" a Pendiente`,'tarea');
   saveAll();renderAll();
 }
@@ -4472,6 +4533,7 @@ function renderSupervisor(){
         <div class="sv-task-estado"><span class="badge ${ec}">${t.estado}</span></div>
         <div class="sv-task-hora">${t.horaRegistro?fmtDatetime(t.horaRegistro).split(' ')[1]:'—'}</div>
         ${t.estado!=='Cumplido'?`<button class="btn btn-ghost btn-sm" style="font-size:10px;padding:2px 7px;" onclick="openReasignarModal(${t.id})">↔ Reasignar</button>`:''}
+        <button class="btn btn-ghost btn-sm" style="font-size:10px;padding:2px 7px;" onclick="verHistorialTarea(${t.id})" title="Historial">🕘</button>
       </div>`;
     }).join('');
 
@@ -4565,6 +4627,7 @@ function renderSvOperarios(){
         <span class="badge b-turno" style="flex-shrink:0;">${t.turno}</span>
         <span class="badge ${ec}" style="flex-shrink:0;min-width:80px;text-align:center;">${t.estado}</span>
         <span style="font-family:var(--mono);font-size:10px;color:var(--text3);flex-shrink:0;min-width:50px;text-align:right;">${t.horaRegistro?fmtDatetime(t.horaRegistro).split(' ')[1]:'—'}</span>
+        <button class="btn btn-ghost btn-sm" style="font-size:10px;padding:2px 7px;flex-shrink:0;" onclick="verHistorialTarea(${t.id})" title="Historial">🕘</button>
       </div>`;
     }).join('');
 
@@ -4685,11 +4748,12 @@ function addTaskSupervisor(){
 
   const t={
     id:Date.now(),sector,equipo:equipoNombre,equipoId,tipo,responsable:resp,turno,
-    estado:'Pendiente',prioridad,
+    prioridad,
     asignadoPor:currentUser.nombre,
     fechaReg,fechaVenc,
     horaRegistro:null,obs,foto:''
   };
+  agregarEventoTarea(t, 'creacion', {responsable:resp, turno, estadoInicial:'Pendiente'});
   tasks.unshift(t);
   audit(`Tarea asignada (Supervisor): ${sector}${equipoNombre?' / '+equipoNombre:''} — ${tipo}`,`Resp: ${resp} | Prioridad: ${prioridad}`,'tarea');
   const recurrente=document.getElementById('svRecurrente').checked;
@@ -4737,9 +4801,20 @@ function confirmarReasignar(){
   const nuevoResp = document.getElementById('reasignarOperario').value;
   const nuevoTurno = document.getElementById('reasignarTurno').value;
   const anterior = t.responsable;
+  const turnoAnterior = t.turno;
   t.responsable = nuevoResp;
   t.turno = nuevoTurno;
   t.asignadoPor = currentUser.nombre;
+  // Una reasignación siempre vuelve la tarea a un estado accionable para
+  // quien la recibe — antes esto NO se hacía, y una tarea que estaba en
+  // "No realizada" quedaba trabada así para el nuevo operario (sin los
+  // botones normales de acción, mostrando el motivo de otra persona). Ver
+  // agregarEventoTarea más arriba: el evento 'reasignacion' fuerza Pendiente.
+  t.horaRegistro=null; t.hechoPor=null; t.incidencia=null;
+  agregarEventoTarea(t, 'reasignacion', {
+    responsableAnterior:anterior, responsableNuevo:nuevoResp,
+    turnoAnterior, turnoNuevo:nuevoTurno
+  });
   audit(`Tarea reasignada: ${t.sector} — ${t.tipo}`, `${anterior} → ${nuevoResp} (${nuevoTurno})`, 'tarea');
   saveAll(); closeModal('modalReasignar'); renderAll();
 }
@@ -4776,16 +4851,117 @@ function guardarTareaExtra(){
     sector, equipo:'', equipoId:'',
     tipo:desc,
     responsable:resp, turno,
-    estado:'Pendiente', prioridad,
+    prioridad,
     asignadoPor:currentUser.nombre,
     fechaReg:today(), fechaVenc:addDays(today(),1),
     horaRegistro:null, obs, foto:'',
     tareaExtra:true
   };
+  agregarEventoTarea(t, 'creacion', {responsable:resp, turno, estadoInicial:'Pendiente'});
   tasks.unshift(t);
   audit(`Tarea extra creada: ${sector} — ${desc}`,`Resp: ${resp} | ${turno} | ${prioridad}`,'tarea');
   saveAll(); closeModal('modalTareaExtra'); renderAll();
   pushNotif('completed','📋 Nueva tarea asignada',`${desc} — ${sector} (${resp})`,t.id);
+}
+
+// ═══════════════════════════════════════════════════
+//  HISTORIAL DE EVENTOS POR TAREA
+// ═══════════════════════════════════════════════════
+// t.estado es un campo DERIVADO: a partir de acá, ninguna función lo asigna
+// a mano — se recalcula acá mismo, a partir del último evento agregado al
+// historial. Antes cada función (No realizada, Cumplido, Deshacer,
+// Reasignar, edición de Admin) pisaba t.estado por su cuenta, y a Reasignar
+// se le había olvidado tocarlo del todo: una tarea reasignada quedaba
+// trabada en "No realizada" para el nuevo operario, con el motivo de la
+// persona anterior, y sin los botones normales de acción. Con esto, el
+// último evento SIEMPRE manda. Ver conversación del 2026-08-20.
+function agregarEventoTarea(t, tipo, datos){
+  if(!t.historial) t.historial = [];
+  const evento = Object.assign({
+    ts: nowISO(),
+    tipo,
+    quien: currentUser ? currentUser.nombre : 'Sistema'
+  }, datos||{});
+  t.historial.push(evento);
+  t.estado = estadoDesdeEvento(evento);
+  return evento;
+}
+
+function estadoDesdeEvento(evento){
+  switch(evento.tipo){
+    case 'no_realizada':  return 'No realizada';
+    case 'cumplido':      return 'Cumplido';
+    case 'deshacer':      return 'Pendiente';
+    case 'reasignacion':  return 'Pendiente';
+    case 'creacion':      return evento.estadoInicial || 'Pendiente';
+    case 'editado_admin': return evento.estadoNuevo || 'Pendiente';
+    default:               return 'Pendiente';
+  }
+}
+
+// Migración: a las tareas que ya existían antes de este cambio (sin
+// historial) se les reconstruye uno mínimo a partir de lo que ya tenían
+// guardado — SIN tocar t.estado (que ya es correcto), solo para que el
+// detalle tenga algo coherente que mostrar. Idempotente: si la tarea ya
+// tiene historial, no la toca.
+function migrarHistorialTareas(){
+  let huboCambios = false;
+  (tasks||[]).forEach(t=>{
+    if(t.historial && t.historial.length) return;
+    t.historial = [{
+      ts: t.horaRegistro || (t.fechaReg ? t.fechaReg+'T12:00:00.000Z' : nowISO()),
+      tipo: 'creacion', quien: t.asignadoPor || 'Sistema',
+      responsable: t.responsable, turno: t.turno,
+      estadoInicial: (t.estado==='No realizada'||t.estado==='Cumplido') ? 'Pendiente' : t.estado,
+      nota: 'Evento inicial reconstruido automáticamente al activar el historial de tareas.'
+    }];
+    if(t.estado==='No realizada' && t.incidencia){
+      t.historial.push({
+        ts: t.incidencia.hora || t.horaRegistro || nowISO(),
+        tipo: 'no_realizada', quien: t.incidencia.resp || 'Sistema',
+        motivo: t.incidencia.motivo, desc: t.incidencia.desc, foto: t.incidencia.foto||''
+      });
+    } else if(t.estado==='Cumplido'){
+      t.historial.push({ ts: t.horaRegistro || nowISO(), tipo:'cumplido', quien: t.hechoPor || 'Sistema', obs: t.obs||'' });
+    }
+    huboCambios = true;
+  });
+  if(huboCambios){ LS.set('fscc_tasks', tasks); fbSave('fscc_tasks', tasks).catch(()=>{}); }
+  return huboCambios;
+}
+
+function _etiquetaEventoTarea(ev){
+  switch(ev.tipo){
+    case 'creacion':      return { icon:'📋', texto:`Tarea asignada a ${ev.responsable||'—'} (${ev.turno||'—'})` };
+    case 'no_realizada':  return { icon:'🚫', texto:`Marcada "No realizada" — ${ev.motivo||''}${ev.desc?': '+ev.desc:''}` };
+    case 'deshacer':      return { icon:'↩', texto:`Deshecho el estado anterior (volvió a Pendiente)` };
+    case 'reasignacion':  return { icon:'🔄', texto:`Reasignada de ${ev.responsableAnterior||'—'} a ${ev.responsableNuevo||'—'} (${ev.turnoNuevo||'—'})` };
+    case 'cumplido':      return { icon:'✅', texto:`Marcada "Cumplido"${ev.obs?' — '+ev.obs:''}` };
+    case 'editado_admin': return { icon:'✎', texto:`Editada por Admin — estado: ${ev.estadoAnterior||'—'} → ${ev.estadoNuevo||'—'}${ev.resumen?' ('+ev.resumen+')':''}` };
+    default:               return { icon:'•', texto: ev.nota || ev.tipo };
+  }
+}
+
+// Detalle de tarea (Supervisor/Coordinador/Admin) — historial completo,
+// nunca se borra nada, mismo criterio que en Trazabilidad/No Conformidades.
+function verHistorialTarea(id){
+  const t = tasks.find(x=>x.id===id);
+  if(!t) return;
+  document.getElementById('histTareaTitulo').textContent = '🕘 '+t.sector+' — '+t.tipo;
+  document.getElementById('histTareaSub').textContent = t.turno+' · '+fmtDate(t.fechaReg)+' · Estado actual: '+t.estado;
+  const hist = [...(t.historial||[])].reverse(); // más reciente primero
+  const body = document.getElementById('histTareaBody');
+  body.innerHTML = hist.length ? hist.map(ev=>{
+    const {icon,texto} = _etiquetaEventoTarea(ev);
+    return `<div style="display:flex;gap:8px;padding:7px 0;border-bottom:.5px solid var(--border-light);">
+      <div style="font-size:15px;">${icon}</div>
+      <div style="flex:1;">
+        <div style="font-size:12px;">${texto}</div>
+        <div style="font-size:10px;color:var(--text3);font-family:var(--mono);margin-top:2px;">${fmtDatetime(ev.ts)} · ${ev.quien||'—'}</div>
+      </div>
+    </div>`;
+  }).join('') : '<div style="font-size:12px;color:var(--text3);padding:8px;">Sin eventos registrados todavía.</div>';
+  document.getElementById('modalTareaHistorial').classList.add('open');
 }
 
 // ═══════════════════════════════════════════════════
@@ -4813,7 +4989,7 @@ function saveIncidencia(){
   if(!motivo){alert('Seleccioná una categoría de motivo.');return;}
   if(!desc){alert('Describí el impedimento.');return;}
   t.incidencia={motivo,desc,resp,foto:document.getElementById('incidFotoData').value||'',hora:nowISO()};
-  t.estado='No realizada';
+  agregarEventoTarea(t, 'no_realizada', {motivo, desc, resp, foto:t.incidencia.foto});
   audit(`Impedimento: ${t.sector} — ${t.tipo}`,`Motivo: ${motivo} / ${resp}`,'incid');
 
   // Notificación a admin + supervisor
@@ -5360,6 +5536,7 @@ function renderTable(){
       <td>${fotoCell(t)}${fi}</td>
       <td style="text-align:center">${prioBadge(t.prioridad||'normal')}</td>
       <td style="text-align:center;white-space:nowrap;">
+        <button class="icon-btn" onclick="verHistorialTarea(${t.id})" title="Historial">🕘</button>
         <button class="icon-btn" onclick="openEditModal(${t.id})" title="Editar">✏</button>
         <button class="icon-btn" style="background:#fff0f0;border:.5px solid #f0b0b0;color:var(--red);padding:3px 5px;border-radius:4px;font-size:11px;" onclick="openIncidModal(${t.id})" title="Impedimento">⚠</button>
         <button class="icon-btn del" onclick="deleteTask(${t.id})" title="Eliminar">🗑</button>
@@ -5387,16 +5564,18 @@ function addTask(){
   const equipoNombre=equipoObj?equipoObj.nombre:'';
   const fechaReg=document.getElementById('fFecha').value||today();
   const estadoF=document.getElementById('fEstadoF').value;
+  const turnoNueva=document.getElementById('fTurnoF').value;
   const t={
     id:Date.now(),sector,equipo:equipoNombre,equipoId,tipo,responsable:resp,
-    turno:document.getElementById('fTurnoF').value,
-    estado:estadoF,prioridad:'normal',
+    turno:turnoNueva,
+    prioridad:'normal',
     asignadoPor:currentUser?currentUser.nombre:'Admin',
     fechaReg,fechaVenc:document.getElementById('fVenc').value||addDays(fechaReg,cfg.frecuencias[tipo]||1),
     horaRegistro:estadoF==='Cumplido'?nowISO():null,
     obs:document.getElementById('fObs').value.trim(),
     foto:document.getElementById('fFotoData').value||''
   };
+  agregarEventoTarea(t, 'creacion', {responsable:resp, turno:turnoNueva, estadoInicial:estadoF});
   tasks.unshift(t);
   if(t.estado==='Cumplido')appendToSectorLog(t);
   audit(`Tarea creada (Admin): ${sector}${equipoNombre?' / '+equipoNombre:''} — ${tipo}`,`Resp: ${resp}`,'tarea');
@@ -5442,13 +5621,17 @@ function saveEdit(){
   t.turno=document.getElementById('eTurno').value;
   t.sector=document.getElementById('eSector').value;
   t.tipo=document.getElementById('eTipo').value;
-  t.estado=document.getElementById('eEstado').value;
+  const estadoNuevo=document.getElementById('eEstado').value;
   t.prioridad=document.getElementById('ePrioridad').value;
   t.fechaReg=document.getElementById('eFecha').value;
   t.fechaVenc=document.getElementById('eVenc').value;
   t.obs=document.getElementById('eObs').value.trim();
   t.foto=document.getElementById('eFotoData').value||'';
-  if(t.estado==='Cumplido'&&!t.horaRegistro)t.horaRegistro=nowISO();
+  if(estadoNuevo==='Cumplido'&&!t.horaRegistro)t.horaRegistro=nowISO();
+  agregarEventoTarea(t, 'editado_admin', {
+    estadoAnterior:prev.estado, estadoNuevo,
+    resumen:`${prev.sector}→${t.sector} / ${prev.responsable}→${t.responsable}`
+  });
   audit(`Tarea editada: ${prev.sector} — ${prev.tipo}`,`${prev.estado}→${t.estado} / ${prev.responsable}→${t.responsable}`,'tarea');
   saveAll();closeModal('modalEdit');renderAll();
 }
@@ -6648,8 +6831,9 @@ let mantSolicitudes = [];
 //  TRAZABILIDAD DE LOTE
 // ═══════════════════════════════════════════════════
 // traz.proveedores : [{id, nombre, cuit, habilitacion, habilitacionVence}]
-// traz.lotes        : [{id, codigo, insumo, proveedorId, loteProveedor, cantidad, unidad,
+// traz.lotes        : [{id, codigo, insumo, insumoId, proveedorId, loteProveedor, cantidad, unidad,
 //                        fechaRecepcion, fechaVencimiento, sector, observaciones, alertado}]
+//                        (insumoId enlaza con catalogo.insumos — ver más abajo)
 // traz.producciones : [{id, fecha, turno, sector, preparacion, lotesUsados:[loteId,...],
 //                        responsable, observaciones}]
 // traz.noConformidades : [{id, fecha, producto, proveedorId, cantidad, loteId, motivo,
@@ -6682,10 +6866,70 @@ function saveTraz(){
 // ═══════════════════════════════════════════════════
 //  CATÁLOGO DE PREPARACIONES (Menú Invierno 2026, FO-CO-02)
 // ═══════════════════════════════════════════════════
-// catalogo.preparaciones: [{id, menu, tipo, nombre, ingredientes:[{grupo,nombre,pesoNeto,fc,pesoBruto}]}]
-let catalogo = {preparaciones:[]};
+// catalogo.preparaciones: [{id, menu, tipo, nombre, ingredientes:[{grupo,nombre,insumoId,pesoNeto,fc,pesoBruto}]}]
+// catalogo.insumos: [{id, nombre}] — catálogo maestro de insumos. Es lo que
+// conecta de verdad un lote recibido (traz.lotes[].insumoId) con el
+// ingrediente de una receta (ingredientes[].insumoId): antes esa relación
+// era solo "se parece el texto" (ver onProdPrepCatalogoChange), ahora es un
+// mismo id. `insumo`/`nombre` como texto se siguen guardando igual que
+// siempre, para no romper ninguna pantalla que ya los muestra.
+let catalogo = {preparaciones:[], insumos:[]};
 let catEditId = null;
 let _catIngredientesEdit = [];
+
+// Busca un insumo del catálogo por nombre (normalizado) o lo crea si no
+// existe. Es el punto único por el que se resuelve insumoId al guardar un
+// lote o un ingrediente de receta.
+function _normInsumo(s){ return (s||'').trim().replace(/\s+/g,' ').toLowerCase(); }
+function resolverOCrearInsumo(nombreRaw){
+  const nombre = (nombreRaw||'').trim();
+  if(!nombre) return null;
+  if(!catalogo.insumos) catalogo.insumos = [];
+  const norm = _normInsumo(nombre);
+  let ins = catalogo.insumos.find(i=>_normInsumo(i.nombre)===norm);
+  if(!ins){
+    ins = { id: 'ins_'+Date.now()+'_'+Math.floor(Math.random()*100000), nombre };
+    catalogo.insumos.push(ins);
+  }
+  return ins;
+}
+
+// Migración: arma catalogo.insumos a partir de los nombres de insumo que ya
+// existan en lotes y recetas, y los enlaza por insumoId. Corre una sola vez
+// por institución (idempotente: si ya hay insumos cargados, no hace nada) —
+// se llama después de cargar catalogo y traz desde Firebase. Nombres que no
+// coincidan exacto tras normalizar (ej. "Pechuga de pollo" vs "Pechuga
+// pollo IQF") quedan como insumos separados: eso se fusiona a mano después
+// desde la pestaña "Insumos" de Trazabilidad, no se puede resolver solo.
+function migrarCatalogoInsumos(){
+  if(!catalogo.insumos) catalogo.insumos = [];
+  if(catalogo.insumos.length) return false; // ya migrado
+  let huboCambios = false;
+  (traz.lotes||[]).forEach(l=>{
+    if(l.insumoId) return;
+    const ins = resolverOCrearInsumo(l.insumo);
+    if(ins){ l.insumoId = ins.id; huboCambios = true; }
+  });
+  (catalogo.preparaciones||[]).forEach(p=>{
+    (p.ingredientes||[]).forEach(ing=>{
+      if(ing.insumoId) return;
+      const ins = resolverOCrearInsumo(ing.nombre);
+      if(ins){ ing.insumoId = ins.id; huboCambios = true; }
+    });
+  });
+  if(huboCambios || catalogo.insumos.length){
+    catalogo.insumos.sort((a,b)=>a.nombre.localeCompare(b.nombre,'es'));
+    saveCatalogo();
+    saveTraz();
+  }
+  return huboCambios;
+}
+
+function poblarDatalistInsumos(){
+  const dl = document.getElementById('dlInsumos');
+  if(!dl) return;
+  dl.innerHTML = (catalogo.insumos||[]).map(i=>`<option value="${(i.nombre||'').replace(/"/g,'&quot;')}"></option>`).join('');
+}
 
 function seedCatalogoPreparaciones(){
   return [
@@ -6723,8 +6967,9 @@ function seedCatalogoPreparaciones(){
 }
 
 function loadCatalogo(){
-  catalogo = LS.get('fscc_catalogo') || {preparaciones: seedCatalogoPreparaciones()};
+  catalogo = LS.get('fscc_catalogo') || {preparaciones: seedCatalogoPreparaciones(), insumos:[]};
   if(!catalogo.preparaciones || !catalogo.preparaciones.length) catalogo.preparaciones = seedCatalogoPreparaciones();
+  if(!catalogo.insumos) catalogo.insumos = [];
 }
 
 function saveCatalogo(){
@@ -6815,6 +7060,7 @@ function verPrep(id){
 
 function openPrepModal(id){
   catEditId = id || null;
+  poblarDatalistInsumos();
   document.getElementById('prepModalTitle').textContent = id ? '🍽 Editar preparación' : '🍽 Nueva preparación';
   if(id){
     const p = catalogo.preparaciones.find(x=>x.id===id);
@@ -6847,7 +7093,7 @@ function renderPrepIngredientesLista(){
   el.innerHTML = _catIngredientesEdit.map((ing,i)=>`
     <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;background:var(--surface);border:.5px solid var(--border);border-radius:6px;padding:6px 8px;">
       <input type="text" value="${(ing.grupo||'').replace(/"/g,'&quot;')}" placeholder="Sub-receta (opcional)" style="width:110px;font-size:11px;" oninput="_catIngredientesEdit[${i}].grupo=this.value" />
-      <input type="text" value="${(ing.nombre||'').replace(/"/g,'&quot;')}" placeholder="Ingrediente" style="flex:1;min-width:120px;font-size:12px;" oninput="_catIngredientesEdit[${i}].nombre=this.value" />
+      <input type="text" value="${(ing.nombre||'').replace(/"/g,'&quot;')}" list="dlInsumos" placeholder="Ingrediente" style="flex:1;min-width:120px;font-size:12px;" oninput="_catIngredientesEdit[${i}].nombre=this.value" />
       <input type="text" value="${ing.pesoNeto||''}" placeholder="Peso neto" style="width:80px;font-size:11px;" oninput="_catIngredientesEdit[${i}].pesoNeto=this.value" />
       <input type="text" value="${ing.fc||''}" placeholder="FC" style="width:50px;font-size:11px;" oninput="_catIngredientesEdit[${i}].fc=this.value" />
       <input type="text" value="${ing.pesoBruto||''}" placeholder="Peso bruto" style="width:80px;font-size:11px;" oninput="_catIngredientesEdit[${i}].pesoBruto=this.value" />
@@ -6860,10 +7106,14 @@ function guardarPrep(){
   const menu = document.getElementById('prepMenu').value.trim();
   const tipo = document.getElementById('prepTipo').value;
   if(!nombre){ alert('Ingresá el nombre del plato.'); return; }
-  const ingredientes = _catIngredientesEdit.filter(i=>i.nombre&&i.nombre.trim()).map(i=>({
-    grupo: i.grupo&&i.grupo.trim() ? i.grupo.trim() : null,
-    nombre: i.nombre.trim(), pesoNeto: i.pesoNeto||'', fc: i.fc||'', pesoBruto: i.pesoBruto||''
-  }));
+  const ingredientes = _catIngredientesEdit.filter(i=>i.nombre&&i.nombre.trim()).map(i=>{
+    const insumoObj = resolverOCrearInsumo(i.nombre.trim());
+    return {
+      grupo: i.grupo&&i.grupo.trim() ? i.grupo.trim() : null,
+      nombre: i.nombre.trim(), insumoId: insumoObj?insumoObj.id:null,
+      pesoNeto: i.pesoNeto||'', fc: i.fc||'', pesoBruto: i.pesoBruto||''
+    };
+  });
   if(catEditId){
     const p = catalogo.preparaciones.find(x=>x.id===catEditId);
     if(!p) return;
@@ -6888,6 +7138,104 @@ function eliminarPrep(id){
   renderTraz();
 }
 
+// ═══════════════════════════════════════════════════
+//  INSUMOS (catálogo maestro)
+// ═══════════════════════════════════════════════════
+function contarUsosInsumo(insumoId){
+  const enLotes = traz.lotes.filter(l=>l.insumoId===insumoId && !l.anulado).length;
+  let enRecetas = 0;
+  catalogo.preparaciones.forEach(p=>{ (p.ingredientes||[]).forEach(ing=>{ if(ing.insumoId===insumoId) enRecetas++; }); });
+  return {enLotes, enRecetas};
+}
+
+function renderTrazInsumos(){
+  if(!catalogo.insumos) catalogo.insumos = [];
+  const busq = ((document.getElementById('insBuscar')||{}).value || '').toLowerCase();
+  let lista = [...catalogo.insumos].sort((a,b)=>a.nombre.localeCompare(b.nombre,'es'));
+  if(busq) lista = lista.filter(i=>(i.nombre||'').toLowerCase().includes(busq));
+  const el = document.getElementById('trazListadoInsumos');
+  if(!el) return;
+  if(!lista.length){
+    el.innerHTML = '<div style="font-size:12px;color:var(--text3);padding:12px;">No hay insumos que coincidan. Se van creando solos al cargar un lote o una receta, o agregalos a mano con "+ Nuevo insumo".</div>';
+    return;
+  }
+  el.innerHTML = lista.map(i=>{
+    const {enLotes, enRecetas} = contarUsosInsumo(i.id);
+    const sinUso = enLotes===0 && enRecetas===0;
+    return `<div class="config-item" style="flex-wrap:wrap;gap:8px;">
+      <div style="flex:1;min-width:200px;">
+        <div style="font-weight:600;font-size:13px;">${i.nombre}</div>
+        <div style="font-size:11px;color:var(--text3);margin-top:2px;">${enLotes} lote(s) vigente(s) · ${enRecetas} receta(s)</div>
+      </div>
+      <button class="btn btn-outline btn-sm" onclick="renombrarInsumo('${i.id}')">✎ Renombrar</button>
+      <button class="btn btn-outline btn-sm" onclick="abrirFusionarInsumo('${i.id}')">🔗 Fusionar con...</button>
+      ${sinUso ? `<button class="btn btn-ghost btn-sm" onclick="eliminarInsumo('${i.id}')">🗑</button>` : ''}
+    </div>`;
+  }).join('');
+}
+
+function agregarInsumoManual(){
+  const nombre = prompt('Nombre del nuevo insumo:');
+  if(!nombre || !nombre.trim()) return;
+  const ins = resolverOCrearInsumo(nombre);
+  if(!ins) return;
+  audit('Insumo creado: '+ins.nombre, '', 'trazabilidad');
+  saveCatalogo();
+  renderTrazInsumos();
+}
+
+function renombrarInsumo(id){
+  const ins = catalogo.insumos.find(x=>x.id===id);
+  if(!ins) return;
+  const nuevo = prompt('Nuevo nombre para este insumo (no cambia lo que ya está escrito en lotes/recetas guardados, solo el catálogo hacia adelante):', ins.nombre);
+  if(!nuevo || !nuevo.trim() || nuevo.trim()===ins.nombre) return;
+  const anterior = ins.nombre;
+  ins.nombre = nuevo.trim();
+  audit('Insumo renombrado', anterior+' → '+ins.nombre, 'trazabilidad');
+  saveCatalogo();
+  renderTrazInsumos();
+}
+
+function eliminarInsumo(id){
+  const ins = catalogo.insumos.find(x=>x.id===id);
+  if(!ins) return;
+  if(!confirm('¿Borrar el insumo "'+ins.nombre+'" del catálogo? (no tiene lotes ni recetas asociadas)')) return;
+  catalogo.insumos = catalogo.insumos.filter(x=>x.id!==id);
+  audit('Insumo eliminado del catálogo: '+ins.nombre, '', 'trazabilidad');
+  saveCatalogo();
+  renderTrazInsumos();
+}
+
+let _fusInsumoOrigenId = null;
+function abrirFusionarInsumo(id){
+  const origen = catalogo.insumos.find(x=>x.id===id);
+  if(!origen) return;
+  const otros = catalogo.insumos.filter(x=>x.id!==id).sort((a,b)=>a.nombre.localeCompare(b.nombre,'es'));
+  if(!otros.length){ alert('Todavía no hay otro insumo con el que fusionar.'); return; }
+  _fusInsumoOrigenId = id;
+  document.getElementById('fusInsumoSub').innerHTML = `"<strong>${origen.nombre}</strong>" va a desaparecer del catálogo y sus lotes/recetas van a quedar con el insumo que elijas.`;
+  document.getElementById('fusInsumoDestino').innerHTML = otros.map(x=>`<option value="${x.id}">${x.nombre}</option>`).join('');
+  document.getElementById('modalFusionarInsumo').classList.add('open');
+}
+
+function confirmarFusionInsumo(){
+  const destinoId = document.getElementById('fusInsumoDestino').value;
+  const origenId = _fusInsumoOrigenId;
+  if(!destinoId || !origenId || destinoId===origenId) return;
+  const origen = catalogo.insumos.find(x=>x.id===origenId);
+  const destino = catalogo.insumos.find(x=>x.id===destinoId);
+  if(!origen || !destino) return;
+  traz.lotes.forEach(l=>{ if(l.insumoId===origenId) l.insumoId=destinoId; });
+  catalogo.preparaciones.forEach(p=>{ (p.ingredientes||[]).forEach(ing=>{ if(ing.insumoId===origenId) ing.insumoId=destinoId; }); });
+  catalogo.insumos = catalogo.insumos.filter(x=>x.id!==origenId);
+  audit('Insumos fusionados', '"'+origen.nombre+'" → "'+destino.nombre+'"', 'trazabilidad');
+  saveCatalogo();
+  saveTraz();
+  _fusInsumoOrigenId = null;
+  closeModal('modalFusionarInsumo');
+  renderTraz();
+}
+
 // Genera un código de lote interno único: L-AAAAMMDD-NNN
 function generarCodigoLote(){
   const fecha = today().replace(/-/g,'');
@@ -6898,7 +7246,7 @@ function generarCodigoLote(){
 // ── Navegación entre sub-pestañas ──
 function switchTrazTab(tab, btn){
   trazActiveTab = tab;
-  const panelIds = {lotes:'trazPanelLotes', producciones:'trazPanelProducciones', buscar:'trazPanelBuscar', nc:'trazPanelNC', prep:'trazPanelPrep', muestras:'trazPanelMuestras', proveedores:'trazPanelProveedores'};
+  const panelIds = {lotes:'trazPanelLotes', producciones:'trazPanelProducciones', buscar:'trazPanelBuscar', nc:'trazPanelNC', prep:'trazPanelPrep', insumos:'trazPanelInsumos', muestras:'trazPanelMuestras', proveedores:'trazPanelProveedores'};
   Object.keys(panelIds).forEach(t=>{
     document.getElementById(panelIds[t]).style.display = (t===tab)?'block':'none';
   });
@@ -6913,6 +7261,7 @@ function renderTraz(){
   else if(trazActiveTab==='producciones') renderTrazProducciones();
   else if(trazActiveTab==='nc') renderTrazNC();
   else if(trazActiveTab==='prep') renderTrazPrep();
+  else if(trazActiveTab==='insumos') renderTrazInsumos();
   else if(trazActiveTab==='muestras') renderTrazMuestras();
   else if(trazActiveTab==='proveedores') renderTrazProveedores();
 }
@@ -6921,6 +7270,7 @@ function poblarTrazSelects(){
   populateSel('loteSector', cfg.sectores);
   populateSel('prodSector', cfg.sectores);
   populateSel('prodTurno', cfg.turnos);
+  poblarDatalistInsumos();
   const selProv = document.getElementById('loteProveedor');
   if(selProv){
     const prev = selProv.value;
@@ -7053,23 +7403,26 @@ function guardarLote(){
   const fechaVencimiento = document.getElementById('loteFechaVencimiento').value;
   const observaciones = document.getElementById('loteObs').value.trim();
   if(!insumo){ alert('Ingresá el insumo.'); return; }
+  const insumoObj = resolverOCrearInsumo(insumo);
+  const insumoId = insumoObj ? insumoObj.id : null;
 
   if(trazEditLoteId){
     const l = traz.lotes.find(x=>x.id===trazEditLoteId);
     if(!l) return;
-    Object.assign(l, {insumo,proveedorId,loteProveedor,sector,cantidad,unidad,fechaRecepcion,fechaVencimiento,observaciones});
+    Object.assign(l, {insumo,insumoId,proveedorId,loteProveedor,sector,cantidad,unidad,fechaRecepcion,fechaVencimiento,observaciones});
     audit('Lote editado: '+l.codigo, insumo, 'trazabilidad');
   } else {
     const l = {
       id: 'lt_'+Date.now()+'_'+Math.floor(Math.random()*1000),
       codigo: generarCodigoLote(),
-      insumo, proveedorId, loteProveedor, sector, cantidad, unidad,
+      insumo, insumoId, proveedorId, loteProveedor, sector, cantidad, unidad,
       fechaRecepcion, fechaVencimiento, observaciones, alertado:false
     };
     traz.lotes.unshift(l);
     audit('Lote recibido: '+l.codigo, insumo+' — '+sector, 'trazabilidad');
   }
   saveTraz();
+  saveCatalogo(); // por si resolverOCrearInsumo() acaba de crear un insumo nuevo
   closeModal('modalLote');
   renderTraz();
   updateTrazBadge();
@@ -7191,6 +7544,7 @@ function openProduccionModal(){
   document.getElementById('prodObs').value='';
   document.getElementById('prodRecetaRef').style.display='none';
   document.getElementById('prodRecetaRef').innerHTML='';
+  document.getElementById('prodFaltantesLotes').style.display='none';
   document.getElementById('prodCambioMenuMotivo').value='';
   document.getElementById('prodCambioMenuWrap').style.display='none';
 
@@ -7209,7 +7563,7 @@ function openProduccionModal(){
   } else {
     cont.innerHTML = vigentes.map(l=>`
       <label style="display:flex;align-items:center;gap:8px;font-size:12px;cursor:pointer;">
-        <input type="checkbox" class="prodLoteChk" value="${l.id}" style="width:14px;height:14px;" />
+        <input type="checkbox" class="prodLoteChk" value="${l.id}" data-insumo="${l.insumoId||''}" style="width:14px;height:14px;" />
         ${l.insumo} <span style="font-family:var(--mono);color:var(--text3);">(${l.codigo})</span> ${badgeEstadoLote(estadoLote(l))}
       </label>`).join('');
   }
@@ -7223,7 +7577,7 @@ function openProduccionModal(){
 function onProdPrepCatalogoChange(){
   const id = document.getElementById('prodPrepCatalogo').value;
   const ref = document.getElementById('prodRecetaRef');
-  if(!id){ ref.style.display='none'; ref.innerHTML=''; return; }
+  if(!id){ ref.style.display='none'; ref.innerHTML=''; document.getElementById('prodFaltantesLotes').style.display='none'; return; }
   const p = catalogo.preparaciones.find(x=>x.id===id);
   if(!p) return;
   document.getElementById('prodPreparacion').value = p.nombre;
@@ -7245,13 +7599,35 @@ function onProdPrepCatalogoChange(){
   ref.innerHTML = html;
   ref.style.display = 'block';
 
-  // Sugerir (tildar) lotes vigentes cuyo insumo coincide con algún ingrediente
-  const nombresIngredientes = p.ingredientes.map(i=>i.nombre.toLowerCase().trim());
+  // Sugerir (tildar) lotes vigentes cuyo insumo es EXACTAMENTE el mismo que
+  // pide la receta — antes esto comparaba texto parecido ("¿el nombre del
+  // lote contiene el nombre del ingrediente?"), ahora compara insumoId, que
+  // es el vínculo real armado en catalogo.insumos. Se resetea primero para
+  // no arrastrar tildes de un plato elegido antes en el mismo modal.
+  const insumoIdsReceta = [...new Set(p.ingredientes.map(i=>i.insumoId).filter(Boolean))];
+  const insumoIdsConLote = new Set();
   document.querySelectorAll('.prodLoteChk').forEach(chk=>{
-    const label = chk.parentElement.textContent.toLowerCase();
-    const coincide = nombresIngredientes.some(ni => ni.length>3 && label.includes(ni));
-    if(coincide) chk.checked = true;
+    const insumoId = chk.dataset.insumo;
+    const coincide = !!insumoId && insumoIdsReceta.includes(insumoId);
+    chk.checked = coincide;
+    if(coincide) insumoIdsConLote.add(insumoId);
   });
+
+  // Avisar (sin bloquear — hay insumos, como sal o condimentos, que no se
+  // controlan por lote) si algún ingrediente de la receta no tiene ningún
+  // lote vigente cargado.
+  const faltantes = [...new Set(
+    p.ingredientes.filter(i=>i.insumoId && !insumoIdsConLote.has(i.insumoId)).map(i=>i.nombre)
+  )];
+  const avisoFaltantes = document.getElementById('prodFaltantesLotes');
+  if(avisoFaltantes){
+    if(faltantes.length){
+      avisoFaltantes.style.display = 'block';
+      avisoFaltantes.innerHTML = `⚠ No hay lotes vigentes cargados para: <strong>${faltantes.join(', ')}</strong>. Revisá si falta cargarlos en "Lotes recibidos", o tildá el lote correcto a mano si el insumo no está bien enlazado en el catálogo.`;
+    } else {
+      avisoFaltantes.style.display = 'none';
+    }
+  }
   chequearCambioMenu();
 }
 
