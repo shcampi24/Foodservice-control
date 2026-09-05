@@ -460,6 +460,7 @@ tbody td{padding:8px 10px;vertical-align:middle;}
 </script>
 <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
 <script>
 if('serviceWorker' in navigator){
   window.addEventListener('load',function(){
@@ -734,7 +735,19 @@ if('serviceWorker' in navigator){
 <!-- ══ VISTA: DASHBOARD ADMIN ══ -->
 <div class="view" id="view-dashboard">
   <div id="alertBar" class="alert-bar" style="display:none;"><span>⚠</span><span id="alertText"></span></div>
-  <div class="metrics-grid" id="metricsGrid"></div>
+
+  <!-- Resumen ejecutivo cross-módulo -->
+  <div style="display:grid;grid-template-columns:1fr 250px;gap:12px;margin-bottom:1rem;">
+    <div>
+      <div class="metrics-grid" id="metricsGrid"></div>
+      <div id="crossModulePanel" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px;margin-top:8px;"></div>
+    </div>
+    <div style="background:var(--surface);border:.5px solid var(--border);border-radius:var(--rl);padding:1rem;display:flex;flex-direction:column;align-items:center;justify-content:center;">
+      <div style="font-size:11px;color:var(--text3);font-family:var(--mono);margin-bottom:6px;">Estado de tareas</div>
+      <canvas id="chartDonut" width="200" height="200"></canvas>
+    </div>
+  </div>
+
   <div class="sl">Cumplimiento por sector</div>
   <div class="bars-grid" id="barsGrid"></div>
   <div class="sl" style="margin-top:1.5rem;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
@@ -5998,6 +6011,89 @@ function renderMetrics(){
     {l:'Cumplimiento',v:pct+'%',c:pct>=80?'ok':pct>=50?'warn':'danger'}
   ];
   document.getElementById('metricsGrid').innerHTML=items.map(i=>`<div class="metric"><div class="ml">${i.l}</div><div class="mv ${i.c}">${i.v}</div></div>`).join('');
+  renderCrossModule();
+  renderDonutChart(cumplidos,pendientes,vencidos,noReal);
+}
+
+// ── Panel cross-módulo: KPIs de todos los módulos ──
+function renderCrossModule(){
+  const hoy = today();
+  // HACCP
+  const haccpHoy = (haccpLogs||[]).filter(h=>h.fecha===hoy);
+  const haccpNC = haccpHoy.filter(h=>h.conformidad==='no-conforme').length;
+  const haccpTotal = haccpHoy.length;
+  const haccpPct = haccpTotal ? Math.round((haccpTotal-haccpNC)/haccpTotal*100) : 0;
+
+  // Trazabilidad - lotes por vencer
+  const lotesPorVencer = (traz.lotes||[]).filter(l=>{
+    if(!l.fechaVencimiento) return false;
+    const d = diffDays(l.fechaVencimiento);
+    return d>=0 && d<=3;
+  }).length;
+  const lotesVencidos = (traz.lotes||[]).filter(l=>l.fechaVencimiento && diffDays(l.fechaVencimiento)<0).length;
+  const ncAbiertas = (traz.noConformidades||[]).filter(nc=>!nc.cerrado).length;
+
+  // Mantenimiento
+  const mantPend = (mantSolicitudes||[]).filter(s=>s.estado==='pendiente').length;
+  const mantTotal = (mantSolicitudes||[]).length;
+
+  // Rondas hoy
+  const rondasHoy = (rondas.registros||[]).filter(r=>r.fecha===hoy).length;
+
+  // Capacitaciones este mes
+  const mesActual = hoy.slice(0,7);
+  const capMes = (capacitaciones||[]).filter(c=>(c.fecha||'').startsWith(mesActual)).length;
+
+  const cards = [
+    {icon:'🌡', label:'HACCP hoy', val:haccpTotal?haccpPct+'% conforme':'Sin registros',
+     color:haccpTotal===0?'var(--text3)':haccpPct>=90?'var(--green)':haccpPct>=70?'var(--amber)':'var(--red)',
+     sub:haccpNC>0?haccpNC+' no conforme'+(haccpNC>1?'s':''):''},
+    {icon:'📦', label:'Trazabilidad', val:lotesPorVencer>0?lotesPorVencer+' por vencer':'Lotes OK',
+     color:lotesPorVencer>0?'var(--amber)':lotesVencidos>0?'var(--red)':'var(--green)',
+     sub:lotesVencidos>0?'⚠ '+lotesVencidos+' vencido'+(lotesVencidos>1?'s':''):(ncAbiertas>0?ncAbiertas+' NC abierta'+(ncAbiertas>1?'s':''):'')},
+    {icon:'🔧', label:'Mantenimiento', val:mantPend>0?mantPend+' pendiente'+(mantPend>1?'s':''):'Todo al día',
+     color:mantPend>0?'var(--amber)':'var(--green)',
+     sub:mantTotal>0?mantTotal+' solicitud'+(mantTotal>1?'es':'')+' total':''},
+    {icon:'📋', label:'Rondas hoy', val:rondasHoy+' completada'+(rondasHoy!==1?'s':''),
+     color:rondasHoy>0?'var(--green)':'var(--text3)', sub:''},
+    {icon:'📚', label:'Capacitaciones', val:capMes+' este mes',
+     color:capMes>0?'var(--blue)':'var(--text3)', sub:''}
+  ];
+
+  document.getElementById('crossModulePanel').innerHTML = cards.map(c=>
+    `<div style="background:var(--surface);border:.5px solid var(--border-light);border-radius:var(--r);padding:10px 12px;">
+      <div style="font-size:11px;color:var(--text3);margin-bottom:4px;">${c.icon} ${c.label}</div>
+      <div style="font-size:14px;font-weight:600;color:${c.color};font-family:var(--mono);">${c.val}</div>
+      ${c.sub?'<div style="font-size:10px;color:var(--text3);margin-top:2px;">'+c.sub+'</div>':''}
+    </div>`
+  ).join('');
+}
+
+// ── Donut chart: estado de tareas ──
+let _donutChart = null;
+function renderDonutChart(ok,pend,venc,noR){
+  if(!window.Chart) return;
+  const canvas = document.getElementById('chartDonut');
+  if(!canvas) return;
+  if(_donutChart) _donutChart.destroy();
+  _donutChart = new Chart(canvas, {
+    type:'doughnut',
+    data:{
+      labels:['Cumplidas','Pendientes','Vencidas','No realizadas'],
+      datasets:[{
+        data:[ok,pend,venc,noR],
+        backgroundColor:['#1a7a4a','#a05c10','#b02020','#5a1a9a'],
+        borderWidth:1, borderColor:'#fff'
+      }]
+    },
+    options:{
+      responsive:false,
+      cutout:'60%',
+      plugins:{
+        legend:{display:true,position:'bottom',labels:{font:{size:10,family:'IBM Plex Sans'},padding:6,usePointStyle:true,pointStyle:'circle'}}
+      }
+    }
+  });
 }
 
 function renderBars(){
