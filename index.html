@@ -459,6 +459,7 @@ tbody td{padding:8px 10px;vertical-align:middle;}
   document.dispatchEvent(new Event('fbReady'));
 </script>
 <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script>
 if('serviceWorker' in navigator){
   window.addEventListener('load',function(){
@@ -633,6 +634,7 @@ if('serviceWorker' in navigator){
         <select class="flt" id="capFiltroOperario" onchange="renderCapacitaciones()">
           <option value="">Todos los operarios</option>
         </select>
+        <button class="btn btn-ghost" onclick="exportCapacitaciones()" title="Exportar a Excel">📊 Excel</button>
         <button class="btn btn-primary" onclick="openNuevaCapacitacion()">+ Nueva capacitación</button>
       </div>
     </div>
@@ -666,6 +668,7 @@ if('serviceWorker' in navigator){
         </select>
       </div>
       <div class="toolbar-r">
+        <button class="btn btn-ghost" onclick="exportTareas()" title="Exportar a Excel">📊 Excel</button>
         <button class="btn btn-ghost" onclick="printSvReport()">🖨 Imprimir</button>
         <button class="btn btn-ghost" onclick="openTareaExtraModal()">➕ Nueva tarea</button>
         <button class="btn btn-outline" onclick="toggleSvForm()" id="btnSvToggle">+ Asignar tarea</button>
@@ -1124,7 +1127,7 @@ if('serviceWorker' in navigator){
         </select>
       </div>
       <div class="toolbar-r">
-        <button class="btn btn-ghost" onclick="exportHaccpCSV()">⬇ Exportar CSV</button>
+        <button class="btn btn-ghost" onclick="exportHACCP()" title="Exportar a Excel">📊 Excel</button>
         <button class="btn btn-ghost" onclick="printHaccp()">🖨 Imprimir</button>
         <button class="btn btn-primary" onclick="openHaccpModal()">+ Registrar control</button>
       </div>
@@ -1154,7 +1157,7 @@ if('serviceWorker' in navigator){
         </select>
       </div>
       <div class="toolbar-r">
-        <button class="btn btn-outline" onclick="exportMantCSV()">⬇ Exportar CSV</button>
+        <button class="btn btn-ghost" onclick="exportMantenimiento()" title="Exportar a Excel">📊 Excel</button>
         <button class="btn btn-primary" onclick="openMantModal()">+ Nueva solicitud</button>
       </div>
     </div>
@@ -1283,7 +1286,7 @@ if('serviceWorker' in navigator){
           <input type="text" class="flt" id="trazBuscarLote" placeholder="Buscar insumo o código..." oninput="renderTrazLotes()" />
         </div>
         <div class="toolbar-r">
-          <button class="btn btn-outline" onclick="exportLotesCSV()">⬇ Exportar CSV</button>
+          <button class="btn btn-ghost" onclick="exportTrazLotes()" title="Exportar a Excel">📊 Excel</button>
           <button class="btn btn-outline" onclick="imprimirLotes()">🖨 Imprimir</button>
           <button class="btn btn-primary" onclick="openLoteModal()">+ Nuevo lote recibido</button>
         </div>
@@ -1299,7 +1302,7 @@ if('serviceWorker' in navigator){
           <select class="flt" id="trazFiltroSectorProd" onchange="renderTrazProducciones()"><option value="">Todos los sectores</option></select>
         </div>
         <div class="toolbar-r">
-          <button class="btn btn-outline" onclick="exportProduccionesCSV()">⬇ Exportar CSV</button>
+          <button class="btn btn-ghost" onclick="exportTrazProducciones()" title="Exportar a Excel">📊 Excel</button>
           <button class="btn btn-outline" onclick="imprimirProducciones()">🖨 Imprimir</button>
           <button class="btn btn-primary" onclick="openProduccionModal()">+ Nueva producción</button>
         </div>
@@ -1329,7 +1332,7 @@ if('serviceWorker' in navigator){
           </select>
         </div>
         <div class="toolbar-r">
-          <button class="btn btn-outline" onclick="exportNCCSV()">⬇ Exportar CSV</button>
+          <button class="btn btn-ghost" onclick="exportTrazNC()" title="Exportar a Excel">📊 Excel</button>
           <button class="btn btn-outline" onclick="imprimirNC()">🖨 Imprimir</button>
           <button class="btn btn-primary" onclick="openNCModal()">+ Nueva No Conformidad</button>
         </div>
@@ -1401,6 +1404,7 @@ if('serviceWorker' in navigator){
     <div id="trazPanelProveedores" style="display:none;">
       <div class="toolbar" style="margin-bottom:1rem;">
         <div class="toolbar-r" style="margin-left:auto;">
+          <button class="btn btn-ghost" onclick="exportTrazProveedores()" title="Exportar a Excel">📊 Excel</button>
           <button class="btn btn-primary" onclick="openProveedorModal()">+ Nuevo proveedor</button>
         </div>
       </div>
@@ -1883,6 +1887,7 @@ if('serviceWorker' in navigator){
 
   <!-- Botón para Supervisor/Coordinador/Admin: asignar una ronda a alguien -->
   <div id="rondaAsignarBtnWrap" style="display:none;margin-bottom:12px;text-align:right;">
+    <button class="btn btn-ghost" onclick="exportRondas()" title="Exportar a Excel">📊 Excel</button>
     <button class="btn btn-primary" onclick="openAsignarRondaModal()">+ Asignar ronda a un operario</button>
   </div>
 
@@ -6224,6 +6229,155 @@ function openPrintPage(title, opts){
     +'<script>window.onload=function(){'+(opts.onload||'window.print();')+'};<\/script></body></html>');
   w.document.close();
   return w;
+}
+
+// ═══════════════════════════════════════════════════
+//  EXPORTAR A EXCEL (SheetJS)
+// ═══════════════════════════════════════════════════
+function exportToExcel(data, sheetName, fileName){
+  if(!window.XLSX){alert('Error: librería de Excel no cargada.');return;}
+  if(!data||!data.length){alert('No hay datos para exportar.');return;}
+  const wb = XLSX.utils.book_new();
+  const ws = XLSX.utils.json_to_sheet(data);
+  // Auto-ancho de columnas
+  const colWidths = Object.keys(data[0]).map(k => {
+    const maxLen = Math.max(k.length, ...data.map(r => String(r[k]||'').length));
+    return {wch: Math.min(maxLen + 2, 40)};
+  });
+  ws['!cols'] = colWidths;
+  XLSX.utils.book_append_sheet(wb, ws, sheetName);
+  XLSX.writeFile(wb, fileName);
+}
+
+function exportTareas(){
+  const data = (tasks||[]).map(t => ({
+    'Sector': t.sector||'',
+    'Equipo': t.equipo||'',
+    'Tipo': t.tipo||'',
+    'Responsable': t.responsable||'',
+    'Turno': t.turno||'',
+    'Estado': t.estado||'',
+    'Prioridad': t.prioridad||'',
+    'Fecha': t.fechaReg||'',
+    'Vencimiento': t.fechaVenc||'',
+    'Observaciones': t.obs||''
+  }));
+  exportToExcel(data, 'Tareas', 'FSCC_Tareas_'+today()+'.xlsx');
+}
+
+function exportHACCP(){
+  const data = (haccpLogs||[]).map(h => ({
+    'Fecha': h.fecha||'',
+    'PCC': h.pcc||'',
+    'Sector': h.sector||'',
+    'Valor': h.valor!=null?h.valor:'',
+    'Unidad': h.unidad||'',
+    'Conformidad': h.conformidad||'',
+    'Operario': h.operario||'',
+    'Turno': h.turno||'',
+    'Equipo Medición': h.equipoMed||'',
+    'Acción Correctiva': h.accionCorrectiva||'',
+    'Observaciones': h.obs||''
+  }));
+  exportToExcel(data, 'HACCP', 'FSCC_HACCP_'+today()+'.xlsx');
+}
+
+function exportTrazLotes(){
+  const provMap = {};
+  (traz.proveedores||[]).forEach(p => provMap[p.id]=p.nombre);
+  const data = (traz.lotes||[]).map(l => ({
+    'Código Lote': l.codigo||'',
+    'Insumo': l.insumo||'',
+    'Proveedor': provMap[l.proveedorId]||l.proveedorId||'',
+    'Lote Proveedor': l.loteProveedor||'',
+    'Cantidad': l.cantidad||'',
+    'Unidad': l.unidad||'',
+    'Fecha Recepción': l.fechaRecepcion||'',
+    'Fecha Vencimiento': l.fechaVencimiento||'',
+    'Sector': l.sector||'',
+    'Observaciones': l.observaciones||''
+  }));
+  exportToExcel(data, 'Lotes', 'FSCC_Trazabilidad_Lotes_'+today()+'.xlsx');
+}
+
+function exportTrazProveedores(){
+  const data = (traz.proveedores||[]).map(p => ({
+    'Nombre': p.nombre||'',
+    'CUIT': p.cuit||'',
+    'Habilitación': p.habilitacion||'',
+    'Vencimiento Hab.': p.habilitacionVence||''
+  }));
+  exportToExcel(data, 'Proveedores', 'FSCC_Proveedores_'+today()+'.xlsx');
+}
+
+function exportTrazProducciones(){
+  const data = (traz.producciones||[]).map(p => ({
+    'Fecha': p.fecha||'',
+    'Turno': p.turno||'',
+    'Sector': p.sector||'',
+    'Preparación': p.preparacion||'',
+    'Responsable': p.responsable||'',
+    'Lotes Usados': (p.lotesUsados||[]).join(', '),
+    'Observaciones': p.observaciones||''
+  }));
+  exportToExcel(data, 'Producciones', 'FSCC_Producciones_'+today()+'.xlsx');
+}
+
+function exportTrazNC(){
+  const data = (traz.noConformidades||[]).map(nc => ({
+    'Fecha': nc.fecha||'',
+    'Producto': nc.producto||'',
+    'Cantidad': nc.cantidad||'',
+    'Motivo': nc.motivo||'',
+    'Destino': nc.destino||'',
+    'Reportado Por': nc.reportadoPor||'',
+    'Cerrado': nc.cerrado?'Sí':'No',
+    'Cerrado Por': nc.cerradoPor||'',
+    'Observaciones': nc.observaciones||''
+  }));
+  exportToExcel(data, 'No Conformidades', 'FSCC_NoConformidades_'+today()+'.xlsx');
+}
+
+function exportMantenimiento(){
+  const data = (mantSolicitudes||[]).map(s => ({
+    'Fecha': s.fecha||'',
+    'Sector': s.sector||'',
+    'Equipo': s.equipoNombre||'',
+    'Tipo': s.tipo||'',
+    'Prioridad': s.prioridad||'',
+    'Estado': s.estado||'',
+    'Solicitante': s.solicitante||'',
+    'Descripción': s.desc||'',
+    'Nro Ticket': s.nroTicket||'',
+    'Observaciones': s.obs||''
+  }));
+  exportToExcel(data, 'Mantenimiento', 'FSCC_Mantenimiento_'+today()+'.xlsx');
+}
+
+function exportCapacitaciones(){
+  const data = (capacitaciones||[]).map(c => ({
+    'Fecha': c.fecha||'',
+    'Tema': c.tema||'',
+    'Capacitador': c.capacitador||'',
+    'Duración (min)': c.duracion||'',
+    'Asistentes': (c.asistentes||[]).join(', '),
+    'Observaciones': c.observaciones||''
+  }));
+  exportToExcel(data, 'Capacitaciones', 'FSCC_Capacitaciones_'+today()+'.xlsx');
+}
+
+function exportRondas(){
+  const data = (rondas.registros||[]).map(r => ({
+    'Fecha': r.fecha||'',
+    'Turno': r.turno||'',
+    'Ronda': r.plantillaNombre||r.plantillaId||'',
+    'Responsable': r.responsable||'',
+    'Estado': r.completada?'Completada':'Pendiente',
+    'Inicio': r.horaInicio||'',
+    'Fin': r.horaFin||'',
+    'Observaciones': r.observaciones||''
+  }));
+  exportToExcel(data, 'Rondas', 'FSCC_Rondas_'+today()+'.xlsx');
 }
 
 function closeModal(id){const el=document.getElementById(id);if(el)el.classList.remove('open');}
