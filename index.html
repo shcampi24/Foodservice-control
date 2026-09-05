@@ -4,6 +4,14 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>FSCC v29 — Sanatorio Parque</title>
+<link rel="manifest" href="manifest.json" />
+<meta name="theme-color" content="#1a2744" />
+<meta name="description" content="FoodService Control Center — Sistema de control de calidad y seguridad alimentaria" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="FSCC" />
+<link rel="apple-touch-icon" href="icon-192.png" />
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap" rel="stylesheet" />
 <style>
@@ -451,6 +459,17 @@ tbody td{padding:8px 10px;vertical-align:middle;}
   document.dispatchEvent(new Event('fbReady'));
 </script>
 <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
+<script>
+if('serviceWorker' in navigator){
+  window.addEventListener('load',function(){
+    navigator.serviceWorker.register('sw.js').then(function(reg){
+      console.log('SW registrado, scope:',reg.scope);
+    }).catch(function(err){
+      console.log('SW error:',err);
+    });
+  });
+}
+</script>
 </head>
 <body>
 
