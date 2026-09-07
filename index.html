@@ -3452,9 +3452,9 @@ async function loadDataFromFirebase(){
   try{
     showSyncStatus('⏳ Sincronizando...','amber');
     // Carga inicial: traer todos los datos de Firebase de una vez
-    const [fbUsers,fbCfg,fbNotif,fbMant,fbTraz,fbRondas,fbCatalogo]=await Promise.all([
+    const [fbUsers,fbCfg,fbNotif,fbTraz,fbRondas,fbCatalogo]=await Promise.all([
       fbLoad('fscc_users'), fbLoad('fscc_cfg'),
-      fbLoad('fscc_notif'), fbLoad('fscc_mant'),
+      fbLoad('fscc_notif'),
       fbLoad('fscc_traz'), fbLoad('fscc_rondas'), fbLoad('fscc_catalogo')
     ]);
     // HACCP: subcollections (1 doc por registro)
@@ -3502,8 +3502,10 @@ async function loadDataFromFirebase(){
     const auditCargado = await loadAuditFromFirebase();
     if(!auditCargado){ await migrateAuditToSubcollections(); }
     if(fbNotif){notifications=fbNotif;LS.set('fscc_notif',notifications);}
-    // HACCP ya se cargó arriba vía subcollections (loadHaccpFromFirebase / migrateHaccpToSubcollections)
-    if(fbMant){mantSolicitudes=fbMant;LS.set('fscc_mant',mantSolicitudes);}
+    // HACCP ya se cargó arriba vía subcollections
+    // Mantenimiento: subcollections (1 doc por solicitud)
+    const mantCargado = await loadMantFromFirebase();
+    if(!mantCargado){ await migrateMantToSubcollections(); }
     if(fbTraz){traz=fbTraz;if(!traz.proveedores)traz.proveedores=[];if(!traz.lotes)traz.lotes=[];if(!traz.producciones)traz.producciones=[];if(!traz.noConformidades)traz.noConformidades=[];if(!traz.muestrasTestigo)traz.muestrasTestigo=[];LS.set('fscc_traz',traz);}
     if(fbRondas){rondas=fbRondas;if(!rondas.plantillas||!rondas.plantillas.length)rondas.plantillas=seedPlantillasRondas();if(!rondas.registros)rondas.registros=[];if(!rondas.asignaciones)rondas.asignaciones=[];if(!rondas.asignacionesRecurrentes)rondas.asignacionesRecurrentes=[];LS.set('fscc_rondas',rondas);}
     if(fbCatalogo){catalogo=fbCatalogo;if(!catalogo.preparaciones||!catalogo.preparaciones.length)catalogo.preparaciones=seedCatalogoPreparaciones();if(!catalogo.insumos)catalogo.insumos=[];LS.set('fscc_catalogo',catalogo);}
@@ -3551,12 +3553,8 @@ async function loadDataFromFirebase(){
     });
     // HACCP: listener en subcollection (1 doc por registro)
     fbWatchHaccp(()=>{ _renderAllDebounced(); });
-    fbWatch('fscc_mant',(val)=>{
-      if(_localSaveInProgress)return;
-      mantSolicitudes=val;LS.set('fscc_mant',mantSolicitudes);
-      if(currentUser)updateMantBadge();
-      _renderAllDebounced();
-    });
+    // Mantenimiento: listener en subcollection (1 doc por solicitud)
+    fbWatchMant(()=>{ if(currentUser)updateMantBadge(); _renderAllDebounced(); });
     fbWatch('fscc_traz',(val)=>{
       if(_localSaveInProgress)return;
       traz=val||{proveedores:[],lotes:[],producciones:[],noConformidades:[],muestrasTestigo:[]};
@@ -4097,8 +4095,7 @@ async function saveAll(){
       fbSave('fscc_users',users),
       // Audit ya NO va acá — usa subcollections individuales
       fbSave('fscc_notif',notifications),
-      // HACCP ya NO va acá — usa subcollections individuales
-      fbSave('fscc_mant',mantSolicitudes),
+      // HACCP, Mant ya NO van acá — usan subcollections
       fbSave('fscc_traz',traz), fbSave('fscc_rondas',rondas), fbSave('fscc_catalogo',catalogo),
       fbSave('fscc_stock',stock)
     ]);
@@ -10569,9 +10566,71 @@ function loadMant(){
   mantSolicitudes = LS.get('fscc_mant') || [];
 }
 
+// ── Mantenimiento: subcollections (1 doc por solicitud) ──
+function _rutaMantCol(){ return 'instituciones/'+INSTITUCION_ID+'/fscc_mant'; }
+function _rutaMantDoc(solId){ return 'instituciones/'+INSTITUCION_ID+'/fscc_mant/'+solId; }
+
 function saveMant(){
   LS.set('fscc_mant', mantSolicitudes);
-  fbSave('fscc_mant', mantSolicitudes).catch(()=>{});
+}
+
+async function saveMantDoc(sol){
+  if(DEMO_MODE || !window._db) return;
+  try{
+    await window._fsSet(window._fsDoc(_rutaMantDoc(String(sol.id))), sol, {merge:false});
+  }catch(e){console.warn('saveMantDoc error',e);}
+}
+
+async function deleteMantFirestore(solId){
+  if(DEMO_MODE || !window._db) return;
+  try{ await window._fsDelete(window._fsDoc(_rutaMantDoc(String(solId)))); }catch(e){}
+}
+
+async function loadMantFromFirebase(){
+  if(DEMO_MODE || !window._db) return false;
+  try{
+    const colRef = window._fsCol(_rutaMantCol());
+    const snap = await window._fsGetDocs(colRef);
+    if(snap && !snap.empty){
+      mantSolicitudes = [];
+      snap.forEach(d => mantSolicitudes.push(d.data()));
+      mantSolicitudes.sort((a,b) => (b.id||0) - (a.id||0));
+      LS.set('fscc_mant', mantSolicitudes);
+      return true;
+    }
+    return false;
+  }catch(e){console.warn('loadMantFromFirebase error',e);return false;}
+}
+
+async function migrateMantToSubcollections(){
+  if(DEMO_MODE || !window._db) return;
+  const oldData = await fbLoad('fscc_mant');
+  if(!oldData || !oldData.length) return;
+  console.log('Migrando '+oldData.length+' solicitudes mant. a subcollections...');
+  let m=0;
+  for(const sol of oldData){
+    try{ await window._fsSet(window._fsDoc(_rutaMantDoc(String(sol.id))), sol, {merge:false}); m++; }catch(e){}
+  }
+  try{ await window._fsDelete(window._fsDoc(_rutaInstitucion('fscc_mant'))); }catch(e){}
+  console.log('Migración mant. completada: '+m+'/'+oldData.length);
+  mantSolicitudes = oldData;
+  mantSolicitudes.sort((a,b) => (b.id||0) - (a.id||0));
+  LS.set('fscc_mant', mantSolicitudes);
+}
+
+function fbWatchMant(renderCallback){
+  if(DEMO_MODE || !window._db) return;
+  const colRef = window._fsCol(_rutaMantCol());
+  const unsub = window._fsSnap(colRef, (snapshot) => {
+    if(_localSaveInProgress) return;
+    mantSolicitudes = [];
+    snapshot.forEach(d => mantSolicitudes.push(d.data()));
+    mantSolicitudes.sort((a,b) => (b.id||0) - (a.id||0));
+    LS.set('fscc_mant', mantSolicitudes);
+    if(renderCallback) renderCallback();
+  });
+  _snapListeners.push(unsub);
+  return unsub;
 }
 
 function updateMantBadge(){
@@ -10703,6 +10762,7 @@ function saveMantSolicitud(){
   const tipo = document.getElementById('mantTipo').value;
   const obs = document.getElementById('mantObs').value.trim();
 
+  let solGuardada;
   if(mantEditId){
     // Editar existente
     const idx = mantSolicitudes.findIndex(x => x.id === mantEditId);
@@ -10712,6 +10772,7 @@ function saveMantSolicitud(){
         sector, equipoId, equipoNombre: equipoObj?equipoObj.nombre:'',
         prioridad, tipo, desc, obs
       };
+      solGuardada = mantSolicitudes[idx];
       audit(`Solicitud mant. editada: ${sector}`, tipo, 'sistema');
     }
   } else {
@@ -10728,11 +10789,13 @@ function saveMantSolicitud(){
       nroTicket: ''
     };
     mantSolicitudes.unshift(sol);
+    solGuardada = sol;
     audit(`Solicitud mant. creada: ${sector}`, `${tipo} — ${prioridad}`, 'sistema');
     pushNotifMantNueva('🔧 Nueva solicitud de Mantenimiento', `${sector}: ${tipo} (${prioridad}) — por ${sol.solicitante}`, sol.id);
   }
 
   saveMant();
+  if(solGuardada) saveMantDoc(solGuardada);
   closeModal('modalMant');
   renderMant();
   updateMantBadge();
@@ -10742,6 +10805,7 @@ function deleteMantSolicitud(id){
   if(!confirm('¿Eliminar esta solicitud?')) return;
   mantSolicitudes = mantSolicitudes.filter(s => s.id !== id);
   saveMant();
+  deleteMantFirestore(id);
   renderMant();
   updateMantBadge();
   audit('Solicitud mantenimiento eliminada','','sistema');
@@ -10851,6 +10915,7 @@ function saveMantEstado(){
   mantSolicitudes[idx].estado = nuevoEstado;
   mantSolicitudes[idx].nroTicket = document.getElementById('mantNroTicket').value.trim();
   saveMant();
+  saveMantDoc(mantSolicitudes[idx]);
   closeModal('modalMantAdmin');
   renderMant();
   updateMantBadge();
@@ -10933,7 +10998,11 @@ function importarBackup(){
         // Tareas: guardar cada una como doc individual en subcollection
         saveTasks(); // localStorage
         for(const t of tasks){ saveTaskDoc(t); }
-        if(data.mantSolicitudes){ mantSolicitudes = data.mantSolicitudes; saveMant(); }
+        if(data.mantSolicitudes){
+          mantSolicitudes = data.mantSolicitudes;
+          saveMant();
+          for(const s of mantSolicitudes){ saveMantDoc(s); }
+        }
         saveAll();
         audit('Backup restaurado', data.fecha||'', 'sistema');
         alert('✅ Backup restaurado correctamente. Se recargará la aplicación.');
