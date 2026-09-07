@@ -3452,11 +3452,17 @@ async function loadDataFromFirebase(){
   try{
     showSyncStatus('⏳ Sincronizando...','amber');
     // Carga inicial: traer todos los datos de Firebase de una vez
-    const [fbUsers,fbCfg,fbTasks,fbAudit,fbNotif,fbHaccp,fbMant,fbTraz,fbRondas,fbCatalogo]=await Promise.all([
+    const [fbUsers,fbCfg,fbTasks,fbAudit,fbNotif,fbMant,fbTraz,fbRondas,fbCatalogo]=await Promise.all([
       fbLoad('fscc_users'), fbLoad('fscc_cfg'), fbLoad('fscc_tasks'),
-      fbLoad('fscc_audit'), fbLoad('fscc_notif'), fbLoad('fscc_haccp'), fbLoad('fscc_mant'),
+      fbLoad('fscc_audit'), fbLoad('fscc_notif'), fbLoad('fscc_mant'),
       fbLoad('fscc_traz'), fbLoad('fscc_rondas'), fbLoad('fscc_catalogo')
     ]);
+    // HACCP: subcollections (1 doc por registro)
+    const haccpCargado = await loadHaccpFromFirebase();
+    if(!haccpCargado){
+      // No hay subcollections → intentar migrar del formato viejo
+      await migrateHaccpToSubcollections();
+    }
 
     // Regla: si Firebase tiene datos, SIEMPRE ganan sobre localStorage
     // Solo seedear si Firebase está completamente vacío (primer uso real)
@@ -3490,7 +3496,7 @@ async function loadDataFromFirebase(){
 
     if(fbAudit){auditLog=fbAudit;LS.set('fscc_audit',auditLog);}
     if(fbNotif){notifications=fbNotif;LS.set('fscc_notif',notifications);}
-    if(fbHaccp){haccpLogs=fbHaccp;LS.set('fscc_haccp',haccpLogs);}
+    // HACCP ya se cargó arriba vía subcollections (loadHaccpFromFirebase / migrateHaccpToSubcollections)
     if(fbMant){mantSolicitudes=fbMant;LS.set('fscc_mant',mantSolicitudes);}
     if(fbTraz){traz=fbTraz;if(!traz.proveedores)traz.proveedores=[];if(!traz.lotes)traz.lotes=[];if(!traz.producciones)traz.producciones=[];if(!traz.noConformidades)traz.noConformidades=[];if(!traz.muestrasTestigo)traz.muestrasTestigo=[];LS.set('fscc_traz',traz);}
     if(fbRondas){rondas=fbRondas;if(!rondas.plantillas||!rondas.plantillas.length)rondas.plantillas=seedPlantillasRondas();if(!rondas.registros)rondas.registros=[];if(!rondas.asignaciones)rondas.asignaciones=[];if(!rondas.asignacionesRecurrentes)rondas.asignacionesRecurrentes=[];LS.set('fscc_rondas',rondas);}
@@ -3540,11 +3546,8 @@ async function loadDataFromFirebase(){
       notifications=val;LS.set('fscc_notif',notifications);
       updateBell();renderNotifPanel();
     });
-    fbWatch('fscc_haccp',(val)=>{
-      if(_localSaveInProgress)return;
-      haccpLogs=val;LS.set('fscc_haccp',haccpLogs);
-      _renderAllDebounced();
-    });
+    // HACCP: listener en subcollection (1 doc por registro)
+    fbWatchHaccp(()=>{ _renderAllDebounced(); });
     fbWatch('fscc_mant',(val)=>{
       if(_localSaveInProgress)return;
       mantSolicitudes=val;LS.set('fscc_mant',mantSolicitudes);
@@ -3964,7 +3967,8 @@ async function saveAll(){
       fbSave('fscc_cfg',cfg), fbSave('fscc_tasks',tasks),
       fbSave('fscc_users',users), fbSave('fscc_audit',auditLog),
       fbSave('fscc_notif',notifications),
-      fbSave('fscc_haccp',haccpLogs), fbSave('fscc_mant',mantSolicitudes),
+      // HACCP ya NO va acá — usa subcollections individuales
+      fbSave('fscc_mant',mantSolicitudes),
       fbSave('fscc_traz',traz), fbSave('fscc_rondas',rondas), fbSave('fscc_catalogo',catalogo),
       fbSave('fscc_stock',stock)
     ]);
@@ -7294,12 +7298,90 @@ let haccpLogs = [];
 let haccpActiveTab = 'registro';
 
 function loadHaccp(){
-  haccpLogs = LS.get('fscc_haccp') || seedHaccpDemoData();
+  haccpLogs = LS.get('fscc_haccp') || [];
 }
 
+// ── HACCP: subcollections (1 doc por registro) ──
+function _rutaHaccpCol(){ return 'instituciones/'+INSTITUCION_ID+'/fscc_haccp'; }
+function _rutaHaccpDoc(logId){ return 'instituciones/'+INSTITUCION_ID+'/fscc_haccp/'+logId; }
+
 function saveHaccp(){
+  // Solo guarda en localStorage (cache local).
+  // Firebase se guarda individualmente con saveHaccpDoc().
   LS.set('fscc_haccp', haccpLogs);
-  fbSave('fscc_haccp', haccpLogs).catch(()=>{});
+}
+
+async function saveHaccpDoc(log){
+  if(DEMO_MODE) return;
+  LS.set('fscc_haccp', haccpLogs);
+  try{
+    if(!window._db) return;
+    await window._fsSet(window._fsDoc(_rutaHaccpDoc(String(log.id))), log, {merge:false});
+    showSyncStatus('☁ Guardado','green');
+  }catch(e){console.warn('saveHaccpDoc error',e);showSyncStatus('⚠ Error HACCP','amber');}
+}
+
+async function deleteHaccpFirestore(logId){
+  if(DEMO_MODE) return;
+  try{
+    if(!window._db) return;
+    await window._fsDelete(window._fsDoc(_rutaHaccpDoc(String(logId))));
+  }catch(e){console.warn('deleteHaccpDoc error',e);}
+}
+
+async function loadHaccpFromFirebase(){
+  if(DEMO_MODE || !window._db) return;
+  try{
+    const colRef = window._fsCol(_rutaHaccpCol());
+    const snap = await window._fsGetDocs(colRef);
+    if(snap && !snap.empty){
+      haccpLogs = [];
+      snap.forEach(d => haccpLogs.push(d.data()));
+      haccpLogs.sort((a,b) => (b.id||0) - (a.id||0));
+      LS.set('fscc_haccp', haccpLogs);
+      return true; // datos cargados de subcollections
+    }
+    return false; // sin datos en subcollections
+  }catch(e){console.warn('loadHaccpFromFirebase error',e);return false;}
+}
+
+async function migrateHaccpToSubcollections(){
+  if(DEMO_MODE || !window._db) return;
+  // Leer formato viejo (1 solo doc con array)
+  const oldData = await fbLoad('fscc_haccp');
+  if(!oldData || !oldData.length) return;
+  console.log('Migrando '+oldData.length+' registros HACCP a subcollections...');
+  // Escribir cada log como documento individual
+  let migrated = 0;
+  for(const log of oldData){
+    try{
+      await window._fsSet(window._fsDoc(_rutaHaccpDoc(String(log.id))), log, {merge:false});
+      migrated++;
+    }catch(e){console.warn('Error migrando HACCP log',log.id,e);}
+  }
+  // Borrar documento viejo
+  try{
+    await window._fsDelete(window._fsDoc(_rutaInstitucion('fscc_haccp')));
+  }catch(e){console.warn('Error borrando doc HACCP viejo',e);}
+  console.log('Migración HACCP completada: '+migrated+'/'+oldData.length+' registros.');
+  haccpLogs = oldData;
+  haccpLogs.sort((a,b) => (b.id||0) - (a.id||0));
+  LS.set('fscc_haccp', haccpLogs);
+}
+
+function fbWatchHaccp(renderCallback){
+  if(DEMO_MODE || !window._db) return;
+  const colRef = window._fsCol(_rutaHaccpCol());
+  const unsub = window._fsSnap(colRef, (snapshot) => {
+    if(_localSaveInProgress) return;
+    haccpLogs = [];
+    snapshot.forEach(d => haccpLogs.push(d.data()));
+    haccpLogs.sort((a,b) => (b.id||0) - (a.id||0));
+    LS.set('fscc_haccp', haccpLogs);
+    if(renderCallback) renderCallback();
+  });
+  _snapListeners.push(unsub);
+  return unsub;
 }
 
 function seedHaccpDemoData(){
@@ -7620,7 +7702,8 @@ function saveHaccpLog(){
     registradoPor:currentUser?currentUser.nombre:'—'
   };
   haccpLogs.unshift(log);
-  saveHaccp();
+  saveHaccp(); // localStorage
+  saveHaccpDoc(log); // Firebase individual doc
   audit(`HACCP: ${pcc}`,`${sector} / ${operario} → ${conformidad}`,'haccp');
   if(conformidad==='no-conforme'){
     pushNotif('incident','⚠ No conformidad HACCP',`${pcc} — ${sector} / ${operario}`,null);
@@ -7632,7 +7715,8 @@ function saveHaccpLog(){
 function deleteHaccpLog(id){
   if(!confirm('¿Eliminar este registro HACCP?'))return;
   haccpLogs=haccpLogs.filter(l=>l.id!==id);
-  saveHaccp();
+  saveHaccp(); // localStorage
+  deleteHaccpFirestore(id); // Firebase individual doc
   audit('HACCP: registro eliminado','','haccp');
   renderHaccpActive();
 }
@@ -10098,7 +10182,7 @@ async function confirmarFirmaRonda(){
   // queda como un registro HACCP normal — aparece en Historial y Resumen HACCP.
   if(_rondaEnCurso.destino==='haccp'){
     _rondaEnCurso.items.filter(it=>it.tipo==='temp' && it.pcc && it.valor!=null).forEach(it=>{
-      haccpLogs.unshift({
+      const hLog = {
         id: Date.now()+Math.random(),
         pcc: it.pcc, sector: _rondaEnCurso.sector, operario: _rondaEnCurso.responsable,
         turno: _rondaEnCurso.turno, fecha: _rondaEnCurso.fecha, hora: nowISO(),
@@ -10106,12 +10190,14 @@ async function confirmarFirmaRonda(){
         conformidad: it.estado==='ok' ? 'conforme' : 'no-conforme',
         equipoMed: it.texto, accionCorrectiva: it.motivo||'', obs: 'Cargado desde Rondas: '+_rondaEnCurso.nombre,
         registradoPor: currentUser.nombre
-      });
+      };
+      haccpLogs.unshift(hLog);
+      saveHaccpDoc(hLog); // Firebase individual doc
       if(it.estado==='mal'){
         pushNotif('incident','⚠ No conformidad HACCP',`${it.pcc} — ${_rondaEnCurso.sector} / ${currentUser.nombre} (${it.valor}${it.unidad||'°C'})`,null);
       }
     });
-    saveHaccp();
+    saveHaccp(); // localStorage
   }
 
   saveRondas();
@@ -10701,7 +10787,12 @@ function importarBackup(){
         cfg = data.cfg; tasks = data.tasks; users = data.users;
         if(data.auditLog) auditLog = data.auditLog;
         if(data.notifications) notifications = data.notifications;
-        if(data.haccpLogs){ haccpLogs = data.haccpLogs; saveHaccp(); }
+        if(data.haccpLogs){
+          haccpLogs = data.haccpLogs;
+          saveHaccp(); // localStorage
+          // Guardar cada log como doc individual en subcollection
+          for(const log of haccpLogs){ saveHaccpDoc(log); }
+        }
         if(data.mantSolicitudes){ mantSolicitudes = data.mantSolicitudes; saveMant(); }
         saveAll();
         audit('Backup restaurado', data.fecha||'', 'sistema');

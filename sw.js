@@ -1,5 +1,5 @@
 // FSCC Service Worker v2
-const CACHE_NAME = 'fscc-v30';
+const CACHE_NAME = 'fscc-v31';
 const ASSETS = [
   './',
   './index.html',
