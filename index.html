@@ -3507,7 +3507,24 @@ async function loadDataFromFirebase(){
     const mantCargado = await loadMantFromFirebase();
     if(!mantCargado){ await migrateMantToSubcollections(); }
     if(fbTraz){traz=fbTraz;if(!traz.proveedores)traz.proveedores=[];if(!traz.lotes)traz.lotes=[];if(!traz.producciones)traz.producciones=[];if(!traz.noConformidades)traz.noConformidades=[];if(!traz.muestrasTestigo)traz.muestrasTestigo=[];LS.set('fscc_traz',traz);}
-    if(fbRondas){rondas=fbRondas;if(!rondas.plantillas||!rondas.plantillas.length)rondas.plantillas=seedPlantillasRondas();if(!rondas.registros)rondas.registros=[];if(!rondas.asignaciones)rondas.asignaciones=[];if(!rondas.asignacionesRecurrentes)rondas.asignacionesRecurrentes=[];LS.set('fscc_rondas',rondas);}
+    if(fbRondas){
+      rondas=fbRondas;
+      if(!rondas.plantillas||!rondas.plantillas.length)rondas.plantillas=seedPlantillasRondas();
+      if(!rondas.asignaciones)rondas.asignaciones=[];
+      if(!rondas.asignacionesRecurrentes)rondas.asignacionesRecurrentes=[];
+      // Registros: cargar desde subcollection
+      const regsSubcol = await loadRondasRegFromFirebase();
+      if(regsSubcol.length > 0){
+        rondas.registros = regsSubcol;
+      } else if(fbRondas.registros && fbRondas.registros.length > 0){
+        // Migrar registros del doc viejo a subcollections
+        rondas.registros = fbRondas.registros;
+        await migrateRondasRegToSubcollections(fbRondas.registros);
+      } else {
+        rondas.registros = [];
+      }
+      LS.set('fscc_rondas',rondas);
+    }
     if(fbCatalogo){catalogo=fbCatalogo;if(!catalogo.preparaciones||!catalogo.preparaciones.length)catalogo.preparaciones=seedCatalogoPreparaciones();if(!catalogo.insumos)catalogo.insumos=[];LS.set('fscc_catalogo',catalogo);}
     // Catálogo de insumos: lo arma solo, una vez, a partir de lo que ya
     // había en lotes/recetas como texto libre (ver migrarCatalogoInsumos).
@@ -3563,12 +3580,18 @@ async function loadDataFromFirebase(){
       LS.set('fscc_traz',traz);
       if(currentUser && document.getElementById('view-trazabilidad') && document.getElementById('view-trazabilidad').classList.contains('active')) renderTraz();
     });
+    // Rondas: config en doc único + registros en subcollection
     fbWatch('fscc_rondas',(val)=>{
       if(_localSaveInProgress)return;
-      rondas=val||{plantillas:seedPlantillasRondas(),registros:[],asignaciones:[],asignacionesRecurrentes:[]};
+      const regsActuales = rondas.registros; // preservar registros de subcollection
+      rondas=val||{plantillas:seedPlantillasRondas(),asignaciones:[],asignacionesRecurrentes:[]};
+      rondas.registros = regsActuales; // restaurar registros
       if(!rondas.asignaciones)rondas.asignaciones=[];
       if(!rondas.asignacionesRecurrentes)rondas.asignacionesRecurrentes=[];
       LS.set('fscc_rondas',rondas);
+      if(currentUser && document.getElementById('view-rondas') && document.getElementById('view-rondas').classList.contains('active')) renderRondas();
+    });
+    fbWatchRondasReg(()=>{
       if(currentUser && document.getElementById('view-rondas') && document.getElementById('view-rondas').classList.contains('active')) renderRondas();
     });
     fbWatch('fscc_catalogo',(val)=>{
@@ -4096,9 +4119,16 @@ async function saveAll(){
       // Audit ya NO va acá — usa subcollections individuales
       fbSave('fscc_notif',notifications),
       // HACCP, Mant ya NO van acá — usan subcollections
-      fbSave('fscc_traz',traz), fbSave('fscc_rondas',rondas), fbSave('fscc_catalogo',catalogo),
+      fbSave('fscc_traz',traz),
+      // Rondas: solo config (sin registros — van en subcollection fscc_rondas_reg)
+      fbSave('fscc_rondas',{plantillas:rondas.plantillas||[],asignaciones:rondas.asignaciones||[],asignacionesRecurrentes:rondas.asignacionesRecurrentes||[]}),
+      fbSave('fscc_catalogo',catalogo),
       fbSave('fscc_stock',stock)
     ]);
+    // Rondas registros → subcollection
+    if(rondas.registros && rondas.registros.length){
+      for(const reg of rondas.registros){ await saveRondaRegDoc(reg); }
+    }
     showSyncStatus('☁ Guardado','green');
   }catch(e){
     showSyncStatus('⚠ Error al guardar en nube','amber');
@@ -9966,9 +9996,79 @@ function loadRondas(){
   if(!rondas.asignacionesRecurrentes) rondas.asignacionesRecurrentes = [];
 }
 
+// ── Rondas: registros en subcollection, config en doc único ──
+function _rutaRondasRegCol(){ return 'instituciones/'+INSTITUCION_ID+'/fscc_rondas_reg'; }
+function _rutaRondasRegDoc(regId){ return 'instituciones/'+INSTITUCION_ID+'/fscc_rondas_reg/'+regId; }
+
 function saveRondas(){
   LS.set('fscc_rondas', rondas);
-  fbSave('fscc_rondas', rondas).catch(()=>{});
+  // Guardar config (plantillas, asignaciones, recurrentes) en doc único — SIN registros
+  const configSinRegistros = {
+    plantillas: rondas.plantillas||[],
+    asignaciones: rondas.asignaciones||[],
+    asignacionesRecurrentes: rondas.asignacionesRecurrentes||[]
+  };
+  fbSave('fscc_rondas', configSinRegistros).catch(()=>{});
+}
+
+async function saveRondaRegDoc(reg){
+  if(DEMO_MODE || !window._db) return;
+  try{
+    await window._fsSet(window._fsDoc(_rutaRondasRegDoc(String(reg.id))), reg, {merge:false});
+  }catch(e){console.warn('saveRondaRegDoc error',e);}
+}
+
+async function loadRondasRegFromFirebase(){
+  if(DEMO_MODE || !window._db) return [];
+  try{
+    const colRef = window._fsCol(_rutaRondasRegCol());
+    const snap = await window._fsGetDocs(colRef);
+    if(snap && !snap.empty){
+      const regs = [];
+      snap.forEach(d => regs.push(d.data()));
+      regs.sort((a,b) => {
+        const ta = a.firmaTs||a.fecha||''; const tb = b.firmaTs||b.fecha||'';
+        return tb.localeCompare(ta);
+      });
+      return regs;
+    }
+    return [];
+  }catch(e){console.warn('loadRondasRegFromFirebase error',e);return [];}
+}
+
+async function migrateRondasRegToSubcollections(oldRegistros){
+  if(DEMO_MODE || !window._db || !oldRegistros || !oldRegistros.length) return;
+  console.log('Migrando '+oldRegistros.length+' registros de rondas a subcollections...');
+  let m=0;
+  for(const reg of oldRegistros){
+    try{ await window._fsSet(window._fsDoc(_rutaRondasRegDoc(String(reg.id))), reg, {merge:false}); m++; }catch(e){}
+  }
+  // Actualizar doc config sin registros
+  const configSinRegistros = {
+    plantillas: rondas.plantillas||[],
+    asignaciones: rondas.asignaciones||[],
+    asignacionesRecurrentes: rondas.asignacionesRecurrentes||[]
+  };
+  fbSave('fscc_rondas', configSinRegistros).catch(()=>{});
+  console.log('Migración rondas registros completada: '+m+'/'+oldRegistros.length);
+}
+
+function fbWatchRondasReg(renderCallback){
+  if(DEMO_MODE || !window._db) return;
+  const colRef = window._fsCol(_rutaRondasRegCol());
+  const unsub = window._fsSnap(colRef, (snapshot) => {
+    if(_localSaveInProgress) return;
+    rondas.registros = [];
+    snapshot.forEach(d => rondas.registros.push(d.data()));
+    rondas.registros.sort((a,b) => {
+      const ta = a.firmaTs||a.fecha||''; const tb = b.firmaTs||b.fecha||'';
+      return tb.localeCompare(ta);
+    });
+    LS.set('fscc_rondas', rondas);
+    if(renderCallback) renderCallback();
+  });
+  _snapListeners.push(unsub);
+  return unsub;
 }
 
 const DIAS_SEMANA = ['domingo','lunes','martes','miercoles','miércoles','jueves','viernes','sabado','sábado'];
@@ -10311,6 +10411,7 @@ async function confirmarFirmaRonda(){
     if(asig){ asig.cumplida = true; asig.registroId = _rondaEnCurso.id; }
   }
   rondas.registros.unshift(_rondaEnCurso);
+  saveRondaRegDoc(_rondaEnCurso); // Firebase individual doc
   audit('Ronda completada: '+_rondaEnCurso.nombre, _rondaEnCurso.codigo+' — '+_rondaEnCurso.sector+' — '+_rondaEnCurso.turno, 'trazabilidad');
 
   // Si la plantilla manda sus datos a HACCP, cada ítem de temperatura también
@@ -10480,6 +10581,7 @@ async function confirmarFirmaSupervisorRonda(){
     r.supervisorTs = nowISO();
     audit('Ronda aprobada por supervisor: '+r.nombre, r.codigo+' — '+r.fecha, 'trazabilidad');
     saveRondas();
+    saveRondaRegDoc(r); // actualizar doc del registro
     closeModal('modalFirmaSupervisorRonda');
     closeModal('modalRondaDetalle');
     renderRondas();
