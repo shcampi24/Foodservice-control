@@ -3452,42 +3452,46 @@ async function loadDataFromFirebase(){
   try{
     showSyncStatus('⏳ Sincronizando...','amber');
     // Carga inicial: traer todos los datos de Firebase de una vez
-    const [fbUsers,fbCfg,fbTasks,fbAudit,fbNotif,fbMant,fbTraz,fbRondas,fbCatalogo]=await Promise.all([
-      fbLoad('fscc_users'), fbLoad('fscc_cfg'), fbLoad('fscc_tasks'),
+    const [fbUsers,fbCfg,fbAudit,fbNotif,fbMant,fbTraz,fbRondas,fbCatalogo]=await Promise.all([
+      fbLoad('fscc_users'), fbLoad('fscc_cfg'),
       fbLoad('fscc_audit'), fbLoad('fscc_notif'), fbLoad('fscc_mant'),
       fbLoad('fscc_traz'), fbLoad('fscc_rondas'), fbLoad('fscc_catalogo')
     ]);
     // HACCP: subcollections (1 doc por registro)
     const haccpCargado = await loadHaccpFromFirebase();
     if(!haccpCargado){
-      // No hay subcollections → intentar migrar del formato viejo
       await migrateHaccpToSubcollections();
+    }
+    // Tareas: subcollections (1 doc por tarea)
+    const tasksCargado = await loadTasksFromFirebase();
+    if(!tasksCargado){
+      await migrateTasksToSubcollections();
     }
 
     // Regla: si Firebase tiene datos, SIEMPRE ganan sobre localStorage
     // Solo seedear si Firebase está completamente vacío (primer uso real)
-    const fbVacio = !fbTasks && !fbUsers && !fbCfg;
+    const fbVacio = !tasksCargado && !fbUsers && !fbCfg;
 
     if(fbUsers){users=fbUsers;LS.set('fscc_users',users);}
     if(fbCfg){cfg=fbCfg;if(!cfg.recurrentes)cfg.recurrentes={};if(!cfg.equipos)cfg.equipos=[];if(!cfg.sectores)cfg.sectores=[];LS.set('fscc_cfg',cfg);}
-    if(fbTasks){
-      tasks=fbTasks;LS.set('fscc_tasks',tasks);
+    if(tasksCargado){
+      // tasks ya cargadas arriba vía subcollections
     } else if(fbVacio){
       // Firebase completamente vacío: primer uso — subir datos locales/demo
       if(!tasks||tasks.length===0){tasks=[];seedTasks();}
       else{
-        // Hay datos en LS: subirlos a Firebase
+        // Hay datos en LS: subirlos a Firebase como subcollections
+        for(const t of tasks){ await saveTaskDoc(t); }
         await Promise.all([
-          fbSave('fscc_tasks',tasks),
           fbSave('fscc_users',users),
           fbSave('fscc_cfg',cfg)
         ]);
       }
     }
-    // Si fbTasks=null pero fbUsers/fbCfg existen: Firebase parcialmente poblado,
-    // no seedear — simplemente conservar tasks locales y subirlas
-    if(!fbTasks && !fbVacio && tasks && tasks.length>0){
-      await fbSave('fscc_tasks',tasks);
+    // Si tasks vacío pero fbUsers/fbCfg existen: Firebase parcialmente poblado,
+    // subir tasks locales a subcollections
+    if(!tasksCargado && !fbVacio && tasks && tasks.length>0){
+      for(const t of tasks){ await saveTaskDoc(t); }
     }
     // Historial de eventos por tarea: a las que ya existían se les
     // reconstruye uno mínimo (ver migrarHistorialTareas). Corre acá porque
@@ -3526,11 +3530,8 @@ async function loadDataFromFirebase(){
     // ── Listeners en tiempo real para TODAS las colecciones críticas ──
     // Solo actualizar si no hay un save local en curso (evita loop)
     const _renderAllDebounced = debounce(()=>{ if(currentUser) renderAll(); }, 300);
-    fbWatch('fscc_tasks',(val)=>{
-      if(_localSaveInProgress)return;
-      tasks=val;LS.set('fscc_tasks',tasks);
-      _renderAllDebounced();
-    });
+    // Tareas: listener en subcollection (1 doc por tarea)
+    fbWatchTasks(()=>{ _renderAllDebounced(); });
     fbWatch('fscc_cfg',(val)=>{
       if(_localSaveInProgress)return;
       if(!val)return; // documento vacío/inexistente — no pisar el cfg local válido
@@ -3916,6 +3917,8 @@ function chequearGeneracionDiaria(){
   const n = generarTareasDelDia();
   if(n > 0){
     saveTasks();saveCfg();
+    // Guardar tareas generadas hoy como docs individuales
+    tasks.filter(t=>t.fechaReg===today()).forEach(t=>saveTaskDoc(t));
     if(currentUser) renderAll();
   } else {
     LS.set('fscc_ultimaGeneracion', t);
@@ -3947,7 +3950,81 @@ function loadData(){
 
 // ── Saves granulares (solo guardan la colección modificada) ──
 function saveCfg(){ LS.set('fscc_cfg',cfg); fbSave('fscc_cfg',cfg).catch(()=>{}); }
-function saveTasks(){ LS.set('fscc_tasks',tasks); fbSave('fscc_tasks',tasks).catch(()=>{}); }
+// ── Tareas: subcollections (1 doc por tarea) ──
+function _rutaTasksCol(){ return 'instituciones/'+INSTITUCION_ID+'/fscc_tasks'; }
+function _rutaTaskDoc(taskId){ return 'instituciones/'+INSTITUCION_ID+'/fscc_tasks/'+taskId; }
+
+function saveTasks(){
+  // Solo localStorage — Firebase se guarda individualmente
+  LS.set('fscc_tasks', tasks);
+}
+
+async function saveTaskDoc(task){
+  if(DEMO_MODE) return;
+  LS.set('fscc_tasks', tasks);
+  try{
+    if(!window._db) return;
+    await window._fsSet(window._fsDoc(_rutaTaskDoc(String(task.id))), task, {merge:false});
+  }catch(e){console.warn('saveTaskDoc error',e);}
+}
+
+async function deleteTaskFirestore(taskId){
+  if(DEMO_MODE) return;
+  try{
+    if(!window._db) return;
+    await window._fsDelete(window._fsDoc(_rutaTaskDoc(String(taskId))));
+  }catch(e){console.warn('deleteTaskDoc error',e);}
+}
+
+async function loadTasksFromFirebase(){
+  if(DEMO_MODE || !window._db) return false;
+  try{
+    const colRef = window._fsCol(_rutaTasksCol());
+    const snap = await window._fsGetDocs(colRef);
+    if(snap && !snap.empty){
+      tasks = [];
+      snap.forEach(d => tasks.push(d.data()));
+      tasks.sort((a,b) => (b.id||0) - (a.id||0));
+      LS.set('fscc_tasks', tasks);
+      return true;
+    }
+    return false;
+  }catch(e){console.warn('loadTasksFromFirebase error',e);return false;}
+}
+
+async function migrateTasksToSubcollections(){
+  if(DEMO_MODE || !window._db) return;
+  const oldData = await fbLoad('fscc_tasks');
+  if(!oldData || !oldData.length) return;
+  console.log('Migrando '+oldData.length+' tareas a subcollections...');
+  let migrated = 0;
+  for(const task of oldData){
+    try{
+      await window._fsSet(window._fsDoc(_rutaTaskDoc(String(task.id))), task, {merge:false});
+      migrated++;
+    }catch(e){console.warn('Error migrando tarea',task.id,e);}
+  }
+  try{ await window._fsDelete(window._fsDoc(_rutaInstitucion('fscc_tasks'))); }catch(e){}
+  console.log('Migración tareas completada: '+migrated+'/'+oldData.length);
+  tasks = oldData;
+  tasks.sort((a,b) => (b.id||0) - (a.id||0));
+  LS.set('fscc_tasks', tasks);
+}
+
+function fbWatchTasks(renderCallback){
+  if(DEMO_MODE || !window._db) return;
+  const colRef = window._fsCol(_rutaTasksCol());
+  const unsub = window._fsSnap(colRef, (snapshot) => {
+    if(_localSaveInProgress) return;
+    tasks = [];
+    snapshot.forEach(d => tasks.push(d.data()));
+    tasks.sort((a,b) => (b.id||0) - (a.id||0));
+    LS.set('fscc_tasks', tasks);
+    if(renderCallback) renderCallback();
+  });
+  _snapListeners.push(unsub);
+  return unsub;
+}
 function saveUsers(){ LS.set('fscc_users',users); fbSave('fscc_users',users).catch(()=>{}); }
 function saveAuditLog(){ LS.set('fscc_audit',auditLog); fbSave('fscc_audit',auditLog).catch(()=>{}); }
 function saveNotifs(){ LS.set('fscc_notif',notifications); fbSave('fscc_notif',notifications).catch(()=>{}); }
@@ -3964,7 +4041,8 @@ async function saveAll(){
   _localSaveInProgress = true;
   try{
     await Promise.all([
-      fbSave('fscc_cfg',cfg), fbSave('fscc_tasks',tasks),
+      fbSave('fscc_cfg',cfg),
+      // Tareas ya NO va acá — usa subcollections individuales
       fbSave('fscc_users',users), fbSave('fscc_audit',auditLog),
       fbSave('fscc_notif',notifications),
       // HACCP ya NO va acá — usa subcollections individuales
@@ -4967,7 +5045,7 @@ function confirmarRealizada(){
   );
 
   appendToSectorLog(t);
-  saveTasks();closeModal('modalRealizada');renderAll();
+  saveTasks();saveTaskDoc(t);closeModal('modalRealizada');renderAll();
 }
 
 function deshacerEstado(id){
@@ -4976,7 +5054,7 @@ function deshacerEstado(id){
   t.horaRegistro=null;t.incidencia=null;t.hechoPor=null;
   agregarEventoTarea(t, 'deshacer', {estadoAnterior:prev});
   audit(`Estado revertido: ${t.sector} — ${t.tipo}`,`de "${prev}" a Pendiente`,'tarea');
-  saveTasks();renderAll();
+  saveTasks();saveTaskDoc(t);renderAll();
 }
 
 function openSectorVerModal(sector){
@@ -5316,7 +5394,7 @@ function addTaskSupervisor(){
   const recurrente=document.getElementById('svRecurrente').checked;
   if(recurrente && equipoId && tipo){ marcarRecurrente(equipoId, tipo, true); }
   document.getElementById('svRecurrente').checked=false;
-  saveTasks();saveCfg();toggleSvForm();renderAll();renderRecurrentesCfg();
+  saveTasks();saveTaskDoc(t);saveCfg();toggleSvForm();renderAll();renderRecurrentesCfg();
 }
 
 function printSvReport(){
@@ -5373,7 +5451,7 @@ function confirmarReasignar(){
     turnoAnterior, turnoNuevo:nuevoTurno
   });
   audit(`Tarea reasignada: ${t.sector} — ${t.tipo}`, `${anterior} → ${nuevoResp} (${nuevoTurno})`, 'tarea');
-  saveTasks(); closeModal('modalReasignar'); renderAll();
+  saveTasks();saveTaskDoc(t); closeModal('modalReasignar'); renderAll();
 }
 
 // ═══════════════════════════════════════════════════
@@ -5417,7 +5495,7 @@ function guardarTareaExtra(){
   agregarEventoTarea(t, 'creacion', {responsable:resp, turno, estadoInicial:'Pendiente'});
   tasks.unshift(t);
   audit(`Tarea extra creada: ${sector} — ${desc}`,`Resp: ${resp} | ${turno} | ${prioridad}`,'tarea');
-  saveTasks(); closeModal('modalTareaExtra'); renderAll();
+  saveTasks();saveTaskDoc(t); closeModal('modalTareaExtra'); renderAll();
   pushNotif('completed','📋 Nueva tarea asignada',`${desc} — ${sector} (${resp})`,t.id);
 }
 
@@ -5483,7 +5561,11 @@ function migrarHistorialTareas(){
     }
     huboCambios = true;
   });
-  if(huboCambios){ LS.set('fscc_tasks', tasks); fbSave('fscc_tasks', tasks).catch(()=>{}); }
+  if(huboCambios){
+    LS.set('fscc_tasks', tasks);
+    // Guardar cada tarea modificada como doc individual
+    (tasks||[]).forEach(t => { if(t.historial && t.historial.length) saveTaskDoc(t); });
+  }
   return huboCambios;
 }
 
@@ -5556,7 +5638,7 @@ function saveIncidencia(){
     t.id
   );
 
-  saveTasks();closeModal('modalIncid');renderAll();
+  saveTasks();saveTaskDoc(t);closeModal('modalIncid');renderAll();
 }
 
 function openIncidFotoModal(id){
@@ -6224,14 +6306,17 @@ function addTask(){
   document.getElementById('fObs').value='';
   document.getElementById('fRecurrente').checked=false;
   clearFoto('fFotoPreview','fFotoData','fFotoClear');
-  saveTasks();saveCfg();toggleForm();renderAll();renderRecurrentesCfg();
+  saveTasks();saveTaskDoc(t);saveCfg();toggleForm();renderAll();renderRecurrentesCfg();
 }
 
 function deleteTask(id){
   const t=tasks.find(x=>x.id===id);
   if(!confirm('¿Eliminar este registro?'))return;
   audit(`Tarea eliminada: ${t?t.sector+' — '+t.tipo:'#'+id}`,'','tarea');
-  tasks=tasks.filter(x=>x.id!==id);saveTasks();renderAll();
+  tasks=tasks.filter(x=>x.id!==id);
+  saveTasks(); // localStorage
+  deleteTaskFirestore(id); // Firebase individual doc
+  renderAll();
 }
 
 function openEditModal(id){
@@ -6273,7 +6358,7 @@ function saveEdit(){
     resumen:`${prev.sector}→${t.sector} / ${prev.responsable}→${t.responsable}`
   });
   audit(`Tarea editada: ${prev.sector} — ${prev.tipo}`,`${prev.estado}→${t.estado} / ${prev.responsable}→${t.responsable}`,'tarea');
-  saveTasks();closeModal('modalEdit');renderAll();
+  saveTasks();saveTaskDoc(t);closeModal('modalEdit');renderAll();
 }
 
 // ═══════════════════════════════════════════════════
@@ -10790,9 +10875,11 @@ function importarBackup(){
         if(data.haccpLogs){
           haccpLogs = data.haccpLogs;
           saveHaccp(); // localStorage
-          // Guardar cada log como doc individual en subcollection
           for(const log of haccpLogs){ saveHaccpDoc(log); }
         }
+        // Tareas: guardar cada una como doc individual en subcollection
+        saveTasks(); // localStorage
+        for(const t of tasks){ saveTaskDoc(t); }
         if(data.mantSolicitudes){ mantSolicitudes = data.mantSolicitudes; saveMant(); }
         saveAll();
         audit('Backup restaurado', data.fecha||'', 'sistema');
