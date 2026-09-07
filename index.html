@@ -4045,7 +4045,10 @@ async function saveTaskDoc(task){
   LS.set('fscc_tasks', tasks);
   try{
     if(!window._db) return;
-    await window._fsSet(window._fsDoc(_rutaTaskDoc(String(task.id))), task, {merge:false});
+    if(!task || !task.id) return;
+    // Firestore no acepta undefined — limpiar antes de guardar
+    const clean = JSON.parse(JSON.stringify(task));
+    await window._fsSet(window._fsDoc(_rutaTaskDoc(String(task.id))), clean, {merge:false});
   }catch(e){console.warn('saveTaskDoc error',e);}
 }
 
@@ -4118,7 +4121,9 @@ function saveAuditLog(){
 async function saveAuditDoc(entry){
   if(DEMO_MODE || !window._db) return;
   try{
-    await window._fsSet(window._fsDoc(_rutaAuditDoc(String(entry.id))), entry, {merge:false});
+    if(!entry || !entry.id) return;
+    const clean = JSON.parse(JSON.stringify(entry));
+    await window._fsSet(window._fsDoc(_rutaAuditDoc(String(entry.id))), clean, {merge:false});
   }catch(e){console.warn('saveAuditDoc error',e);}
 }
 
@@ -7549,7 +7554,9 @@ async function saveHaccpDoc(log){
   LS.set('fscc_haccp', haccpLogs);
   try{
     if(!window._db) return;
-    await window._fsSet(window._fsDoc(_rutaHaccpDoc(String(log.id))), log, {merge:false});
+    if(!log || !log.id) return;
+    const clean = JSON.parse(JSON.stringify(log));
+    await window._fsSet(window._fsDoc(_rutaHaccpDoc(String(log.id))), clean, {merge:false});
     showSyncStatus('☁ Guardado','green');
   }catch(e){console.warn('saveHaccpDoc error',e);showSyncStatus('⚠ Error HACCP','amber');}
 }
@@ -8067,7 +8074,9 @@ function saveTraz(){
 async function saveTrazItemDoc(sub, item){
   if(DEMO_MODE || !window._db) return;
   try{
-    await window._fsSet(window._fsDoc(_rutaTrazDoc(sub, String(item.id))), item, {merge:false});
+    if(!item || !item.id) return;
+    const clean = JSON.parse(JSON.stringify(item));
+    await window._fsSet(window._fsDoc(_rutaTrazDoc(sub, String(item.id))), clean, {merge:false});
   }catch(e){console.warn('saveTrazItemDoc error',sub,e);}
 }
 
@@ -10147,7 +10156,9 @@ function saveRondas(){
 async function saveRondaRegDoc(reg){
   if(DEMO_MODE || !window._db) return;
   try{
-    await window._fsSet(window._fsDoc(_rutaRondasRegDoc(String(reg.id))), reg, {merge:false});
+    if(!reg || !reg.id) return;
+    const clean = JSON.parse(JSON.stringify(reg));
+    await window._fsSet(window._fsDoc(_rutaRondasRegDoc(String(reg.id))), clean, {merge:false});
   }catch(e){console.warn('saveRondaRegDoc error',e);}
 }
 
@@ -10812,7 +10823,9 @@ function saveMant(){
 async function saveMantDoc(sol){
   if(DEMO_MODE || !window._db) return;
   try{
-    await window._fsSet(window._fsDoc(_rutaMantDoc(String(sol.id))), sol, {merge:false});
+    if(!sol || !sol.id) return;
+    const clean = JSON.parse(JSON.stringify(sol));
+    await window._fsSet(window._fsDoc(_rutaMantDoc(String(sol.id))), clean, {merge:false});
   }catch(e){console.warn('saveMantDoc error',e);}
 }
 
@@ -11733,7 +11746,9 @@ function saveStock(){
 async function saveStockSubDoc(sub, item){
   if(DEMO_MODE || !window._db) return;
   try{
-    await window._fsSet(window._fsDoc(_rutaStockSubDoc(sub, String(item.id))), item, {merge:false});
+    if(!item || !item.id) return;
+    const clean = JSON.parse(JSON.stringify(item));
+    await window._fsSet(window._fsDoc(_rutaStockSubDoc(sub, String(item.id))), clean, {merge:false});
   }catch(e){console.warn('saveStockSubDoc error',sub,e);}
 }
 
