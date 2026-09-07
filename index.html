@@ -3452,9 +3452,9 @@ async function loadDataFromFirebase(){
   try{
     showSyncStatus('⏳ Sincronizando...','amber');
     // Carga inicial: traer todos los datos de Firebase de una vez
-    const [fbUsers,fbCfg,fbAudit,fbNotif,fbMant,fbTraz,fbRondas,fbCatalogo]=await Promise.all([
+    const [fbUsers,fbCfg,fbNotif,fbMant,fbTraz,fbRondas,fbCatalogo]=await Promise.all([
       fbLoad('fscc_users'), fbLoad('fscc_cfg'),
-      fbLoad('fscc_audit'), fbLoad('fscc_notif'), fbLoad('fscc_mant'),
+      fbLoad('fscc_notif'), fbLoad('fscc_mant'),
       fbLoad('fscc_traz'), fbLoad('fscc_rondas'), fbLoad('fscc_catalogo')
     ]);
     // HACCP: subcollections (1 doc por registro)
@@ -3498,7 +3498,9 @@ async function loadDataFromFirebase(){
     // recién ahora `tasks` tiene los datos definitivos de esta carga.
     migrarHistorialTareas();
 
-    if(fbAudit){auditLog=fbAudit;LS.set('fscc_audit',auditLog);}
+    // Auditoría: subcollections (1 doc por entrada)
+    const auditCargado = await loadAuditFromFirebase();
+    if(!auditCargado){ await migrateAuditToSubcollections(); }
     if(fbNotif){notifications=fbNotif;LS.set('fscc_notif',notifications);}
     // HACCP ya se cargó arriba vía subcollections (loadHaccpFromFirebase / migrateHaccpToSubcollections)
     if(fbMant){mantSolicitudes=fbMant;LS.set('fscc_mant',mantSolicitudes);}
@@ -4026,7 +4028,56 @@ function fbWatchTasks(renderCallback){
   return unsub;
 }
 function saveUsers(){ LS.set('fscc_users',users); fbSave('fscc_users',users).catch(()=>{}); }
-function saveAuditLog(){ LS.set('fscc_audit',auditLog); fbSave('fscc_audit',auditLog).catch(()=>{}); }
+// ── Auditoría: subcollections (1 doc por entrada) ──
+function _rutaAuditCol(){ return 'instituciones/'+INSTITUCION_ID+'/fscc_audit'; }
+function _rutaAuditDoc(entryId){ return 'instituciones/'+INSTITUCION_ID+'/fscc_audit/'+entryId; }
+
+function saveAuditLog(){
+  LS.set('fscc_audit', auditLog);
+}
+
+async function saveAuditDoc(entry){
+  if(DEMO_MODE || !window._db) return;
+  try{
+    await window._fsSet(window._fsDoc(_rutaAuditDoc(String(entry.id))), entry, {merge:false});
+  }catch(e){console.warn('saveAuditDoc error',e);}
+}
+
+async function loadAuditFromFirebase(){
+  if(DEMO_MODE || !window._db) return false;
+  try{
+    const colRef = window._fsCol(_rutaAuditCol());
+    const snap = await window._fsGetDocs(colRef);
+    if(snap && !snap.empty){
+      auditLog = [];
+      snap.forEach(d => auditLog.push(d.data()));
+      auditLog.sort((a,b) => (b.id||0) - (a.id||0));
+      LS.set('fscc_audit', auditLog);
+      return true;
+    }
+    return false;
+  }catch(e){console.warn('loadAuditFromFirebase error',e);return false;}
+}
+
+async function migrateAuditToSubcollections(){
+  if(DEMO_MODE || !window._db) return;
+  const oldData = await fbLoad('fscc_audit');
+  if(!oldData || !oldData.length) return;
+  console.log('Migrando '+oldData.length+' registros audit a subcollections...');
+  let migrated = 0;
+  for(const entry of oldData){
+    if(!entry.id) entry.id = Date.now()+migrated+Math.random();
+    try{
+      await window._fsSet(window._fsDoc(_rutaAuditDoc(String(entry.id))), entry, {merge:false});
+      migrated++;
+    }catch(e){console.warn('Error migrando audit',e);}
+  }
+  try{ await window._fsDelete(window._fsDoc(_rutaInstitucion('fscc_audit'))); }catch(e){}
+  console.log('Migración audit completada: '+migrated+'/'+oldData.length);
+  auditLog = oldData;
+  auditLog.sort((a,b) => (b.id||0) - (a.id||0));
+  LS.set('fscc_audit', auditLog);
+}
 function saveNotifs(){ LS.set('fscc_notif',notifications); fbSave('fscc_notif',notifications).catch(()=>{}); }
 
 async function saveAll(){
@@ -4043,7 +4094,8 @@ async function saveAll(){
     await Promise.all([
       fbSave('fscc_cfg',cfg),
       // Tareas ya NO va acá — usa subcollections individuales
-      fbSave('fscc_users',users), fbSave('fscc_audit',auditLog),
+      fbSave('fscc_users',users),
+      // Audit ya NO va acá — usa subcollections individuales
       fbSave('fscc_notif',notifications),
       // HACCP ya NO va acá — usa subcollections individuales
       fbSave('fscc_mant',mantSolicitudes),
@@ -4319,11 +4371,12 @@ function newEquipoId(){
 // ═══════════════════════════════════════════════════
 function audit(accion,detalle='',tag=''){
   const who=currentUser?currentUser.nombre:'Sistema';
-  auditLog.unshift({ts:nowISO(),who,accion,detalle,tag});
+  const entry={id:Date.now()+Math.random(),ts:nowISO(),who,accion,detalle,tag};
+  auditLog.unshift(entry);
   if(auditLog.length>500)auditLog=auditLog.slice(0,500);
   LS.set('fscc_audit',auditLog);
-  // Sync audit a Firebase de forma silenciosa
-  fbSave('fscc_audit',auditLog).catch(()=>{});
+  // Sync audit a Firebase como doc individual
+  saveAuditDoc(entry);
 }
 
 function renderAuditoria(){
