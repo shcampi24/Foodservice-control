@@ -1,11 +1,11 @@
-// FSCC Service Worker v1
-const CACHE_NAME = 'fscc-v29';
+// FSCC Service Worker v2
+const CACHE_NAME = 'fscc-v30';
 const ASSETS = [
-  '/Foodservice-control/',
-  '/Foodservice-control/index.html',
-  '/Foodservice-control/manifest.json',
-  '/Foodservice-control/icon-192.png',
-  '/Foodservice-control/icon-512.png'
+  './',
+  './index.html',
+  './manifest.json',
+  './icon-192.png',
+  './icon-512.png'
 ];
 
 // Instalar: cachear archivos esenciales
