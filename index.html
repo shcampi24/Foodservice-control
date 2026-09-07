@@ -3568,10 +3568,29 @@ async function loadDataFromFirebase(){
     if(fbCap){capacitaciones=fbCap;LS.set('fscc_cap',capacitaciones);}
     else{loadCapacitaciones();}
 
-    // Stock
+    // Stock: productos en doc config, compras/consumos en subcollections
     const fbStock = await fbLoad('fscc_stock');
-    if(fbStock){stock=fbStock;if(!stock.productos)stock.productos=[];if(!stock.compras)stock.compras=[];if(!stock.consumos)stock.consumos=[];LS.set('fscc_stock',stock);}
+    if(fbStock){stock.productos=fbStock.productos||[];if(!stock.productos)stock.productos=[];}
     else{loadStock();}
+    // Compras/consumos desde subcollections
+    const [stCompras, stConsumos] = await Promise.all([
+      loadStockSubFromFirebase('compras'), loadStockSubFromFirebase('consumos')
+    ]);
+    if(stCompras.length) stock.compras = stCompras;
+    else if(fbStock && fbStock.compras && fbStock.compras.length){
+      stock.compras = fbStock.compras;
+      migrateStockSubToSubcollections('compras', fbStock.compras);
+    } else { stock.compras = stock.compras||[]; }
+    if(stConsumos.length) stock.consumos = stConsumos;
+    else if(fbStock && fbStock.consumos && fbStock.consumos.length){
+      stock.consumos = fbStock.consumos;
+      migrateStockSubToSubcollections('consumos', fbStock.consumos);
+    } else { stock.consumos = stock.consumos||[]; }
+    // Actualizar doc config (quitar compras/consumos viejos)
+    if(fbStock && (fbStock.compras || fbStock.consumos)){
+      fbSave('fscc_stock', {productos:stock.productos||[]}).catch(()=>{});
+    }
+    LS.set('fscc_stock', stock);
 
     if(currentUser)renderAll();
     showSyncStatus('☁ Sincronizado','green');
@@ -3645,10 +3664,10 @@ async function loadDataFromFirebase(){
       capacitaciones=val||[];LS.set('fscc_cap',capacitaciones);
       if(currentUser && document.getElementById('view-capacitaciones').classList.contains('active')) renderCapacitaciones();
     });
+    // Stock: solo productos en doc config (compras/consumos en subcollections)
     fbWatch('fscc_stock',(val)=>{
       if(_localSaveInProgress)return;
-      stock=val||{productos:[],compras:[],consumos:[]};
-      if(!stock.productos)stock.productos=[];if(!stock.compras)stock.compras=[];if(!stock.consumos)stock.consumos=[];
+      stock.productos=(val&&val.productos)||[];
       LS.set('fscc_stock',stock);
       if(currentUser && document.getElementById('view-stock') && document.getElementById('view-stock').classList.contains('active')) renderStActive();
     });
@@ -4163,7 +4182,8 @@ async function saveAll(){
       // Rondas: solo config (sin registros — van en subcollection fscc_rondas_reg)
       fbSave('fscc_rondas',{plantillas:rondas.plantillas||[],asignaciones:rondas.asignaciones||[],asignacionesRecurrentes:rondas.asignacionesRecurrentes||[]}),
       fbSave('fscc_catalogo',catalogo),
-      fbSave('fscc_stock',stock)
+      // Stock: solo productos en doc config
+      fbSave('fscc_stock',{productos:stock.productos||[]})
     ]);
     // Rondas registros → subcollection
     if(rondas.registros && rondas.registros.length){
@@ -4174,6 +4194,9 @@ async function saveAll(){
     for(const p of (traz.producciones||[])){ await saveTrazItemDoc('producciones', p); }
     for(const n of (traz.noConformidades||[])){ await saveTrazItemDoc('nc', n); }
     for(const m of (traz.muestrasTestigo||[])){ await saveTrazItemDoc('muestras', m); }
+    // Stock compras/consumos → subcollections
+    for(const c of (stock.compras||[])){ await saveStockSubDoc('compras', c); }
+    for(const c of (stock.consumos||[])){ await saveStockSubDoc('consumos', c); }
     showSyncStatus('☁ Guardado','green');
   }catch(e){
     showSyncStatus('⚠ Error al guardar en nube','amber');
@@ -11697,9 +11720,45 @@ function loadStock(){
   if(!stock.compras) stock.compras=[];
   if(!stock.consumos) stock.consumos=[];
 }
+// ── Stock: productos en doc config, compras/consumos en subcollections ──
+function _rutaStockSubCol(sub){ return 'instituciones/'+INSTITUCION_ID+'/fscc_stock_'+sub; }
+function _rutaStockSubDoc(sub,itemId){ return 'instituciones/'+INSTITUCION_ID+'/fscc_stock_'+sub+'/'+itemId; }
+
 function saveStock(){
   LS.set('fscc_stock', stock);
-  fbSave('fscc_stock', stock).catch(()=>{});
+  // Solo productos en doc config
+  fbSave('fscc_stock', {productos:stock.productos||[]}).catch(()=>{});
+}
+
+async function saveStockSubDoc(sub, item){
+  if(DEMO_MODE || !window._db) return;
+  try{
+    await window._fsSet(window._fsDoc(_rutaStockSubDoc(sub, String(item.id))), item, {merge:false});
+  }catch(e){console.warn('saveStockSubDoc error',sub,e);}
+}
+
+async function loadStockSubFromFirebase(sub){
+  if(DEMO_MODE || !window._db) return [];
+  try{
+    const colRef = window._fsCol(_rutaStockSubCol(sub));
+    const snap = await window._fsGetDocs(colRef);
+    if(snap && !snap.empty){
+      const items = [];
+      snap.forEach(d => items.push(d.data()));
+      return items;
+    }
+    return [];
+  }catch(e){console.warn('loadStockSubFromFirebase error',sub,e);return [];}
+}
+
+async function migrateStockSubToSubcollections(sub, oldItems){
+  if(DEMO_MODE || !window._db || !oldItems || !oldItems.length) return;
+  console.log('Migrando '+oldItems.length+' items stock.'+sub+' a subcollections...');
+  let m=0;
+  for(const item of oldItems){
+    try{ await window._fsSet(window._fsDoc(_rutaStockSubDoc(sub, String(item.id))), item, {merge:false}); m++; }catch(e){}
+  }
+  console.log('Migración stock.'+sub+' completada: '+m+'/'+oldItems.length);
 }
 
 // ── Stock actual calculado ──
@@ -12038,15 +12097,17 @@ function saveStCompra(){
 
   const totalFactura = items.reduce((s,it)=>s+it.precioTotal, 0);
 
-  stock.compras.push({
+  const compra = {
     id:'scomp_'+Date.now()+'_'+Math.floor(Math.random()*100000),
     fecha, categoria:'stock', facturaRef, proveedorNombre,
     items, totalFactura,
     cargadoPor:currentUser.user,
     cargadoTs:nowISO()
-  });
+  };
+  stock.compras.push(compra);
 
   saveStock();
+  saveStockSubDoc('compras', compra);
   closeModal('modalStCompra');
   renderStCompras();
   audit('Compra registrada: '+items.length+' ítems, $'+totalFactura.toLocaleString('es-AR'), facturaRef, 'stock');
@@ -12091,16 +12152,18 @@ function saveStConsumo(){
   if(!cantidad || cantidad<=0){ alert('Ingresá una cantidad válida.'); return; }
 
   const p = stock.productos.find(x=>x.id===productoId);
-  stock.consumos.push({
+  const consumo = {
     id:'scons_'+Date.now()+'_'+Math.floor(Math.random()*100000),
     fecha, productoId,
     nombre: p ? p.nombre : '',
     cantidad, motivo,
     registradoPor:currentUser.user,
     registradoTs:nowISO()
-  });
+  };
+  stock.consumos.push(consumo);
 
   saveStock();
+  saveStockSubDoc('consumos', consumo);
   closeModal('modalStConsumo');
   renderStConsumos();
   audit('Consumo registrado: '+(p?p.nombre:'')+' ×'+cantidad, motivo, 'stock');
