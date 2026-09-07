@@ -3506,7 +3506,40 @@ async function loadDataFromFirebase(){
     // Mantenimiento: subcollections (1 doc por solicitud)
     const mantCargado = await loadMantFromFirebase();
     if(!mantCargado){ await migrateMantToSubcollections(); }
-    if(fbTraz){traz=fbTraz;if(!traz.proveedores)traz.proveedores=[];if(!traz.lotes)traz.lotes=[];if(!traz.producciones)traz.producciones=[];if(!traz.noConformidades)traz.noConformidades=[];if(!traz.muestrasTestigo)traz.muestrasTestigo=[];LS.set('fscc_traz',traz);}
+    // Trazabilidad: proveedores en doc config, sub-arrays en subcollections
+    if(fbTraz){
+      traz.proveedores = fbTraz.proveedores||[];
+    }
+    // Cargar sub-arrays desde subcollections
+    const [trazLotes, trazProd, trazNC, trazMuestras] = await Promise.all([
+      loadTrazSubFromFirebase('lotes'), loadTrazSubFromFirebase('producciones'),
+      loadTrazSubFromFirebase('nc'), loadTrazSubFromFirebase('muestras')
+    ]);
+    if(trazLotes.length) traz.lotes = trazLotes;
+    else if(fbTraz && fbTraz.lotes && fbTraz.lotes.length){
+      traz.lotes = fbTraz.lotes;
+      migrateTrazSubToSubcollections('lotes', fbTraz.lotes);
+    }
+    if(trazProd.length) traz.producciones = trazProd;
+    else if(fbTraz && fbTraz.producciones && fbTraz.producciones.length){
+      traz.producciones = fbTraz.producciones;
+      migrateTrazSubToSubcollections('producciones', fbTraz.producciones);
+    }
+    if(trazNC.length) traz.noConformidades = trazNC;
+    else if(fbTraz && fbTraz.noConformidades && fbTraz.noConformidades.length){
+      traz.noConformidades = fbTraz.noConformidades;
+      migrateTrazSubToSubcollections('nc', fbTraz.noConformidades);
+    }
+    if(trazMuestras.length) traz.muestrasTestigo = trazMuestras;
+    else if(fbTraz && fbTraz.muestrasTestigo && fbTraz.muestrasTestigo.length){
+      traz.muestrasTestigo = fbTraz.muestrasTestigo;
+      migrateTrazSubToSubcollections('muestras', fbTraz.muestrasTestigo);
+    }
+    // Actualizar doc config (quitar sub-arrays viejos)
+    if(fbTraz && (fbTraz.lotes || fbTraz.producciones || fbTraz.noConformidades || fbTraz.muestrasTestigo)){
+      fbSave('fscc_traz', {proveedores:traz.proveedores||[]}).catch(()=>{});
+    }
+    LS.set('fscc_traz',traz);
     if(fbRondas){
       rondas=fbRondas;
       if(!rondas.plantillas||!rondas.plantillas.length)rondas.plantillas=seedPlantillasRondas();
@@ -3572,14 +3605,20 @@ async function loadDataFromFirebase(){
     fbWatchHaccp(()=>{ _renderAllDebounced(); });
     // Mantenimiento: listener en subcollection (1 doc por solicitud)
     fbWatchMant(()=>{ if(currentUser)updateMantBadge(); _renderAllDebounced(); });
+    // Trazabilidad: config (proveedores) en doc único, sub-arrays en subcollections
     fbWatch('fscc_traz',(val)=>{
       if(_localSaveInProgress)return;
-      traz=val||{proveedores:[],lotes:[],producciones:[],noConformidades:[],muestrasTestigo:[]};
-      if(!traz.noConformidades)traz.noConformidades=[];
-      if(!traz.muestrasTestigo)traz.muestrasTestigo=[];
+      traz.proveedores = (val&&val.proveedores)||[];
       LS.set('fscc_traz',traz);
       if(currentUser && document.getElementById('view-trazabilidad') && document.getElementById('view-trazabilidad').classList.contains('active')) renderTraz();
     });
+    const _renderTrazIfActive = ()=>{
+      if(currentUser && document.getElementById('view-trazabilidad') && document.getElementById('view-trazabilidad').classList.contains('active')) renderTraz();
+    };
+    fbWatchTrazSub('lotes', (items)=>{traz.lotes=items;}, _renderTrazIfActive);
+    fbWatchTrazSub('producciones', (items)=>{traz.producciones=items;}, _renderTrazIfActive);
+    fbWatchTrazSub('nc', (items)=>{traz.noConformidades=items;}, _renderTrazIfActive);
+    fbWatchTrazSub('muestras', (items)=>{traz.muestrasTestigo=items;}, _renderTrazIfActive);
     // Rondas: config en doc único + registros en subcollection
     fbWatch('fscc_rondas',(val)=>{
       if(_localSaveInProgress)return;
@@ -4119,7 +4158,8 @@ async function saveAll(){
       // Audit ya NO va acá — usa subcollections individuales
       fbSave('fscc_notif',notifications),
       // HACCP, Mant ya NO van acá — usan subcollections
-      fbSave('fscc_traz',traz),
+      // Traz: solo proveedores en doc config (lotes/prod/nc/muestras en subcollections)
+      fbSave('fscc_traz',{proveedores:traz.proveedores||[]}),
       // Rondas: solo config (sin registros — van en subcollection fscc_rondas_reg)
       fbSave('fscc_rondas',{plantillas:rondas.plantillas||[],asignaciones:rondas.asignaciones||[],asignacionesRecurrentes:rondas.asignacionesRecurrentes||[]}),
       fbSave('fscc_catalogo',catalogo),
@@ -4129,6 +4169,11 @@ async function saveAll(){
     if(rondas.registros && rondas.registros.length){
       for(const reg of rondas.registros){ await saveRondaRegDoc(reg); }
     }
+    // Trazabilidad sub-arrays → subcollections
+    for(const l of (traz.lotes||[])){ await saveTrazItemDoc('lotes', l); }
+    for(const p of (traz.producciones||[])){ await saveTrazItemDoc('producciones', p); }
+    for(const n of (traz.noConformidades||[])){ await saveTrazItemDoc('nc', n); }
+    for(const m of (traz.muestrasTestigo||[])){ await saveTrazItemDoc('muestras', m); }
     showSyncStatus('☁ Guardado','green');
   }catch(e){
     showSyncStatus('⚠ Error al guardar en nube','amber');
@@ -7986,9 +8031,62 @@ function loadTraz(){
   if(!traz.muestrasTestigo) traz.muestrasTestigo=[];
 }
 
+// ── Trazabilidad: sub-arrays en subcollections, proveedores en doc config ──
+function _rutaTrazCol(sub){ return 'instituciones/'+INSTITUCION_ID+'/fscc_traz_'+sub; }
+function _rutaTrazDoc(sub,itemId){ return 'instituciones/'+INSTITUCION_ID+'/fscc_traz_'+sub+'/'+itemId; }
+
 function saveTraz(){
   LS.set('fscc_traz', traz);
-  fbSave('fscc_traz', traz).catch(()=>{});
+  // Solo proveedores en doc config (son pocos y estáticos)
+  fbSave('fscc_traz', {proveedores:traz.proveedores||[]}).catch(()=>{});
+}
+
+async function saveTrazItemDoc(sub, item){
+  if(DEMO_MODE || !window._db) return;
+  try{
+    await window._fsSet(window._fsDoc(_rutaTrazDoc(sub, String(item.id))), item, {merge:false});
+  }catch(e){console.warn('saveTrazItemDoc error',sub,e);}
+}
+
+async function loadTrazSubFromFirebase(sub){
+  if(DEMO_MODE || !window._db) return [];
+  try{
+    const colRef = window._fsCol(_rutaTrazCol(sub));
+    const snap = await window._fsGetDocs(colRef);
+    if(snap && !snap.empty){
+      const items = [];
+      snap.forEach(d => items.push(d.data()));
+      items.sort((a,b) => (b.id||'').toString().localeCompare((a.id||'').toString()));
+      return items;
+    }
+    return [];
+  }catch(e){console.warn('loadTrazSubFromFirebase error',sub,e);return [];}
+}
+
+async function migrateTrazSubToSubcollections(sub, oldItems){
+  if(DEMO_MODE || !window._db || !oldItems || !oldItems.length) return;
+  console.log('Migrando '+oldItems.length+' items traz.'+sub+' a subcollections...');
+  let m=0;
+  for(const item of oldItems){
+    try{ await window._fsSet(window._fsDoc(_rutaTrazDoc(sub, String(item.id))), item, {merge:false}); m++; }catch(e){}
+  }
+  console.log('Migración traz.'+sub+' completada: '+m+'/'+oldItems.length);
+}
+
+function fbWatchTrazSub(sub, assignFn, renderCallback){
+  if(DEMO_MODE || !window._db) return;
+  const colRef = window._fsCol(_rutaTrazCol(sub));
+  const unsub = window._fsSnap(colRef, (snapshot) => {
+    if(_localSaveInProgress) return;
+    const items = [];
+    snapshot.forEach(d => items.push(d.data()));
+    items.sort((a,b) => (b.id||'').toString().localeCompare((a.id||'').toString()));
+    assignFn(items);
+    LS.set('fscc_traz', traz);
+    if(renderCallback) renderCallback();
+  });
+  _snapListeners.push(unsub);
+  return unsub;
 }
 
 // ═══════════════════════════════════════════════════
@@ -8534,10 +8632,12 @@ function guardarLote(){
   const insumoObj = resolverOCrearInsumo(insumo);
   const insumoId = insumoObj ? insumoObj.id : null;
 
+  let loteGuardado;
   if(trazEditLoteId){
     const l = traz.lotes.find(x=>x.id===trazEditLoteId);
     if(!l) return;
     Object.assign(l, {insumo,insumoId,proveedorId,loteProveedor,sector,cantidad,unidad,fechaRecepcion,fechaVencimiento,observaciones});
+    loteGuardado = l;
     audit('Lote editado: '+l.codigo, insumo, 'trazabilidad');
   } else {
     const l = {
@@ -8547,9 +8647,11 @@ function guardarLote(){
       fechaRecepcion, fechaVencimiento, observaciones, alertado:false
     };
     traz.lotes.unshift(l);
+    loteGuardado = l;
     audit('Lote recibido: '+l.codigo, insumo+' — '+sector, 'trazabilidad');
   }
   saveTraz();
+  if(loteGuardado) saveTrazItemDoc('lotes', loteGuardado);
   saveCatalogo(); // por si resolverOCrearInsumo() acaba de crear un insumo nuevo
   closeModal('modalLote');
   renderTraz();
@@ -8832,6 +8934,7 @@ function guardarProduccion(){
     pushNotif('cambio_menu', '🔄 Cambio de menú', `${fecha} — Correspondía "${cambioMenu.planificada}" y se sirvió "${preparacion}". Motivo: ${cambioMenu.motivo}`, null);
   }
   saveTraz();
+  saveTrazItemDoc('producciones', p);
   closeModal('modalProduccion');
   renderTraz();
 }
@@ -9027,6 +9130,7 @@ function chequearVencimientosLotes(){
         : `El lote ${l.codigo} (${l.insumo}) vence el ${l.fechaVencimiento}.`;
       pushNotif('lote_vencimiento', estado==='vencido'?'⚠ Lote vencido':'🟡 Lote por vencer', texto, null);
       l.alertado = true;
+      saveTrazItemDoc('lotes', l);
       huboAlertas = true;
     }
   });
@@ -9043,6 +9147,7 @@ function chequearMuestrasParaDescartar(){
     if(m.estado==='guardada' && !m.alertada && new Date() >= new Date(m.fechaDescarteProgramada)){
       pushNotif('muestra_lista', '🧪 Muestra testigo lista', `La muestra ${m.codigo} (${m.preparacion}) ya cumplió el plazo — se puede descartar.`, null);
       m.alertada = true;
+      saveTrazItemDoc('muestras', m);
       huboAlertas = true;
     }
   });
@@ -9245,6 +9350,7 @@ function guardarMuestra(){
   traz.muestrasTestigo.unshift(m);
   audit('Muestra testigo tomada: '+m.codigo, preparacion+' — '+comida, 'trazabilidad');
   saveTraz();
+  saveTrazItemDoc('muestras', m);
   closeModal('modalMuestra');
   renderTraz();
   if(confirm('Muestra '+m.codigo+' guardada. ¿Querés imprimir la etiqueta ahora?')){
@@ -9356,6 +9462,7 @@ function guardarMuestrasLote(){
       resultadoAnalisis: '', alertada: false, observaciones: ''
     };
     traz.muestrasTestigo.unshift(m);
+    saveTrazItemDoc('muestras', m);
     idsGuardados.push(m.id);
     audit('Muestra testigo tomada (carga rápida del día): '+m.codigo, item.preparacion+' — '+item.comida, 'trazabilidad');
   });
@@ -9413,6 +9520,7 @@ function descartarMuestra(id){
   m.descartadaTs = nowISO();
   audit('Muestra testigo descartada: '+m.codigo, '', 'trazabilidad');
   saveTraz();
+  saveTrazItemDoc('muestras', m);
   closeModal('modalMuestraDetalle');
   renderTraz();
 }
@@ -9614,6 +9722,7 @@ function guardarNC(){
   traz.noConformidades.unshift(n);
   audit('No Conformidad registrada: '+producto, motivo, 'trazabilidad');
   saveTraz();
+  saveTrazItemDoc('nc', n);
   closeModal('modalNC');
   renderTraz();
   pushNotif('nc_pendiente', '⚠ Nueva No Conformidad', producto+' — '+motivo, null);
@@ -9665,6 +9774,7 @@ async function confirmarCierreNC(){
     n.cerradoTs = nowISO();
     audit('No Conformidad cerrada: '+n.producto, '', 'trazabilidad');
     saveTraz();
+    saveTrazItemDoc('nc', n);
     closeModal('modalFirmaCierreNC');
     closeModal('modalNCDetalle');
     renderTraz();
