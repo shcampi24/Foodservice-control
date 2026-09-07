@@ -3271,11 +3271,12 @@ async function fbLoad(colName){
     if(!window._db)return null;
     const snap=await window._fsGet(window._fsDoc(_rutaInstitucion(colName)));
     if(snap.exists()) return snap.data().value;
-    // Respaldo: si todavía no hay nada en la ruta nueva (por ejemplo, antes
-    // de que corra la migración por primera vez), se lee de la ruta vieja
-    // para que el sistema nunca se quede sin datos.
-    const snapVieja=await window._fsGet(window._fsDoc(colName+'/data'));
-    return snapVieja.exists()?snapVieja.data().value:null;
+    // Respaldo: si todavía no hay nada en la ruta nueva, intentar ruta vieja
+    // (puede fallar si las rules no la permiten — no es grave, se usa localStorage)
+    try{
+      const snapVieja=await window._fsGet(window._fsDoc(colName+'/data'));
+      return snapVieja.exists()?snapVieja.data().value:null;
+    }catch(_){return null;}
   }catch(e){console.warn('fbLoad error',colName,e);return null;}
 }
 async function fbSave(colName,value){
@@ -3314,12 +3315,15 @@ async function migrarAEstructuraInstituciones(){
       const refNueva = window._fsDoc(_rutaInstitucion(col));
       const snapNueva = await window._fsGet(refNueva);
       if(snapNueva.exists()) continue; // ya migrada, no pisar
-      const refVieja = window._fsDoc(col+'/data');
-      const snapVieja = await window._fsGet(refVieja);
-      if(snapVieja.exists()){
-        await window._fsSet(refNueva, snapVieja.data(), { merge:false });
-        huboCambios = true;
-      }
+      // Intentar leer ruta vieja — puede fallar si las rules no la permiten
+      try{
+        const refVieja = window._fsDoc(col+'/data');
+        const snapVieja = await window._fsGet(refVieja);
+        if(snapVieja.exists()){
+          await window._fsSet(refNueva, snapVieja.data(), { merge:false });
+          huboCambios = true;
+        }
+      }catch(_){/* ruta vieja no accesible, ok */}
     }catch(e){ console.warn('Error migrando', col, e); }
   }
   _migracionInstitucionHecha = true;
