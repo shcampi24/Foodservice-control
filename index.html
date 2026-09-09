@@ -3627,7 +3627,11 @@ async function loadDataFromFirebase(){
     // HACCP: listener en subcollection (1 doc por registro)
     fbWatchHaccp(()=>{ _renderAllDebounced(); });
     // Mantenimiento: listener en subcollection (1 doc por solicitud)
-    fbWatchMant(()=>{ if(currentUser)updateMantBadge(); _renderAllDebounced(); });
+    fbWatchMant(()=>{
+      if(currentUser) updateMantBadge();
+      if(currentUser && document.getElementById('view-mantenimiento') && document.getElementById('view-mantenimiento').classList.contains('active')) renderMant();
+      _renderAllDebounced();
+    });
     // Trazabilidad: config (proveedores) en doc único, sub-arrays en subcollections
     fbWatch('fscc_traz',(val)=>{
       if(_localSaveInProgress)return;
@@ -12324,6 +12328,9 @@ function renderAll(){
     if(currentUser.rol!=='supervisor'){
       renderMisTareas();
     }
+    // Re-render vista activa de mantenimiento (si está abierta)
+    const vMant=document.getElementById('view-mantenimiento');
+    if(vMant && vMant.classList.contains('active')) renderMant();
   }
 }
 
