@@ -11050,20 +11050,25 @@ function saveMantSolicitud(){
     pushNotifMantNueva('🔧 Nueva solicitud de Mantenimiento', `${sector}: ${tipo} (${prioridad}) — por ${sol.solicitante}`, sol.id);
   }
 
+  // Flag: evitar que el eco del snapshot pise el cambio local
+  _localSaveInProgress = true;
   saveMant();
   if(solGuardada) saveMantDoc(solGuardada);
   closeModal('modalMant');
   renderMant();
   updateMantBadge();
+  setTimeout(()=>{ _localSaveInProgress = false; }, 1500);
 }
 
 function deleteMantSolicitud(id){
   if(!confirm('¿Eliminar esta solicitud?')) return;
   mantSolicitudes = mantSolicitudes.filter(s => s.id !== id);
+  _localSaveInProgress = true;
   saveMant();
   deleteMantFirestore(id);
   renderMant();
   updateMantBadge();
+  setTimeout(()=>{ _localSaveInProgress = false; }, 1500);
   audit('Solicitud mantenimiento eliminada','','sistema');
 }
 
@@ -11170,11 +11175,14 @@ function saveMantEstado(){
   const nuevoEstado = document.getElementById('mantAdminEstado').value;
   mantSolicitudes[idx].estado = nuevoEstado;
   mantSolicitudes[idx].nroTicket = document.getElementById('mantNroTicket').value.trim();
+  // Flag: evitar que el eco del snapshot pise el cambio local
+  _localSaveInProgress = true;
   saveMant();
   saveMantDoc(mantSolicitudes[idx]);
   closeModal('modalMantAdmin');
   renderMant();
   updateMantBadge();
+  setTimeout(()=>{ _localSaveInProgress = false; }, 1500);
   audit(`Ticket mant. actualizado: ${mantSolicitudes[idx].sector}`, `Estado: ${mantSolicitudes[idx].estado} · Ticket: ${mantSolicitudes[idx].nroTicket||'—'}`, 'sistema');
   // Notificar al supervisor si hubo cambio de estado
   if(estadoAnterior !== nuevoEstado){
