@@ -93,6 +93,7 @@ body{font-family:var(--sans);background:var(--bg);color:var(--text);min-height:1
 .role-badge.supervisor{background:#2a7a5a;color:#fff;}
 .role-badge.operario{background:#2a6a9a;color:#fff;}
 .role-badge.cubre{background:#7a3a9a;color:#fff;}
+.role-badge.mantenimiento{background:#c56a00;color:#fff;}
 .hdr-sector-tag{font-family:var(--mono);font-size:10px;color:var(--gold);border:.5px solid rgba(196,146,42,.4);padding:2px 8px;border-radius:3px;}
 .hdr-logout{background:none;border:.5px solid rgba(255,255,255,.2);color:rgba(255,255,255,.6);font-size:10px;font-family:var(--sans);padding:3px 9px;border-radius:4px;cursor:pointer;transition:all .15s;}
 .hdr-logout:hover{background:rgba(255,255,255,.1);color:#fff;}
@@ -368,6 +369,10 @@ tbody td{padding:8px 10px;vertical-align:middle;}
 
 /* ── MANTENIMIENTO / TICKETS ── */
 .mant-card{background:var(--surface);border:.5px solid var(--border-light);border-radius:var(--rl);padding:1rem 1.25rem;margin-bottom:10px;border-left:4px solid var(--amber);}
+.mant-card.recibido{border-left-color:#2196f3;}
+.mant-card.en_ejecucion{border-left-color:#ff9800;}
+.mant-card.terminado{border-left-color:var(--green);}
+.mant-card.cerrado{border-left-color:var(--text3);opacity:.7;}
 .mant-card.enviado{border-left-color:var(--green);}
 .mant-card.resuelto{border-left-color:var(--text3);opacity:.7;}
 .mant-card-hdr{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;gap:8px;}
@@ -541,6 +546,7 @@ if('serviceWorker' in navigator){
     <option value="coordinador" style="color:#111;background:#fff;">Coordinador</option>
     <option value="supervisor" style="color:#111;background:#fff;">Supervisor</option>
     <option value="operario" style="color:#111;background:#fff;">Operario (Ana)</option>
+    <option value="mantenimiento" style="color:#111;background:#fff;">Mantenimiento (Carlos)</option>
   </select>
   <span style="font-weight:400;">— datos de ejemplo, nada se guarda. Si te pide contraseña de firma, usá <strong>1234</strong>.</span>
 </div>
@@ -1162,8 +1168,10 @@ if('serviceWorker' in navigator){
         <select class="flt" id="mantFiltroEstado" onchange="renderMant()">
           <option value="">Todos los estados</option>
           <option value="pendiente">⏳ Pendiente</option>
-          <option value="enviado">✅ Enviado a Mantenimiento</option>
-          <option value="resuelto">🔒 Resuelto</option>
+          <option value="recibido">👁 Recibido</option>
+          <option value="en_ejecucion">🔧 En ejecución</option>
+          <option value="terminado">✅ Terminado</option>
+          <option value="cerrado">🔒 Cerrado</option>
         </select>
         <select class="flt" id="mantFiltroSector" onchange="renderMant()">
           <option value="">Todos los sectores</option>
@@ -1171,7 +1179,7 @@ if('serviceWorker' in navigator){
       </div>
       <div class="toolbar-r">
         <button class="btn btn-ghost" onclick="exportMantenimiento()" title="Exportar a Excel">📊 Excel</button>
-        <button class="btn btn-primary" onclick="openMantModal()">+ Nueva solicitud</button>
+        <button class="btn btn-primary sv-admin-only" id="btnNuevaMant" onclick="openMantModal()">+ Nueva solicitud</button>
       </div>
     </div>
     <div id="mantListado"></div>
@@ -1239,7 +1247,8 @@ if('serviceWorker' in navigator){
     <div class="modal-title" style="margin-bottom:4px;">📋 Gestionar solicitud de Mantenimiento</div>
     <div id="mantAdminDetalle" style="margin-bottom:16px;"></div>
 
-    <!-- Texto pre-generado para copiar -->
+    <!-- Texto pre-generado para copiar (oculto para rol mantenimiento) -->
+    <div id="mantTicketSection">
     <div class="fg" style="margin-bottom:12px;">
       <label style="display:flex;justify-content:space-between;align-items:center;">
         <span>Texto listo para el ticket</span>
@@ -1253,21 +1262,35 @@ if('serviceWorker' in navigator){
       <button class="btn btn-outline" style="flex:1;" onclick="enviarWhatsApp()">💬 Enviar por WhatsApp</button>
       <button class="btn btn-outline" style="flex:1;" onclick="enviarEmail()">📧 Enviar por Email</button>
     </div>
+    </div>
 
-    <div style="display:flex;gap:8px;justify-content:space-between;align-items:center;border-top:.5px solid var(--border);padding-top:14px;">
-      <div class="fg" style="flex:1;margin-bottom:0;">
-        <label>Cambiar estado</label>
-        <select id="mantAdminEstado">
-          <option value="pendiente">⏳ Pendiente</option>
-          <option value="enviado">✅ Enviado a Mantenimiento</option>
-          <option value="resuelto">🔒 Resuelto</option>
-        </select>
+    <!-- Historial / Timeline -->
+    <div id="mantAdminTimeline" style="margin-bottom:14px;"></div>
+
+    <div style="border-top:.5px solid var(--border);padding-top:14px;">
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;">
+        <div class="fg" style="flex:1;min-width:140px;margin-bottom:0;">
+          <label>Cambiar estado</label>
+          <select id="mantAdminEstado">
+            <option value="pendiente">⏳ Pendiente</option>
+            <option value="recibido">👁 Recibido</option>
+            <option value="en_ejecucion">🔧 En ejecución</option>
+            <option value="terminado">✅ Terminado</option>
+            <option value="cerrado">🔒 Cerrado</option>
+          </select>
+        </div>
+        <div class="fg" style="flex:1;min-width:140px;margin-bottom:0;">
+          <label style="font-size:11px;font-weight:500;color:var(--text2);margin-bottom:4px;display:block;">Nro. ticket Mantenimiento</label>
+          <input type="text" id="mantNroTicket" placeholder="Ej: TK-2025-0148" />
+        </div>
       </div>
-      <div style="flex:1;padding-left:10px;">
-        <label style="font-size:11px;font-weight:500;color:var(--text2);margin-bottom:4px;display:block;">Nro. ticket Mantenimiento</label>
-        <input type="text" id="mantNroTicket" placeholder="Ej: TK-2025-0148" />
+      <div class="fg" style="margin-top:8px;margin-bottom:0;">
+        <label style="font-size:11px;font-weight:500;color:var(--text2);">Nota del cambio <span style="color:var(--text3);">(qué se hizo, qué se encontró)</span></label>
+        <textarea id="mantAdminNota" placeholder="Describí brevemente la acción realizada..." style="min-height:50px;font-size:12px;"></textarea>
       </div>
-      <button class="btn btn-primary" style="margin-top:16px;flex-shrink:0;" onclick="saveMantEstado()">Guardar cambios</button>
+      <div style="display:flex;justify-content:flex-end;margin-top:10px;">
+        <button class="btn btn-primary" onclick="saveMantEstado()">Guardar cambios</button>
+      </div>
     </div>
   </div>
 </div>
@@ -2506,6 +2529,7 @@ if('serviceWorker' in navigator){
           <option value="admin">Admin — acceso total + configuración</option>
           <option value="supervisor">Supervisor — asigna tareas, supervisa todos los sectores</option>
           <option value="operario">Operario — sector asignado</option>
+          <option value="mantenimiento">Mantenimiento — recibe y gestiona solicitudes técnicas</option>
           <option value="cubre">Cubre/Reemplazante — sector dinámico</option>
         </select>
       </div>
@@ -2718,7 +2742,8 @@ function construirDatosDemo(){
     {nombre:'Coordinador Demo', user:'coord.demo', rol:'coordinador', sectores:[]},
     {nombre:'Marta Ibáñez',     user:'marta.demo', rol:'supervisor',  sectores:[]},
     {nombre:'Ana Duarte',       user:'ana.demo',   rol:'operario',    sectores:['Cocina Caliente']},
-    {nombre:'Luis Peralta',     user:'luis.demo',  rol:'operario',    sectores:['Cocina Fría']}
+    {nombre:'Luis Peralta',     user:'luis.demo',  rol:'operario',    sectores:['Cocina Fría']},
+    {nombre:'Carlos Técnico',   user:'carlos.demo',rol:'mantenimiento',sectores:[]}
   ];
 
   // Cada tarea arranca con su propio historial de eventos (mismo modelo que
@@ -2858,7 +2883,7 @@ function entrarModoDemo(){
 // sin tocar los datos — son los mismos `tasks`/`traz`/`rondas` para las
 // tres, así que lo que "hiciste" como un rol se ve reflejado al saltar a
 // otro. No pasa por login: solo cambia currentUser y repinta el shell.
-const _DEMO_ROL_A_USER = {coordinador:'coord.demo', supervisor:'marta.demo', operario:'ana.demo'};
+const _DEMO_ROL_A_USER = {coordinador:'coord.demo', supervisor:'marta.demo', operario:'ana.demo', mantenimiento:'carlos.demo'};
 function cambiarRolDemo(rol){
   if(!DEMO_MODE) return;
   const u = users.find(x=>x.user===_DEMO_ROL_A_USER[rol]);
@@ -3438,6 +3463,7 @@ function esAdmin(u){ return !!u && (u.rol==='admin' || u.rol==='coordinador' || 
 // y Auditoría, que quedan exclusivas del Admin (el Coordinador tiene que pedírselo).
 function esAdminEstricto(u){ return !!u && u.rol==='admin'; }
 function esSupervisorOSuperior(u){ return !!u && (esAdmin(u) || u.rol==='supervisor'); }
+function esMantenimiento(u){ return !!u && u.rol==='mantenimiento'; }
 // Nivel numérico para decidir a quién le puede asignar tareas cada rol
 // (uno puede asignarle solo a alguien de nivel estrictamente menor al suyo)
 function nivelRol(rol){
@@ -4895,7 +4921,7 @@ function pintarShellAppLogueada(found, opts){
   const ftrInstEl = document.getElementById('footerInstitucionNombre');
   if(ftrInstEl) ftrInstEl.textContent = hdrInstNombre;
   const rb=document.getElementById('hdrRoleBadge');
-  const rolLabels={admin:'Admin',coordinador:'Coordinador',supervisor:'Supervisor',operario:'Operario',cubre:'Cubre'};
+  const rolLabels={admin:'Admin',coordinador:'Coordinador',supervisor:'Supervisor',operario:'Operario',cubre:'Cubre',mantenimiento:'Mantenimiento'};
   rb.textContent=rolLabels[found.rol]||found.rol;
   rb.className='role-badge '+found.rol;
 
@@ -4925,8 +4951,25 @@ function pintarShellAppLogueada(found, opts){
   const tabMis=document.getElementById('tabMisTareas');
   if(found.rol==='supervisor'){
     tabMis.style.display='none';
+  } else if(esMantenimiento(found)){
+    tabMis.style.display='none';
   } else {
     tabMis.style.display='';
+  }
+
+  // Mantenimiento: mostrar solo la pestaña y panel de Mantenimiento
+  if(esMantenimiento(found)){
+    document.getElementById('tabMant').style.display='';
+    document.getElementById('mantPanelSv').style.display='';
+    // Ocultar tabs que no le corresponden
+    ['tabSupervisor','tabMisTareas'].forEach(id=>{
+      const el=document.getElementById(id); if(el) el.style.display='none';
+    });
+    document.querySelectorAll('.nav-tab').forEach(el=>{
+      // Solo dejar visible el tab de mantenimiento
+      if(el.id!=='tabMant') el.style.display='none';
+    });
+    document.getElementById('tabMant').style.display='';
   }
 
   // Bell
@@ -4942,6 +4985,8 @@ function pintarShellAppLogueada(found, opts){
     switchViewById('dashboard');
   } else if(found.rol==='supervisor'){
     switchViewById('supervisor');
+  } else if(esMantenimiento(found)){
+    switchViewById('mantenimiento');
   } else {
     switchViewById('mis-tareas');
   }
@@ -6911,7 +6956,7 @@ function buildReporteOperarioHTML(opNombre, desde, hasta, firmaData){
 
   // Usuario / rol
   const userObj = users.find(u=>u.nombre===opNombre);
-  const _rolLabels = {admin:'Admin',supervisor:'Supervisor',operario:'Operario',cubre:'Cubre'};
+  const _rolLabels = {admin:'Admin',supervisor:'Supervisor',operario:'Operario',cubre:'Cubre',mantenimiento:'Mantenimiento'};
   const rolLabel = userObj ? (_rolLabels[userObj.rol]||userObj.rol) : '—';
   const sectores = userObj && userObj.sectores && userObj.sectores.length ? userObj.sectores.join(', ') : (userObj && userObj.cubreSector ? userObj.cubreSector : [...new Set(tareasOp.map(t=>t.sector))].join(', '));
 
@@ -10890,11 +10935,18 @@ function fbWatchMant(renderCallback){
 }
 
 function updateMantBadge(){
-  const pendientes = mantSolicitudes.filter(s => s.estado === 'pendiente').length;
+  // Para mantenimiento: contar tickets activos (no cerrados)
+  // Para supervisor/admin: contar pendientes
+  let count;
+  if(esMantenimiento(currentUser)){
+    count = mantSolicitudes.filter(s => s.estado !== 'cerrado').length;
+  } else {
+    count = mantSolicitudes.filter(s => s.estado === 'pendiente' || s.estado === 'terminado').length;
+  }
   const badge = document.getElementById('mantBadge');
   if(!badge) return;
-  if(pendientes > 0){
-    badge.textContent = pendientes > 9 ? '9+' : pendientes;
+  if(count > 0){
+    badge.textContent = count > 9 ? '9+' : count;
     badge.style.display = 'inline-flex';
   } else {
     badge.style.display = 'none';
@@ -10928,19 +10980,50 @@ function renderMant(){
   }
 
   const prioLabel = {baja:'🟢 Baja', media:'🟡 Media', alta:'🔴 Alta', urgente:'🚨 Urgente'};
-  const estadoLabel = {pendiente:'⏳ Pendiente admin', enviado:'✅ Enviado', resuelto:'🔒 Resuelto'};
+  const estadoLabel = {pendiente:'⏳ Pendiente', recibido:'👁 Recibido', en_ejecucion:'🔧 En ejecución', terminado:'✅ Terminado', cerrado:'🔒 Cerrado'};
+  const estadoBadgeCls = {pendiente:'b-pend', recibido:'b-turno', en_ejecucion:'b-incid', terminado:'b-ok', cerrado:'b-late'};
+
+  const isMant = esMantenimiento(currentUser);
+  const isSvAdmin = esSupervisorOSuperior(currentUser);
+
+  // Ocultar/mostrar botón Nueva solicitud
+  const btnNueva = document.getElementById('btnNuevaMant');
+  if(btnNueva) btnNueva.style.display = isSvAdmin ? '' : 'none';
 
   el.innerHTML = lista.map(s => {
     const isAdmin2 = esAdmin(currentUser);
     const ticketTag = s.nroTicket
       ? `<span class="badge" style="background:#e8edf7;color:#1a2744;font-family:var(--mono);font-size:10px;">🎫 ${esc(s.nroTicket)}</span>`
       : '';
+    // Último evento del historial (mini-timeline en la card)
+    const hist = s.historial || [];
+    const ultimoEvt = hist.length ? hist[hist.length-1] : null;
+    const miniTimeline = ultimoEvt
+      ? `<div style="font-size:10px;color:var(--text3);margin-top:4px;border-top:.5px solid var(--border-light);padding-top:4px;">
+          📝 ${esc(ultimoEvt.usuario||'—')} · ${fmtDatetime(ultimoEvt.fecha)} ${ultimoEvt.nota?'— '+esc(ultimoEvt.nota.substring(0,80))+(ultimoEvt.nota.length>80?'…':''):''}
+        </div>` : '';
+    // Botones según rol
+    let acciones = '';
+    if(isAdmin2){
+      acciones += `<button class="btn btn-primary btn-sm" onclick="openMantAdminModal('${s.id}')">📋 Gestionar</button>`;
+      if(s.estado==='pendiente') acciones += `<button class="btn btn-ghost btn-sm" onclick="editMantSolicitud('${s.id}')">✏ Editar</button>`;
+      acciones += `<button class="btn btn-danger btn-sm" onclick="deleteMantSolicitud('${s.id}')">🗑</button>`;
+    } else if(isMant){
+      acciones += `<button class="btn btn-primary btn-sm" onclick="openMantAdminModal('${s.id}')">🔧 Atender</button>`;
+    } else if(isSvAdmin){
+      acciones += `<button class="btn btn-primary btn-sm" onclick="openMantAdminModal('${s.id}')">📋 Ver / Gestionar</button>`;
+      if(s.estado==='pendiente') acciones += `<button class="btn btn-ghost btn-sm" onclick="editMantSolicitud('${s.id}')">✏ Editar</button>`;
+    }
+    // Botón cerrar para supervisor/admin cuando está terminado
+    if(isSvAdmin && s.estado==='terminado'){
+      acciones += `<button class="btn btn-sm" style="background:#2a7a5a;color:#fff;" onclick="cerrarMantSolicitud('${s.id}')">✔ Cerrar solicitud</button>`;
+    }
     return `<div class="mant-card ${s.estado}">
       <div class="mant-card-hdr">
         <div class="mant-card-titulo">🔧 ${esc(s.tipo)} — ${esc(s.equipoNombre||s.sector)}</div>
         <div style="display:flex;gap:6px;align-items:center;flex-shrink:0;">
           <span class="badge ${s.prioridad==='urgente'?'b-late':s.prioridad==='alta'?'b-incid':s.prioridad==='media'?'b-pend':'b-ok'}">${prioLabel[s.prioridad]||esc(s.prioridad)}</span>
-          <span class="badge b-turno">${estadoLabel[s.estado]||esc(s.estado)}</span>
+          <span class="badge ${estadoBadgeCls[s.estado]||'b-turno'}">${estadoLabel[s.estado]||esc(s.estado)}</span>
           ${ticketTag}
         </div>
       </div>
@@ -10952,14 +11035,9 @@ function renderMant(){
       </div>
       <div style="font-size:13px;color:var(--text);margin-bottom:${s.obs?'6px':'0'};line-height:1.5;">${esc(s.desc)}</div>
       ${s.obs ? `<div style="font-size:11px;color:var(--text3);font-style:italic;">${esc(s.obs)}</div>` : ''}
+      ${miniTimeline}
       <div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap;">
-        ${isAdmin2
-          ? `<button class="btn btn-primary btn-sm" onclick="openMantAdminModal('${s.id}')">📋 Gestionar / Enviar ticket</button>`
-          : ''}
-        ${esSupervisorOSuperior(currentUser)&&s.estado==='pendiente'
-          ? `<button class="btn btn-ghost btn-sm" onclick="editMantSolicitud('${s.id}')">✏ Editar</button>`
-          : ''}
-        ${isAdmin2 ? `<button class="btn btn-danger btn-sm" onclick="deleteMantSolicitud('${s.id}')">🗑</button>` : ''}
+        ${acciones}
       </div>
     </div>`;
   }).join('');
@@ -11042,7 +11120,14 @@ function saveMantSolicitud(){
       turno: turnoActivo,
       fecha: today(),
       hora: new Date().toISOString(),
-      nroTicket: ''
+      nroTicket: '',
+      historial: [{
+        fecha: new Date().toISOString(),
+        estadoAnterior: null,
+        estadoNuevo: 'pendiente',
+        usuario: currentUser ? currentUser.nombre : '—',
+        nota: 'Solicitud creada'
+      }]
     };
     mantSolicitudes.unshift(sol);
     solGuardada = sol;
@@ -11073,6 +11158,47 @@ function deleteMantSolicitud(id){
 }
 
 // ── Modal Admin: gestionar / enviar ticket ───────────
+function renderMantTimeline(historial){
+  if(!historial || !historial.length) return '<div style="font-size:12px;color:var(--text3);padding:8px 0;">Sin historial registrado.</div>';
+  const estadoLabel = {pendiente:'⏳ Pendiente', recibido:'👁 Recibido', en_ejecucion:'🔧 En ejecución', terminado:'✅ Terminado', cerrado:'🔒 Cerrado'};
+  return `<div style="border-left:3px solid var(--border);padding-left:14px;margin:6px 0;">
+    ${historial.map(h => `
+      <div style="position:relative;padding-bottom:10px;font-size:12px;line-height:1.5;">
+        <div style="position:absolute;left:-21px;top:3px;width:10px;height:10px;border-radius:50%;background:${h.estadoNuevo==='cerrado'?'var(--text3)':h.estadoNuevo==='terminado'?'var(--green)':h.estadoNuevo==='en_ejecucion'?'#ff9800':h.estadoNuevo==='recibido'?'#2196f3':'var(--amber)'};border:2px solid var(--surface);"></div>
+        <div style="font-weight:600;color:var(--text);">${estadoLabel[h.estadoNuevo]||esc(h.estadoNuevo||'—')}</div>
+        <div style="color:var(--text3);font-size:11px;">${fmtDatetime(h.fecha)} · ${esc(h.usuario||'—')}</div>
+        ${h.nota ? `<div style="color:var(--text2);margin-top:2px;font-style:italic;">${esc(h.nota)}</div>` : ''}
+      </div>
+    `).join('')}
+  </div>`;
+}
+
+function cerrarMantSolicitud(id){
+  const idx = mantSolicitudes.findIndex(x => x.id === id);
+  if(idx < 0) return;
+  if(!confirm('¿Cerrar esta solicitud de mantenimiento? El trabajo quedará registrado como finalizado.')) return;
+  const estadoAnterior = mantSolicitudes[idx].estado;
+  mantSolicitudes[idx].estado = 'cerrado';
+  if(!mantSolicitudes[idx].historial) mantSolicitudes[idx].historial = [];
+  mantSolicitudes[idx].historial.push({
+    fecha: new Date().toISOString(),
+    estadoAnterior: estadoAnterior,
+    estadoNuevo: 'cerrado',
+    usuario: currentUser ? currentUser.nombre : '—',
+    nota: 'Solicitud cerrada por supervisor'
+  });
+  _localSaveInProgress = true;
+  saveMant();
+  saveMantDoc(mantSolicitudes[idx]);
+  renderMant();
+  updateMantBadge();
+  setTimeout(()=>{ _localSaveInProgress = false; }, 1500);
+  audit(`Mant. cerrado: ${mantSolicitudes[idx].sector}`, mantSolicitudes[idx].tipo, 'sistema');
+  pushNotifMant('🔒 Solicitud de mantenimiento cerrada',
+    `${mantSolicitudes[idx].sector}: ${mantSolicitudes[idx].tipo} — cerrada por ${currentUser?currentUser.nombre:'—'}`,
+    mantSolicitudes[idx].id);
+}
+
 function openMantAdminModal(id){
   const s = mantSolicitudes.find(x => x.id === id);
   if(!s) return;
@@ -11091,12 +11217,40 @@ function openMantAdminModal(id){
       ${s.obs ? `<div style="font-size:11px;color:var(--text3);font-style:italic;">${esc(s.obs)}</div>` : ''}
     </div>`;
 
+  // Renderizar timeline/historial
+  const timelineDiv = document.getElementById('mantAdminTimeline');
+  if(timelineDiv) timelineDiv.innerHTML = renderMantTimeline(s.historial);
+
+  // Limitar estados según rol
+  const selEstado = document.getElementById('mantAdminEstado');
+  if(selEstado){
+    selEstado.value = s.estado;
+    // Mantenimiento: solo puede avanzar (recibido → en_ejecucion → terminado)
+    if(esMantenimiento(currentUser)){
+      Array.from(selEstado.options).forEach(opt => {
+        if(s.estado === 'pendiente') opt.disabled = (opt.value !== 'recibido' && opt.value !== 'pendiente');
+        else if(s.estado === 'recibido') opt.disabled = (opt.value !== 'en_ejecucion' && opt.value !== 'recibido');
+        else if(s.estado === 'en_ejecucion') opt.disabled = (opt.value !== 'terminado' && opt.value !== 'en_ejecucion');
+        else opt.disabled = (opt.value !== s.estado);
+      });
+    } else {
+      // Admin/supervisor: libre, excepto no pueden poner "cerrado" desde acá (usan botón cerrar)
+      Array.from(selEstado.options).forEach(opt => opt.disabled = false);
+    }
+  }
+
+  document.getElementById('mantNroTicket').value = s.nroTicket || '';
+  // Limpiar nota anterior
+  const notaField = document.getElementById('mantAdminNota');
+  if(notaField) notaField.value = '';
+
   // Generar texto pre-formateado para el ticket
   const texto = generarTextoTicket(s);
   document.getElementById('mantTextoTicket').value = texto;
 
-  document.getElementById('mantAdminEstado').value = s.estado;
-  document.getElementById('mantNroTicket').value = s.nroTicket || '';
+  // Ocultar sección de envío para rol mantenimiento (solo gestiona estados)
+  const ticketSection = document.getElementById('mantTicketSection');
+  if(ticketSection) ticketSection.style.display = esMantenimiento(currentUser) ? 'none' : '';
 
   document.getElementById('modalMantAdmin').classList.add('open');
 }
@@ -11173,8 +11327,20 @@ function saveMantEstado(){
   if(idx < 0) return;
   const estadoAnterior = mantSolicitudes[idx].estado;
   const nuevoEstado = document.getElementById('mantAdminEstado').value;
+  const nota = (document.getElementById('mantAdminNota')?.value||'').trim();
   mantSolicitudes[idx].estado = nuevoEstado;
   mantSolicitudes[idx].nroTicket = document.getElementById('mantNroTicket').value.trim();
+  // Registrar en historial
+  if(!mantSolicitudes[idx].historial) mantSolicitudes[idx].historial = [];
+  if(estadoAnterior !== nuevoEstado || nota){
+    mantSolicitudes[idx].historial.push({
+      fecha: new Date().toISOString(),
+      estadoAnterior: estadoAnterior,
+      estadoNuevo: nuevoEstado,
+      usuario: currentUser ? currentUser.nombre : '—',
+      nota: nota || ''
+    });
+  }
   // Flag: evitar que el eco del snapshot pise el cambio local
   _localSaveInProgress = true;
   saveMant();
@@ -11183,12 +11349,12 @@ function saveMantEstado(){
   renderMant();
   updateMantBadge();
   setTimeout(()=>{ _localSaveInProgress = false; }, 1500);
-  audit(`Ticket mant. actualizado: ${mantSolicitudes[idx].sector}`, `Estado: ${mantSolicitudes[idx].estado} · Ticket: ${mantSolicitudes[idx].nroTicket||'—'}`, 'sistema');
-  // Notificar al supervisor si hubo cambio de estado
+  audit(`Ticket mant. actualizado: ${mantSolicitudes[idx].sector}`, `Estado: ${nuevoEstado} · Ticket: ${mantSolicitudes[idx].nroTicket||'—'}${nota?' · Nota: '+nota:''}`, 'sistema');
+  // Notificar cambio de estado
   if(estadoAnterior !== nuevoEstado){
-    const estadoLabels = {pendiente:'Pendiente', en_proceso:'En proceso', resuelto:'Resuelto', cancelado:'Cancelado'};
-    pushNotifMant('🔧 Respuesta de Mantenimiento',
-      `${mantSolicitudes[idx].sector}: ${mantSolicitudes[idx].tipo} → ${estadoLabels[nuevoEstado]||nuevoEstado}`,
+    const estadoLabels = {pendiente:'Pendiente', recibido:'Recibido', en_ejecucion:'En ejecución', terminado:'Terminado', cerrado:'Cerrado'};
+    pushNotifMant('🔧 Actualización de Mantenimiento',
+      `${mantSolicitudes[idx].sector}: ${mantSolicitudes[idx].tipo} → ${estadoLabels[nuevoEstado]||nuevoEstado}${nota?' — '+nota:''}`,
       mantSolicitudes[idx].id);
   }
 }
