@@ -49,32 +49,34 @@ body{font-family:var(--sans);background:var(--bg);color:var(--text);min-height:1
 /* ── LOGIN ── */
 .login-screen{display:none;position:fixed;inset:0;background:#071A28;z-index:9000;align-items:center;justify-content:center;flex-direction:column;overflow:hidden;}
 .login-screen.active{display:flex;}
-.login-bg{position:absolute;inset:0;z-index:0;background:linear-gradient(160deg,#071A28 0%,#0a2a40 40%,#0d1f30 100%);overflow:hidden;}
-.login-floating-tagline{position:relative;z-index:10;font-family:var(--sans);font-size:22px;font-weight:300;color:rgba(255,255,255,.75);letter-spacing:.02em;font-style:italic;margin-bottom:22px;text-align:left;width:380px;text-shadow:0 2px 30px rgba(0,87,128,.5);}
-.login-box{position:relative;z-index:10;background:#fff;border-radius:14px;padding:2.5rem 2rem;width:380px;border-top:4px solid var(--gold);box-shadow:0 24px 80px rgba(0,0,0,.5),0 0 0 1px rgba(255,255,255,.05);}
-.login-logo{font-family:var(--mono);font-size:11px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--navy);text-align:center;margin-bottom:4px;}
-.login-logo-icon{text-align:center;margin-bottom:12px;}
-.login-logo-icon svg{width:48px;height:48px;}
-.login-title{font-size:18px;font-weight:600;color:var(--text);margin-bottom:6px;text-align:center;}
-.login-sub{font-size:12px;color:var(--text3);margin-bottom:24px;text-align:center;}
+.login-bg{position:absolute;inset:0;z-index:0;background:linear-gradient(160deg,#061520 0%,#0a2540 40%,#0d1f30 100%);overflow:hidden;}
+.login-floating-tagline{position:relative;z-index:10;font-family:var(--sans);font-size:17px;font-weight:300;color:rgba(255,255,255,.45);letter-spacing:.04em;margin-bottom:20px;text-align:center;width:380px;}
+.login-box{position:relative;z-index:10;background:#fff;border-radius:12px;padding:2.5rem 2.2rem;width:380px;border-top:3px solid var(--gold);box-shadow:0 24px 80px rgba(0,0,0,.5);}
+.login-wordmark{text-align:center;margin-bottom:6px;}
+.login-wordmark .lw-fscc{font-family:var(--sans);font-size:28px;font-weight:700;color:var(--navy);letter-spacing:-.02em;}
+.login-wordmark .lw-line{display:block;width:40px;height:2px;background:var(--gold);margin:6px auto 0;border-radius:1px;}
+.login-wordmark-sub{text-align:center;font-size:11px;color:var(--text3);letter-spacing:.03em;margin-bottom:20px;font-weight:400;}
+.login-logo{display:none;}
+.login-logo-icon{display:none;}
+.login-title{font-size:16px;font-weight:600;color:var(--text);margin-bottom:6px;text-align:center;}
+.login-sub{font-size:12px;color:var(--text3);margin-bottom:22px;text-align:center;}
 .login-error{background:var(--red-bg);color:var(--red);font-size:12px;padding:8px 12px;border-radius:var(--r);margin-bottom:12px;display:none;}
 .login-error.show{display:block;}
-.login-security-badges{display:flex;gap:16px;justify-content:center;margin-top:18px;padding-top:14px;border-top:1px solid var(--border-light);}
-.login-security-badges .lsb{display:flex;align-items:center;gap:4px;font-size:9px;color:var(--text3);letter-spacing:.03em;text-transform:uppercase;font-weight:500;}
-.login-security-badges .lsb svg{width:12px;height:12px;fill:none;stroke:var(--text3);stroke-width:2;}
-.login-institution-footer{margin-top:14px;text-align:center;}
+.login-institution-footer{margin-top:18px;padding-top:14px;border-top:1px solid var(--border-light);text-align:center;}
 .login-institution-footer span{font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.03em;}
 .login-institution-footer strong{color:var(--text2);font-weight:600;}
-.login-version{text-align:center;margin-top:16px;font-family:var(--mono);font-size:9px;color:rgba(255,255,255,.2);letter-spacing:.06em;position:relative;z-index:10;}
+.login-powered{text-align:center;margin-top:20px;position:relative;z-index:10;}
+.login-powered a{font-family:var(--mono);font-size:9px;color:rgba(255,255,255,.25);letter-spacing:.04em;text-decoration:none;}
+.login-powered a:hover{color:rgba(255,255,255,.5);}
 /* ── Fondo animado: cintas de producción ── */
-.belt-line{position:absolute;left:0;right:0;height:1px;background:rgba(0,87,128,.2);}
-.belt-checkpoint{position:absolute;width:3px;height:13px;top:-6px;background:rgba(0,87,128,.12);border-radius:1px;}
-.belt-module{position:absolute;height:20px;top:-10px;display:flex;align-items:center;justify-content:center;padding:0 10px;border-radius:10px;font-family:var(--mono);font-size:9px;font-weight:500;letter-spacing:.06em;white-space:nowrap;background:rgba(0,87,128,.3);color:rgba(255,255,255,.5);border:1px solid rgba(0,87,128,.25);animation:moduleMove linear infinite;will-change:transform;}
+.belt-line{position:absolute;left:0;right:0;height:1px;background:rgba(0,87,128,.12);}
+.belt-checkpoint{position:absolute;width:3px;height:13px;top:-6px;background:rgba(0,87,128,.08);border-radius:1px;}
+.belt-module{position:absolute;height:18px;top:-9px;display:flex;align-items:center;justify-content:center;padding:0 10px;border-radius:9px;font-family:var(--mono);font-size:8px;font-weight:500;letter-spacing:.06em;white-space:nowrap;background:rgba(0,87,128,.15);color:rgba(255,255,255,.3);border:1px solid rgba(0,87,128,.12);animation:moduleMove linear infinite;will-change:transform;}
 @keyframes moduleMove{from{transform:translateX(-160px);}to{transform:translateX(calc(100vw + 160px));}}
-.belt-module.flash-green{animation:moduleMove linear infinite,moduleFlashGreen 6s ease-in-out infinite;}
-@keyframes moduleFlashGreen{0%,35%,65%,100%{background:rgba(0,87,128,.3);color:rgba(255,255,255,.5);border-color:rgba(0,87,128,.25);box-shadow:none;}45%,55%{background:rgba(76,162,47,.35);color:rgba(255,255,255,.85);border-color:rgba(76,162,47,.5);box-shadow:0 0 14px rgba(76,162,47,.3);}}
-.belt-module.flash-red{animation:moduleMove linear infinite,moduleFlashRed 7s ease-in-out infinite;}
-@keyframes moduleFlashRed{0%,35%,65%,100%{background:rgba(0,87,128,.3);color:rgba(255,255,255,.5);border-color:rgba(0,87,128,.25);box-shadow:none;}42%,58%{background:rgba(176,32,32,.35);color:rgba(255,255,255,.85);border-color:rgba(176,32,32,.5);box-shadow:0 0 14px rgba(176,32,32,.3);}}
+.belt-module.flash-green{animation:moduleMove linear infinite,moduleFlashGreen 8s ease-in-out infinite;}
+@keyframes moduleFlashGreen{0%,40%,60%,100%{background:rgba(0,87,128,.15);color:rgba(255,255,255,.3);border-color:rgba(0,87,128,.12);box-shadow:none;}48%,52%{background:rgba(76,162,47,.2);color:rgba(255,255,255,.55);border-color:rgba(76,162,47,.3);box-shadow:0 0 10px rgba(76,162,47,.15);}}
+.belt-module.flash-red{animation:moduleMove linear infinite,moduleFlashRed 9s ease-in-out infinite;}
+@keyframes moduleFlashRed{0%,40%,60%,100%{background:rgba(0,87,128,.15);color:rgba(255,255,255,.3);border-color:rgba(0,87,128,.12);box-shadow:none;}46%,54%{background:rgba(176,32,32,.2);color:rgba(255,255,255,.55);border-color:rgba(176,32,32,.3);box-shadow:0 0 10px rgba(176,32,32,.15);}}
 @media(prefers-reduced-motion:reduce){.belt-module,.belt-module.flash-green,.belt-module.flash-red{animation:none!important;transform:none!important;}}
 /* ── STOCK MODULE ── */
 .st-item-row{display:flex;gap:6px;align-items:center;margin-bottom:6px;padding:6px 8px;background:var(--bg);border-radius:var(--r);flex-wrap:wrap;}
@@ -508,35 +510,19 @@ if('serviceWorker' in navigator){
 <div class="login-screen" id="selectInstitucionScreen">
   <div class="login-bg"></div>
   <div class="login-box">
-    <div class="login-logo-icon">
-      <svg viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
-        <rect x="4" y="14" width="40" height="28" rx="3" fill="none" stroke="#1a2744" stroke-width="2.5"/>
-        <path d="M4 20h40" stroke="#c8a84e" stroke-width="2"/>
-        <rect x="10" y="24" width="8" height="8" rx="1.5" fill="none" stroke="#1a2744" stroke-width="1.5"/>
-        <rect x="20" y="24" width="8" height="8" rx="1.5" fill="none" stroke="#1a2744" stroke-width="1.5"/>
-        <rect x="30" y="24" width="8" height="8" rx="1.5" fill="none" stroke="#1a2744" stroke-width="1.5"/>
-        <path d="M12 8v6M24 6v8M36 8v6" stroke="#1a2744" stroke-width="2" stroke-linecap="round"/>
-        <circle cx="14" cy="28" r="1.5" fill="#2a7a5a"/>
-        <circle cx="24" cy="28" r="1.5" fill="#c8a84e"/>
-        <circle cx="34" cy="28" r="1.5" fill="#2a7a5a"/>
-      </svg>
+    <div class="login-wordmark">
+      <span class="lw-fscc">FSCC</span>
+      <span class="lw-line"></span>
     </div>
-    <div class="login-logo">Food Service Control Center</div>
-    <div class="login-sub" style="margin-bottom:16px;">Plataforma de control de calidad y seguridad alimentaria</div>
-    <div class="login-title" style="font-size:15px;margin-bottom:4px;">Seleccioná tu institución</div>
+    <div class="login-wordmark-sub">Control operativo de calidad alimentaria</div>
     <div id="listaInstituciones" style="display:flex;flex-direction:column;gap:8px;margin:16px 0;"></div>
-    <div style="font-size:11px;color:var(--text3);text-align:center;margin-top:6px;">¿Institución nueva? Contactá al proveedor del sistema.</div>
+    <div style="font-size:11px;color:var(--text3);text-align:center;margin-top:6px;">¿Organización nueva? Contactá al proveedor del sistema.</div>
     <div style="border-top:.5px solid var(--border-light);margin:16px 0 12px;padding-top:12px;">
       <button class="btn btn-outline" style="width:100%;justify-content:center;" onclick="abrirAccesoDemo()">🧪 Probar demo</button>
-      <div style="font-size:10px;color:var(--text3);text-align:center;margin-top:6px;">Pide usuario y contraseña de acceso a la demo — datos de ejemplo, nada se guarda.</div>
-    </div>
-    <div class="login-security-badges">
-      <span class="lsb"><svg viewBox="0 0 16 16"><path d="M8 1L2 4v4c0 3.5 2.6 6.4 6 7 3.4-.6 6-3.5 6-7V4L8 1z"/></svg> Cifrado</span>
-      <span class="lsb"><svg viewBox="0 0 16 16"><path d="M8 1a5 5 0 00-5 5v2H2v7h12V8h-1V6a5 5 0 00-5-5zm-2 5a2 2 0 114 0v2H6V6z"/></svg> Acceso seguro</span>
-      <span class="lsb"><svg viewBox="0 0 16 16"><path d="M1 8h2l2-4 3 8 2-4h5"/></svg> Trazabilidad</span>
+      <div style="font-size:10px;color:var(--text3);text-align:center;margin-top:6px;">Datos de ejemplo — nada se guarda.</div>
     </div>
   </div>
-  <div class="login-version">FSCC v29 · fscc.com.ar</div>
+  <div class="login-powered"><a href="https://fscc.com.ar" target="_blank">fscc.com.ar</a></div>
 </div>
 
 <!-- Modal: acceso al Modo Demo (usuario/contraseña genéricos, ver DEMO_ACCESO_USER/DEMO_ACCESO_PASS) -->
@@ -565,21 +551,11 @@ if('serviceWorker' in navigator){
   <div class="login-bg" id="loginBg"></div>
   <div class="login-floating-tagline">Lo que no se mide, no se controla.</div>
   <div class="login-box">
-    <div class="login-logo-icon">
-      <svg viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
-        <rect x="4" y="14" width="40" height="28" rx="3" fill="none" stroke="#1a2744" stroke-width="2.5"/>
-        <path d="M4 20h40" stroke="#c8a84e" stroke-width="2"/>
-        <rect x="10" y="24" width="8" height="8" rx="1.5" fill="none" stroke="#1a2744" stroke-width="1.5"/>
-        <rect x="20" y="24" width="8" height="8" rx="1.5" fill="none" stroke="#1a2744" stroke-width="1.5"/>
-        <rect x="30" y="24" width="8" height="8" rx="1.5" fill="none" stroke="#1a2744" stroke-width="1.5"/>
-        <path d="M12 8v6M24 6v8M36 8v6" stroke="#1a2744" stroke-width="2" stroke-linecap="round"/>
-        <circle cx="14" cy="28" r="1.5" fill="#2a7a5a"/>
-        <circle cx="24" cy="28" r="1.5" fill="#c8a84e"/>
-        <circle cx="34" cy="28" r="1.5" fill="#2a7a5a"/>
-      </svg>
+    <div class="login-wordmark">
+      <span class="lw-fscc">FSCC</span>
+      <span class="lw-line"></span>
     </div>
-    <div class="login-logo">FSCC</div>
-    <div class="login-sub" style="margin-bottom:18px;">Ingresá con tu usuario y contraseña</div>
+    <div class="login-wordmark-sub">Ingresá con tu usuario y contraseña</div>
     <div class="login-error" id="loginError">Usuario o contraseña incorrectos.</div>
     <div class="fg" style="margin-bottom:10px;">
       <label>Usuario</label>
@@ -592,13 +568,9 @@ if('serviceWorker' in navigator){
     <button class="btn btn-primary" style="width:100%;justify-content:center;padding:10px;" onclick="doLogin()">Ingresar</button>
     <button class="btn btn-ghost" style="width:100%;justify-content:center;margin-top:8px;font-size:12px;color:var(--text3);" onclick="openRecuperarPass()">¿Olvidaste tu contraseña?</button>
     <button class="btn btn-ghost" style="width:100%;justify-content:center;margin-top:2px;font-size:11px;color:var(--text3);" onclick="cambiarInstitucion()">← Cambiar institución</button>
-    <div class="login-institution-footer"><span>Institución: <strong id="loginInstitucionNombre">Sanatorio Parque</strong></span></div>
-    <div class="login-security-badges">
-      <span class="lsb"><svg viewBox="0 0 16 16"><path d="M8 1L2 4v4c0 3.5 2.6 6.4 6 7 3.4-.6 6-3.5 6-7V4L8 1z"/></svg> Cifrado</span>
-      <span class="lsb"><svg viewBox="0 0 16 16"><path d="M8 1a5 5 0 00-5 5v2H2v7h12V8h-1V6a5 5 0 00-5-5zm-2 5a2 2 0 114 0v2H6V6z"/></svg> Acceso seguro</span>
-      <span class="lsb"><svg viewBox="0 0 16 16"><path d="M1 8h2l2-4 3 8 2-4h5"/></svg> Trazabilidad</span>
-    </div>
+    <div class="login-institution-footer"><span><strong id="loginInstitucionNombre">Sanatorio Parque</strong></span></div>
   </div>
+  <div class="login-powered"><a href="https://fscc.com.ar" target="_blank">fscc.com.ar</a></div>
 </div>
 
 <!-- ══ APP ══ -->
