@@ -49,16 +49,23 @@ body{font-family:var(--sans);background:var(--bg);color:var(--text);min-height:1
 /* ── LOGIN ── */
 .login-screen{display:none;position:fixed;inset:0;background:#071A28;z-index:9000;align-items:center;justify-content:center;flex-direction:column;overflow:hidden;}
 .login-screen.active{display:flex;}
-.login-bg{position:absolute;inset:0;z-index:0;background:#071A28;overflow:hidden;}
-.login-floating-tagline{position:relative;z-index:10;font-family:var(--sans);font-size:26px;font-weight:400;color:rgba(255,255,255,.9);letter-spacing:.03em;font-style:italic;margin-bottom:26px;text-align:left;width:340px;text-shadow:0 2px 30px rgba(0,87,128,.5);}
-.login-box{position:relative;z-index:10;background:#fff;border-radius:12px;padding:2.5rem 2rem;width:340px;border-top:4px solid var(--gold);box-shadow:0 20px 60px rgba(0,0,0,.4);}
-.login-title{font-size:18px;font-weight:600;color:var(--text);margin-bottom:6px;}
-.login-sub{font-size:12px;color:var(--text3);margin-bottom:24px;}
+.login-bg{position:absolute;inset:0;z-index:0;background:linear-gradient(160deg,#071A28 0%,#0a2a40 40%,#0d1f30 100%);overflow:hidden;}
+.login-floating-tagline{position:relative;z-index:10;font-family:var(--sans);font-size:22px;font-weight:300;color:rgba(255,255,255,.75);letter-spacing:.02em;font-style:italic;margin-bottom:22px;text-align:left;width:380px;text-shadow:0 2px 30px rgba(0,87,128,.5);}
+.login-box{position:relative;z-index:10;background:#fff;border-radius:14px;padding:2.5rem 2rem;width:380px;border-top:4px solid var(--gold);box-shadow:0 24px 80px rgba(0,0,0,.5),0 0 0 1px rgba(255,255,255,.05);}
+.login-logo{font-family:var(--mono);font-size:11px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--navy);text-align:center;margin-bottom:4px;}
+.login-logo-icon{text-align:center;margin-bottom:12px;}
+.login-logo-icon svg{width:48px;height:48px;}
+.login-title{font-size:18px;font-weight:600;color:var(--text);margin-bottom:6px;text-align:center;}
+.login-sub{font-size:12px;color:var(--text3);margin-bottom:24px;text-align:center;}
 .login-error{background:var(--red-bg);color:var(--red);font-size:12px;padding:8px 12px;border-radius:var(--r);margin-bottom:12px;display:none;}
 .login-error.show{display:block;}
-.login-institution-footer{margin-top:20px;padding-top:14px;border-top:1px solid var(--border-light);text-align:center;}
+.login-security-badges{display:flex;gap:16px;justify-content:center;margin-top:18px;padding-top:14px;border-top:1px solid var(--border-light);}
+.login-security-badges .lsb{display:flex;align-items:center;gap:4px;font-size:9px;color:var(--text3);letter-spacing:.03em;text-transform:uppercase;font-weight:500;}
+.login-security-badges .lsb svg{width:12px;height:12px;fill:none;stroke:var(--text3);stroke-width:2;}
+.login-institution-footer{margin-top:14px;text-align:center;}
 .login-institution-footer span{font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.03em;}
 .login-institution-footer strong{color:var(--text2);font-weight:600;}
+.login-version{text-align:center;margin-top:16px;font-family:var(--mono);font-size:9px;color:rgba(255,255,255,.2);letter-spacing:.06em;position:relative;z-index:10;}
 /* ── Fondo animado: cintas de producción ── */
 .belt-line{position:absolute;left:0;right:0;height:1px;background:rgba(0,87,128,.2);}
 .belt-checkpoint{position:absolute;width:3px;height:13px;top:-6px;background:rgba(0,87,128,.12);border-radius:1px;}
@@ -91,6 +98,23 @@ body{font-family:var(--sans);background:var(--bg);color:var(--text);min-height:1
 .role-badge{font-size:9px;font-weight:600;padding:2px 7px;border-radius:3px;text-transform:uppercase;letter-spacing:.04em;}
 .role-badge.admin{background:var(--gold);color:var(--navy);}
 .role-badge.supervisor{background:#2a7a5a;color:#fff;}
+/* ── CERTIFICADOS ── */
+.cert-badge{display:inline-flex;align-items:center;gap:3px;font-size:10px;font-weight:500;padding:2px 8px;border-radius:10px;letter-spacing:.02em;}
+.cert-badge.cert-ok{background:#e6f5ed;color:#1b7a4a;}
+.cert-badge.cert-warn{background:#fff8e1;color:#8a6416;}
+.cert-badge.cert-expired{background:#fde8e8;color:#c04040;}
+.cert-badge.cert-empty{background:var(--bg);color:var(--text3);border:1px dashed var(--border);}
+.cert-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px;margin:12px 0;}
+.cert-card{background:var(--surface);border:1px solid var(--border-light);border-radius:var(--r);padding:12px 14px;display:flex;flex-direction:column;gap:4px;}
+.cert-card-name{font-size:13px;font-weight:600;color:var(--text);}
+.cert-card-row{display:flex;justify-content:space-between;align-items:center;font-size:11px;color:var(--text2);}
+.cert-card-row .cert-tipo{font-weight:500;}
+.cert-summary-bar{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0 16px;}
+.cert-summary-chip{display:flex;align-items:center;gap:4px;font-size:11px;font-weight:600;padding:4px 10px;border-radius:6px;}
+.cert-summary-chip.csc-ok{background:#e6f5ed;color:#1b7a5a;}
+.cert-summary-chip.csc-warn{background:#fff8e1;color:#8a6416;}
+.cert-summary-chip.csc-expired{background:#fde8e8;color:#c04040;}
+.cert-summary-chip.csc-missing{background:var(--bg);color:var(--text3);border:1px solid var(--border);}
 .role-badge.operario{background:#2a6a9a;color:#fff;}
 .role-badge.cubre{background:#7a3a9a;color:#fff;}
 .role-badge.mantenimiento{background:#c56a00;color:#fff;}
@@ -482,16 +506,37 @@ if('serviceWorker' in navigator){
 
 <!-- ══ LOGIN ══ -->
 <div class="login-screen" id="selectInstitucionScreen">
+  <div class="login-bg"></div>
   <div class="login-box">
+    <div class="login-logo-icon">
+      <svg viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
+        <rect x="4" y="14" width="40" height="28" rx="3" fill="none" stroke="#1a2744" stroke-width="2.5"/>
+        <path d="M4 20h40" stroke="#c8a84e" stroke-width="2"/>
+        <rect x="10" y="24" width="8" height="8" rx="1.5" fill="none" stroke="#1a2744" stroke-width="1.5"/>
+        <rect x="20" y="24" width="8" height="8" rx="1.5" fill="none" stroke="#1a2744" stroke-width="1.5"/>
+        <rect x="30" y="24" width="8" height="8" rx="1.5" fill="none" stroke="#1a2744" stroke-width="1.5"/>
+        <path d="M12 8v6M24 6v8M36 8v6" stroke="#1a2744" stroke-width="2" stroke-linecap="round"/>
+        <circle cx="14" cy="28" r="1.5" fill="#2a7a5a"/>
+        <circle cx="24" cy="28" r="1.5" fill="#c8a84e"/>
+        <circle cx="34" cy="28" r="1.5" fill="#2a7a5a"/>
+      </svg>
+    </div>
     <div class="login-logo">Food Service Control Center</div>
-    <div class="login-title" style="font-size:15px;">¿Qué institución sos?</div>
+    <div class="login-sub" style="margin-bottom:16px;">Plataforma de control de calidad y seguridad alimentaria</div>
+    <div class="login-title" style="font-size:15px;margin-bottom:4px;">Seleccioná tu institución</div>
     <div id="listaInstituciones" style="display:flex;flex-direction:column;gap:8px;margin:16px 0;"></div>
     <div style="font-size:11px;color:var(--text3);text-align:center;margin-top:6px;">¿Institución nueva? Contactá al proveedor del sistema.</div>
     <div style="border-top:.5px solid var(--border-light);margin:16px 0 12px;padding-top:12px;">
       <button class="btn btn-outline" style="width:100%;justify-content:center;" onclick="abrirAccesoDemo()">🧪 Probar demo</button>
       <div style="font-size:10px;color:var(--text3);text-align:center;margin-top:6px;">Pide usuario y contraseña de acceso a la demo — datos de ejemplo, nada se guarda.</div>
     </div>
+    <div class="login-security-badges">
+      <span class="lsb"><svg viewBox="0 0 16 16"><path d="M8 1L2 4v4c0 3.5 2.6 6.4 6 7 3.4-.6 6-3.5 6-7V4L8 1z"/></svg> Cifrado</span>
+      <span class="lsb"><svg viewBox="0 0 16 16"><path d="M8 1a5 5 0 00-5 5v2H2v7h12V8h-1V6a5 5 0 00-5-5zm-2 5a2 2 0 114 0v2H6V6z"/></svg> Acceso seguro</span>
+      <span class="lsb"><svg viewBox="0 0 16 16"><path d="M1 8h2l2-4 3 8 2-4h5"/></svg> Trazabilidad</span>
+    </div>
   </div>
+  <div class="login-version">FSCC v29 · fscc.com.ar</div>
 </div>
 
 <!-- Modal: acceso al Modo Demo (usuario/contraseña genéricos, ver DEMO_ACCESO_USER/DEMO_ACCESO_PASS) -->
@@ -520,8 +565,21 @@ if('serviceWorker' in navigator){
   <div class="login-bg" id="loginBg"></div>
   <div class="login-floating-tagline">Lo que no se mide, no se controla.</div>
   <div class="login-box">
-    <div class="login-title">Food Service Control</div>
-    <div class="login-sub">Ingresá con tu usuario y contraseña</div>
+    <div class="login-logo-icon">
+      <svg viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
+        <rect x="4" y="14" width="40" height="28" rx="3" fill="none" stroke="#1a2744" stroke-width="2.5"/>
+        <path d="M4 20h40" stroke="#c8a84e" stroke-width="2"/>
+        <rect x="10" y="24" width="8" height="8" rx="1.5" fill="none" stroke="#1a2744" stroke-width="1.5"/>
+        <rect x="20" y="24" width="8" height="8" rx="1.5" fill="none" stroke="#1a2744" stroke-width="1.5"/>
+        <rect x="30" y="24" width="8" height="8" rx="1.5" fill="none" stroke="#1a2744" stroke-width="1.5"/>
+        <path d="M12 8v6M24 6v8M36 8v6" stroke="#1a2744" stroke-width="2" stroke-linecap="round"/>
+        <circle cx="14" cy="28" r="1.5" fill="#2a7a5a"/>
+        <circle cx="24" cy="28" r="1.5" fill="#c8a84e"/>
+        <circle cx="34" cy="28" r="1.5" fill="#2a7a5a"/>
+      </svg>
+    </div>
+    <div class="login-logo">FSCC</div>
+    <div class="login-sub" style="margin-bottom:18px;">Ingresá con tu usuario y contraseña</div>
     <div class="login-error" id="loginError">Usuario o contraseña incorrectos.</div>
     <div class="fg" style="margin-bottom:10px;">
       <label>Usuario</label>
@@ -535,6 +593,11 @@ if('serviceWorker' in navigator){
     <button class="btn btn-ghost" style="width:100%;justify-content:center;margin-top:8px;font-size:12px;color:var(--text3);" onclick="openRecuperarPass()">¿Olvidaste tu contraseña?</button>
     <button class="btn btn-ghost" style="width:100%;justify-content:center;margin-top:2px;font-size:11px;color:var(--text3);" onclick="cambiarInstitucion()">← Cambiar institución</button>
     <div class="login-institution-footer"><span>Institución: <strong id="loginInstitucionNombre">Sanatorio Parque</strong></span></div>
+    <div class="login-security-badges">
+      <span class="lsb"><svg viewBox="0 0 16 16"><path d="M8 1L2 4v4c0 3.5 2.6 6.4 6 7 3.4-.6 6-3.5 6-7V4L8 1z"/></svg> Cifrado</span>
+      <span class="lsb"><svg viewBox="0 0 16 16"><path d="M8 1a5 5 0 00-5 5v2H2v7h12V8h-1V6a5 5 0 00-5-5zm-2 5a2 2 0 114 0v2H6V6z"/></svg> Acceso seguro</span>
+      <span class="lsb"><svg viewBox="0 0 16 16"><path d="M1 8h2l2-4 3 8 2-4h5"/></svg> Trazabilidad</span>
+    </div>
   </div>
 </div>
 
@@ -900,6 +963,16 @@ if('serviceWorker' in navigator){
     <h3>Usuarios y accesos</h3>
     <div id="cfgUsers" style="margin-bottom:10px;"></div>
     <button class="btn btn-outline btn-sm" onclick="openNewUserModal()">+ Agregar usuario</button>
+  </div>
+
+  <!-- CERTIFICADOS Y HABILITACIONES DEL EQUIPO -->
+  <div class="config-section">
+    <h3>📋 Certificados y habilitaciones del equipo</h3>
+    <div class="info-panel" style="font-size:11px;padding:7px 10px;margin-bottom:10px;">
+      Controlá los vencimientos de libretas sanitarias, carnets de manipulador, aptos médicos y capacitaciones obligatorias de cada persona.
+    </div>
+    <div id="certSummaryBar" class="cert-summary-bar"></div>
+    <div id="certGrid" class="cert-grid"></div>
   </div>
 
   <!-- SECTORES + EQUIPOS en grilla separada -->
@@ -2550,6 +2623,39 @@ if('serviceWorker' in navigator){
     <div class="form-actions">
       <button class="btn btn-ghost" onclick="closeModal('modalNewUser')">Cancelar</button>
       <button class="btn btn-primary" id="nuSaveBtn" onclick="saveUserModal()">Crear usuario</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ MODAL CERTIFICADOS DE USUARIO ══ -->
+<div class="modal-bg" id="modalCertificados" onclick="handleModalClick(event,'modalCertificados')">
+  <div class="modal-box wide">
+    <button class="modal-close" onclick="closeModal('modalCertificados')">✕</button>
+    <div class="modal-title" style="margin-bottom:4px;">📋 Certificados de <span id="certUserName"></span></div>
+    <div class="modal-sub" style="margin-bottom:14px;">Cargá las fechas de vencimiento de cada habilitación. El sistema alertará cuando estén por vencer.</div>
+    <div id="certEditList" style="margin-bottom:14px;"></div>
+    <div style="border-top:.5px solid var(--border-light);padding-top:12px;">
+      <div class="form-grid" style="margin-bottom:8px;">
+        <div class="fg"><label>Tipo de certificado</label>
+          <select id="certTipoNuevo">
+            <option value="Carnet de Manipulador">Carnet de Manipulador de Alimentos</option>
+            <option value="Libreta Sanitaria">Libreta Sanitaria</option>
+            <option value="Apto Médico">Apto Médico / Psicofísico</option>
+            <option value="Capacitación BPM">Capacitación BPM (anual)</option>
+            <option value="Curso RCP">Curso RCP</option>
+            <option value="Seguridad e Higiene">Seguridad e Higiene</option>
+            <option value="Otro">Otro (especificar)</option>
+          </select>
+        </div>
+        <div class="fg" id="certOtroWrap" style="display:none;"><label>Nombre del certificado</label><input type="text" id="certOtroNombre" placeholder="Ej: Habilitación municipal" /></div>
+        <div class="fg"><label>Fecha de emisión</label><input type="date" id="certFechaEmision" /></div>
+        <div class="fg"><label>Fecha de vencimiento</label><input type="date" id="certFechaVenc" /></div>
+        <div class="fg"><label>Entidad emisora <span style="font-size:10px;color:var(--text3)">(opcional)</span></label><input type="text" id="certEntidad" placeholder="Ej: Municipalidad de Rosario" /></div>
+      </div>
+      <div class="form-actions">
+        <button class="btn btn-ghost" onclick="closeModal('modalCertificados')">Cerrar</button>
+        <button class="btn btn-primary" onclick="agregarCertificado()">+ Agregar certificado</button>
+      </div>
     </div>
   </div>
 </div>
@@ -5880,6 +5986,7 @@ function renderUsersConfig(){
       <span class="badge ${rolBadge}">${esc(u.rol)}</span>
       ${svNote}${sectorInfo}${cubreInfo}${sectorBtn}${pendienteCambio}
       <button class="btn btn-ghost btn-sm" onclick="openEditUserModal(${i})">Editar</button>
+      <button class="btn btn-ghost btn-sm" onclick="openCertModal(${i})">📋 Certificados</button>
       <button class="btn btn-ghost btn-sm" onclick="resetPass(${i})">🔑 Reset clave</button>
       ${u.user!=='admin'?`<button class="btn btn-danger btn-sm" onclick="removeUser(${i})">Eliminar</button>`:'<span style="font-size:10px;color:var(--text3)">protegido</span>'}
     </div>`;
@@ -6051,6 +6158,174 @@ function saveCubreSector(){
   const u=users[cubreEditIdx];
   audit(`Sector de reemplazo actualizado: ${u.nombre}`,`${u.cubreSector||'—'} → ${s}`,'usuario');
   u.cubreSector=s;saveUsers();renderUsersConfig();closeModal('modalCubreSector');cubreEditIdx=null;
+}
+
+// ═══════════════════════════════════════════════════
+//  CERTIFICADOS Y HABILITACIONES DEL EQUIPO
+// ═══════════════════════════════════════════════════
+const CERT_TIPOS_DEFAULT = ['Carnet de Manipulador','Libreta Sanitaria','Apto Médico','Capacitación BPM','Curso RCP','Seguridad e Higiene'];
+
+let _certEditUserIdx = null;
+
+function certEstado(fechaVenc){
+  if(!fechaVenc) return {cls:'cert-empty',label:'Sin cargar',icon:'⚪'};
+  const hoy = new Date(today());
+  const venc = new Date(fechaVenc);
+  const diff = Math.ceil((venc - hoy)/(1000*60*60*24));
+  if(diff < 0) return {cls:'cert-expired',label:'Vencido hace '+Math.abs(diff)+' días',icon:'🔴'};
+  if(diff <= 30) return {cls:'cert-warn',label:'Vence en '+diff+' días',icon:'🟡'};
+  return {cls:'cert-ok',label:'Vigente hasta '+fmtDate(fechaVenc),icon:'🟢'};
+}
+
+function renderCertificados(){
+  // Resumen
+  let okCount=0, warnCount=0, expiredCount=0, missingCount=0;
+  users.forEach(u => {
+    const certs = u.certificados || [];
+    CERT_TIPOS_DEFAULT.forEach(tipo => {
+      const c = certs.find(x => x.tipo === tipo);
+      if(!c || !c.fechaVenc){ missingCount++; return; }
+      const est = certEstado(c.fechaVenc);
+      if(est.cls==='cert-ok') okCount++;
+      else if(est.cls==='cert-warn') warnCount++;
+      else if(est.cls==='cert-expired') expiredCount++;
+    });
+  });
+  const bar = document.getElementById('certSummaryBar');
+  if(bar) bar.innerHTML = `
+    ${okCount?`<span class="cert-summary-chip csc-ok">🟢 ${okCount} vigentes</span>`:''}
+    ${warnCount?`<span class="cert-summary-chip csc-warn">🟡 ${warnCount} por vencer</span>`:''}
+    ${expiredCount?`<span class="cert-summary-chip csc-expired">🔴 ${expiredCount} vencidos</span>`:''}
+    ${missingCount?`<span class="cert-summary-chip csc-missing">⚪ ${missingCount} sin cargar</span>`:''}
+  `;
+
+  // Grid de cards por usuario
+  const grid = document.getElementById('certGrid');
+  if(!grid) return;
+  grid.innerHTML = users.map((u,i) => {
+    const certs = u.certificados || [];
+    const certHtml = CERT_TIPOS_DEFAULT.map(tipo => {
+      const c = certs.find(x => x.tipo === tipo);
+      const est = c && c.fechaVenc ? certEstado(c.fechaVenc) : {cls:'cert-empty',label:'Sin cargar',icon:'⚪'};
+      return `<div class="cert-card-row">
+        <span class="cert-tipo">${tipo}</span>
+        <span class="cert-badge ${est.cls}">${est.icon} ${est.label}</span>
+      </div>`;
+    }).join('');
+    // Certificados adicionales (fuera de los default)
+    const extras = certs.filter(c => !CERT_TIPOS_DEFAULT.includes(c.tipo));
+    const extrasHtml = extras.map(c => {
+      const est = certEstado(c.fechaVenc);
+      return `<div class="cert-card-row">
+        <span class="cert-tipo">${esc(c.tipo)}</span>
+        <span class="cert-badge ${est.cls}">${est.icon} ${est.label}</span>
+      </div>`;
+    }).join('');
+    return `<div class="cert-card">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+        <span class="cert-card-name">👤 ${esc(u.nombre)}</span>
+        <button class="btn btn-ghost btn-sm" onclick="openCertModal(${i})" style="font-size:11px;">✏ Editar</button>
+      </div>
+      ${certHtml}${extrasHtml}
+    </div>`;
+  }).join('');
+}
+
+function openCertModal(i){
+  _certEditUserIdx = i;
+  const u = users[i];
+  document.getElementById('certUserName').textContent = u.nombre;
+  document.getElementById('certTipoNuevo').value = 'Carnet de Manipulador';
+  document.getElementById('certFechaEmision').value = '';
+  document.getElementById('certFechaVenc').value = '';
+  document.getElementById('certEntidad').value = '';
+  document.getElementById('certOtroWrap').style.display = 'none';
+  document.getElementById('certTipoNuevo').onchange = function(){
+    document.getElementById('certOtroWrap').style.display = this.value==='Otro'?'':'none';
+  };
+  renderCertEditList(u);
+  document.getElementById('modalCertificados').classList.add('open');
+}
+
+function renderCertEditList(u){
+  const certs = u.certificados || [];
+  const el = document.getElementById('certEditList');
+  if(!certs.length){
+    el.innerHTML = '<div style="font-size:12px;color:var(--text3);padding:12px 0;">Sin certificados cargados todavía. Agregá uno abajo.</div>';
+    return;
+  }
+  el.innerHTML = certs.map((c,ci) => {
+    const est = certEstado(c.fechaVenc);
+    return `<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:.5px solid var(--border-light);">
+      <span class="cert-badge ${est.cls}">${est.icon}</span>
+      <span style="flex:1;font-size:13px;font-weight:500;">${esc(c.tipo)}</span>
+      <span style="font-size:11px;color:var(--text2);">${c.entidad?esc(c.entidad)+' · ':''}${fmtDate(c.fechaEmision)||'—'} → ${fmtDate(c.fechaVenc)||'—'}</span>
+      <button class="btn btn-danger btn-sm" style="padding:2px 6px;font-size:10px;" onclick="eliminarCertificado(${ci})">✕</button>
+    </div>`;
+  }).join('');
+}
+
+function agregarCertificado(){
+  if(_certEditUserIdx === null) return;
+  const u = users[_certEditUserIdx];
+  let tipo = document.getElementById('certTipoNuevo').value;
+  if(tipo === 'Otro'){
+    tipo = document.getElementById('certOtroNombre').value.trim();
+    if(!tipo){ alert('Ingresá el nombre del certificado.'); return; }
+  }
+  const fechaEmision = document.getElementById('certFechaEmision').value;
+  const fechaVenc = document.getElementById('certFechaVenc').value;
+  if(!fechaVenc){ alert('Ingresá la fecha de vencimiento.'); return; }
+  const entidad = document.getElementById('certEntidad').value.trim();
+  if(!u.certificados) u.certificados = [];
+  // Si ya existe uno del mismo tipo, reemplazar
+  const existIdx = u.certificados.findIndex(c => c.tipo === tipo);
+  const cert = {tipo, fechaEmision, fechaVenc, entidad, cargadoPor: currentUser?currentUser.nombre:'—', cargadoTs: new Date().toISOString()};
+  if(existIdx >= 0){
+    u.certificados[existIdx] = cert;
+  } else {
+    u.certificados.push(cert);
+  }
+  audit(`Certificado cargado: ${u.nombre}`, `${tipo} — vence ${fechaVenc}`, 'usuario');
+  saveUsers();
+  renderCertEditList(u);
+  renderCertificados();
+  // Limpiar campos
+  document.getElementById('certFechaEmision').value = '';
+  document.getElementById('certFechaVenc').value = '';
+  document.getElementById('certEntidad').value = '';
+}
+
+function eliminarCertificado(ci){
+  if(_certEditUserIdx === null) return;
+  const u = users[_certEditUserIdx];
+  if(!u.certificados || !u.certificados[ci]) return;
+  const tipo = u.certificados[ci].tipo;
+  if(!confirm(`¿Eliminar el certificado "${tipo}" de ${u.nombre}?`)) return;
+  u.certificados.splice(ci, 1);
+  audit(`Certificado eliminado: ${u.nombre}`, tipo, 'usuario');
+  saveUsers();
+  renderCertEditList(u);
+  renderCertificados();
+}
+
+// Alerta de certificados en el dashboard
+function getCertAlerts(){
+  const alertas = [];
+  users.forEach(u => {
+    (u.certificados||[]).forEach(c => {
+      if(!c.fechaVenc) return;
+      const est = certEstado(c.fechaVenc);
+      if(est.cls === 'cert-expired'){
+        alertas.push({tipo:'expired', usuario:u.nombre, cert:c.tipo, fecha:c.fechaVenc, msg:`🔴 ${u.nombre}: ${c.tipo} VENCIDO (${fmtDate(c.fechaVenc)})`});
+      } else if(est.cls === 'cert-warn'){
+        alertas.push({tipo:'warn', usuario:u.nombre, cert:c.tipo, fecha:c.fechaVenc, msg:`🟡 ${u.nombre}: ${c.tipo} vence pronto (${fmtDate(c.fechaVenc)})`});
+      }
+    });
+  });
+  // Ordenar: vencidos primero, luego por fecha
+  alertas.sort((a,b) => (a.tipo==='expired'?0:1)-(b.tipo==='expired'?0:1) || new Date(a.fecha)-new Date(b.fecha));
+  return alertas;
 }
 
 // ═══════════════════════════════════════════════════
@@ -6403,8 +6678,15 @@ function renderBars(){
 
 function renderAlert(){
   const n=tasks.filter(t=>t.estado!=='Cumplido'&&diffDays(t.fechaVenc)<0).length;
+  const certAlertas = getCertAlerts();
   const bar=document.getElementById('alertBar');
-  if(n>0){document.getElementById('alertText').textContent=n+' tarea'+(n>1?'s':'')+' vencida'+(n>1?'s':'')+'.';bar.style.display='flex';}
+  const parts = [];
+  if(n>0) parts.push(n+' tarea'+(n>1?'s':'')+' vencida'+(n>1?'s':''));
+  const certExp = certAlertas.filter(a=>a.tipo==='expired').length;
+  const certWarn = certAlertas.filter(a=>a.tipo==='warn').length;
+  if(certExp>0) parts.push(certExp+' certificado'+(certExp>1?'s':'')+' vencido'+(certExp>1?'s':''));
+  if(certWarn>0) parts.push(certWarn+' certificado'+(certWarn>1?'s':'')+' por vencer');
+  if(parts.length>0){document.getElementById('alertText').textContent=parts.join(' · ')+'.';bar.style.display='flex';}
   else bar.style.display='none';
 }
 
@@ -12494,7 +12776,7 @@ function renderAll(){
   if(currentUser){
     if(esAdmin(currentUser)){
       renderMetrics();renderBars();renderAlert();renderTable();
-      renderSvActive();
+      renderSvActive();renderCertificados();
     }
     if(currentUser.rol==='supervisor'){
       renderSvActive();
