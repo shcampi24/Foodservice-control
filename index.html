@@ -47,11 +47,20 @@ body{font-family:var(--sans);background:var(--bg);color:var(--text);min-height:1
 .offline-banner.show{display:block;}
 
 /* ── LOGIN ── */
-.login-screen{display:none;position:fixed;inset:0;background:#071A28;z-index:9000;align-items:center;justify-content:center;flex-direction:column;overflow:hidden;}
+.login-screen{display:none;position:fixed;inset:0;background:#071A28;z-index:9000;overflow:hidden;}
 .login-screen.active{display:flex;}
 .login-bg{position:absolute;inset:0;z-index:0;background:linear-gradient(160deg,#061520 0%,#0a2540 40%,#0d1f30 100%);overflow:hidden;}
-.login-floating-tagline{position:relative;z-index:10;font-family:var(--sans);font-size:17px;font-weight:300;color:rgba(255,255,255,.45);letter-spacing:.04em;margin-bottom:20px;text-align:center;width:380px;}
-.login-box{position:relative;z-index:10;background:#fff;border-radius:12px;padding:2.5rem 2.2rem;width:380px;border-top:3px solid var(--gold);box-shadow:0 24px 80px rgba(0,0,0,.5);}
+.login-layout{position:relative;z-index:10;display:flex;width:100%;height:100%;align-items:center;justify-content:center;gap:60px;padding:40px;}
+.login-brand{flex:0 1 400px;color:#fff;}
+.login-brand .lb-fscc{font-family:var(--sans);font-size:52px;font-weight:700;letter-spacing:-.03em;line-height:1;}
+.login-brand .lb-line{display:block;width:48px;height:3px;background:var(--gold);margin:12px 0 14px;border-radius:2px;}
+.login-brand .lb-full{font-family:var(--sans);font-size:14px;font-weight:400;color:rgba(255,255,255,.55);letter-spacing:.02em;margin-bottom:24px;}
+.login-brand .lb-tagline{font-family:var(--sans);font-size:22px;font-weight:300;color:rgba(255,255,255,.35);letter-spacing:.03em;line-height:1.4;font-style:italic;}
+.login-brand .lb-contact{margin-top:32px;font-family:var(--mono);font-size:10px;color:rgba(255,255,255,.25);letter-spacing:.03em;}
+.login-brand .lb-contact a{color:rgba(255,255,255,.4);text-decoration:none;}
+.login-brand .lb-contact a:hover{color:rgba(255,255,255,.6);}
+.login-box{position:relative;z-index:10;background:#fff;border-radius:12px;padding:2.2rem 2rem;width:360px;flex-shrink:0;border-top:3px solid var(--gold);box-shadow:0 24px 80px rgba(0,0,0,.5);}
+.login-box-title{font-family:var(--sans);font-size:15px;font-weight:600;color:var(--text);margin-bottom:14px;}
 .login-wordmark{text-align:center;margin-bottom:6px;}
 .login-wordmark .lw-fscc{font-family:var(--sans);font-size:28px;font-weight:700;color:var(--navy);letter-spacing:-.02em;}
 .login-wordmark .lw-line{display:block;width:40px;height:2px;background:var(--gold);margin:6px auto 0;border-radius:1px;}
@@ -62,12 +71,29 @@ body{font-family:var(--sans);background:var(--bg);color:var(--text);min-height:1
 .login-sub{font-size:12px;color:var(--text3);margin-bottom:22px;text-align:center;}
 .login-error{background:var(--red-bg);color:var(--red);font-size:12px;padding:8px 12px;border-radius:var(--r);margin-bottom:12px;display:none;}
 .login-error.show{display:block;}
-.login-institution-footer{margin-top:18px;padding-top:14px;border-top:1px solid var(--border-light);text-align:center;}
+.login-institution-footer{margin-top:14px;padding-top:12px;border-top:1px solid var(--border-light);text-align:center;}
 .login-institution-footer span{font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.03em;}
 .login-institution-footer strong{color:var(--text2);font-weight:600;}
 .login-powered{text-align:center;margin-top:20px;position:relative;z-index:10;}
 .login-powered a{font-family:var(--mono);font-size:9px;color:rgba(255,255,255,.25);letter-spacing:.04em;text-decoration:none;}
 .login-powered a:hover{color:rgba(255,255,255,.5);}
+.login-org-select{display:flex;flex-direction:column;gap:6px;margin-bottom:14px;}
+.login-org-btn{width:100%;text-align:left;padding:10px 12px;background:#fff;border:1px solid var(--border-light);border-radius:var(--r);cursor:pointer;transition:border-color .15s,background .15s;font-family:inherit;}
+.login-org-btn:hover{border-color:var(--gold);background:rgba(200,168,78,.04);}
+.login-org-btn .ob-name{font-weight:600;font-size:13px;color:var(--text);}
+.login-org-btn .ob-group{font-size:11px;color:var(--text3);}
+.login-selected-org{display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:rgba(200,168,78,.06);border:1px solid var(--gold);border-radius:var(--r);margin-bottom:14px;}
+.login-selected-org .so-name{font-weight:600;font-size:13px;color:var(--text);}
+.login-selected-org .so-change{font-size:11px;color:var(--gold);cursor:pointer;font-weight:500;}
+.login-selected-org .so-change:hover{text-decoration:underline;}
+@media(max-width:760px){
+  .login-layout{flex-direction:column;gap:24px;padding:24px 20px;justify-content:flex-start;padding-top:40px;}
+  .login-brand{flex:none;text-align:center;}
+  .login-brand .lb-line{margin:10px auto 12px;}
+  .login-brand .lb-tagline{font-size:18px;}
+  .login-brand .lb-contact{margin-top:16px;}
+  .login-box{width:100%;max-width:380px;}
+}
 /* ── Fondo animado: cintas de producción ── */
 .belt-line{position:absolute;left:0;right:0;height:1px;background:rgba(0,87,128,.12);}
 .belt-checkpoint{position:absolute;width:3px;height:13px;top:-6px;background:rgba(0,87,128,.08);border-radius:1px;}
@@ -506,26 +532,49 @@ if('serviceWorker' in navigator){
 </head>
 <body>
 
-<!-- ══ LOGIN ══ -->
-<div class="login-screen" id="selectInstitucionScreen">
-  <div class="login-bg"></div>
-  <div class="login-box">
-    <div class="login-wordmark">
-      <span class="lw-fscc">FSCC</span>
-      <span class="lw-line"></span>
+<!-- ══ LOGIN (pantalla unificada) ══ -->
+<div class="login-screen" id="loginScreen">
+  <div class="login-bg" id="loginBg"></div>
+  <div class="login-layout">
+    <div class="login-brand">
+      <div class="lb-fscc">FSCC</div>
+      <span class="lb-line"></span>
+      <div class="lb-full">Food Service Control Center</div>
+      <div class="lb-tagline">Lo que no se mide,<br>no se controla.</div>
+      <div class="lb-contact">¿Organización nueva? <a href="mailto:contacto@fscc.com.ar">contacto@fscc.com.ar</a></div>
     </div>
-    <div class="login-wordmark-sub">Control operativo de calidad alimentaria</div>
-    <div id="listaInstituciones" style="display:flex;flex-direction:column;gap:8px;margin:16px 0;"></div>
-    <div style="font-size:11px;color:var(--text3);text-align:center;margin-top:6px;">¿Organización nueva? Contactá al proveedor del sistema.</div>
-    <div style="border-top:.5px solid var(--border-light);margin:16px 0 12px;padding-top:12px;">
-      <button class="btn btn-outline" style="width:100%;justify-content:center;" onclick="abrirAccesoDemo()">🧪 Probar demo</button>
-      <div style="font-size:10px;color:var(--text3);text-align:center;margin-top:6px;">Datos de ejemplo — nada se guarda.</div>
+    <div class="login-box">
+      <!-- Paso 1: elegir organización -->
+      <div id="loginStep1">
+        <div class="login-box-title">Seleccioná tu organización</div>
+        <div id="listaInstituciones" class="login-org-select"></div>
+        <div style="border-top:1px solid var(--border-light);margin:14px 0 12px;padding-top:12px;">
+          <button class="btn btn-outline" style="width:100%;justify-content:center;font-size:12px;" onclick="abrirAccesoDemo()">🧪 Probar demo</button>
+        </div>
+      </div>
+      <!-- Paso 2: login -->
+      <div id="loginStep2" style="display:none;">
+        <div id="loginSelectedOrg" class="login-selected-org">
+          <span class="so-name" id="loginInstitucionNombre">Sanatorio Parque</span>
+          <span class="so-change" onclick="cambiarInstitucion()">Cambiar</span>
+        </div>
+        <div class="login-error" id="loginError">Usuario o contraseña incorrectos.</div>
+        <div class="fg" style="margin-bottom:10px;">
+          <label>Usuario</label>
+          <input type="text" id="loginUser" placeholder="usuario" autocomplete="username" onkeydown="if(event.key==='Enter')doLogin()" />
+        </div>
+        <div class="fg" style="margin-bottom:18px;">
+          <label>Contraseña</label>
+          <input type="password" id="loginPass" placeholder="••••••" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLogin()" />
+        </div>
+        <button class="btn btn-primary" style="width:100%;justify-content:center;padding:10px;" onclick="doLogin()">Ingresar</button>
+        <button class="btn btn-ghost" style="width:100%;justify-content:center;margin-top:8px;font-size:12px;color:var(--text3);" onclick="openRecuperarPass()">¿Olvidaste tu contraseña?</button>
+      </div>
     </div>
   </div>
-  <div class="login-powered"><a href="https://fscc.com.ar" target="_blank">fscc.com.ar</a></div>
 </div>
 
-<!-- Modal: acceso al Modo Demo (usuario/contraseña genéricos, ver DEMO_ACCESO_USER/DEMO_ACCESO_PASS) -->
+<!-- Modal: acceso al Modo Demo -->
 <div class="modal-bg" id="modalAccesoDemo" onclick="handleModalClick(event,'modalAccesoDemo')">
   <div class="modal-box" style="max-width:340px;">
     <button class="modal-close" onclick="closeModal('modalAccesoDemo')">✕</button>
@@ -545,32 +594,6 @@ if('serviceWorker' in navigator){
       <button class="btn btn-primary" onclick="verificarAccesoDemo()">Ingresar</button>
     </div>
   </div>
-</div>
-
-<div class="login-screen" id="loginScreen">
-  <div class="login-bg" id="loginBg"></div>
-  <div class="login-floating-tagline">Lo que no se mide, no se controla.</div>
-  <div class="login-box">
-    <div class="login-wordmark">
-      <span class="lw-fscc">FSCC</span>
-      <span class="lw-line"></span>
-    </div>
-    <div class="login-wordmark-sub">Ingresá con tu usuario y contraseña</div>
-    <div class="login-error" id="loginError">Usuario o contraseña incorrectos.</div>
-    <div class="fg" style="margin-bottom:10px;">
-      <label>Usuario</label>
-      <input type="text" id="loginUser" placeholder="usuario" autocomplete="username" onkeydown="if(event.key==='Enter')doLogin()" />
-    </div>
-    <div class="fg" style="margin-bottom:18px;">
-      <label>Contraseña</label>
-      <input type="password" id="loginPass" placeholder="••••••" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLogin()" />
-    </div>
-    <button class="btn btn-primary" style="width:100%;justify-content:center;padding:10px;" onclick="doLogin()">Ingresar</button>
-    <button class="btn btn-ghost" style="width:100%;justify-content:center;margin-top:8px;font-size:12px;color:var(--text3);" onclick="openRecuperarPass()">¿Olvidaste tu contraseña?</button>
-    <button class="btn btn-ghost" style="width:100%;justify-content:center;margin-top:2px;font-size:11px;color:var(--text3);" onclick="cambiarInstitucion()">← Cambiar institución</button>
-    <div class="login-institution-footer"><span><strong id="loginInstitucionNombre">Sanatorio Parque</strong></span></div>
-  </div>
-  <div class="login-powered"><a href="https://fscc.com.ar" target="_blank">fscc.com.ar</a></div>
 </div>
 
 <!-- ══ APP ══ -->
@@ -2358,7 +2381,7 @@ if('serviceWorker' in navigator){
 </div>
 
 </main>
-<footer class="footer">FSCC &middot; <span id="footerInstitucionNombre">Sanatorio Parque</span> &middot; v39</footer>
+<footer class="footer">FSCC &middot; <span id="footerInstitucionNombre">Sanatorio Parque</span> &middot; v41</footer>
 </div><!-- /app-wrap -->
 
 <!-- ══ MODAL FOTO ══ -->
@@ -2951,7 +2974,7 @@ function entrarModoDemo(){
   haccpLogs = [];
   mantSolicitudes = [];
   capacitaciones = [];
-  document.getElementById('selectInstitucionScreen').classList.remove('active');
+  document.getElementById('loginScreen').classList.remove('active');
   pintarShellAppLogueada(seed.currentUser);
   const sel = document.getElementById('demoRolSelector');
   if(sel) sel.value = seed.currentUser.rol;
@@ -3027,36 +3050,44 @@ async function iniciarSeleccionInstitucion(){
     return;
   }
   renderListaInstituciones();
-  document.getElementById('selectInstitucionScreen').classList.add('active');
+  document.getElementById('loginStep1').style.display = '';
+  document.getElementById('loginStep2').style.display = 'none';
+  document.getElementById('loginScreen').classList.add('active');
+  _initLoginBg();
 }
 
 function renderListaInstituciones(){
   const el = document.getElementById('listaInstituciones');
   el.innerHTML = institucionesCache.map(inst=>`
-    <button class="btn btn-outline" style="width:100%;justify-content:flex-start;padding:12px 14px;text-align:left;" onclick="elegirInstitucion('${inst.id}')">
-      <div>
-        <div style="font-weight:600;font-size:14px;">${esc(inst.nombre)}</div>
-        <div style="font-size:11px;color:var(--text3);">${esc(inst.grupo)}</div>
-      </div>
+    <button class="login-org-btn" onclick="elegirInstitucion('${inst.id}')">
+      <div class="ob-name">${esc(inst.nombre)}</div>
+      <div class="ob-group">${esc(inst.grupo)}</div>
     </button>`).join('');
 }
 
 function elegirInstitucion(id){
-  DEMO_MODE = false; // entrar a una institución real siempre apaga el demo, sin excepción
+  DEMO_MODE = false;
   INSTITUCION_ID = id;
   LS.set('fscc_institucion_id', id);
-  document.getElementById('selectInstitucionScreen').classList.remove('active');
-  arrancarConInstitucion();
+  const inst = institucionesCache.find(i=>i.id===id);
+  const nombreEl = document.getElementById('loginInstitucionNombre');
+  if(nombreEl) nombreEl.textContent = inst ? inst.nombre : id;
+  document.getElementById('loginStep1').style.display = 'none';
+  document.getElementById('loginStep2').style.display = '';
+  document.title = 'FSCC — ' + (inst ? inst.nombre : id);
+  loadData();
+  setTimeout(()=>{const u=document.getElementById('loginUser');if(u)u.focus();},100);
 }
 
 function cambiarInstitucion(){
-  DEMO_MODE = false; // por si se llega a esta función viniendo del demo, por cualquier camino
+  DEMO_MODE = false;
   fbUnwatchAll();
   INSTITUCION_ID = null;
   localStorage.removeItem('fscc_institucion_id');
-  document.getElementById('loginScreen').classList.remove('active');
   renderListaInstituciones();
-  document.getElementById('selectInstitucionScreen').classList.add('active');
+  document.getElementById('loginStep1').style.display = '';
+  document.getElementById('loginStep2').style.display = 'none';
+  document.title = 'FSCC';
 }
 
 function nombreInstitucionActual(){
@@ -3070,6 +3101,8 @@ function arrancarConInstitucion(){
   if(nombreEl) nombreEl.textContent = inst ? inst.nombre : INSTITUCION_ID;
   document.title = 'FSCC — ' + (inst ? inst.nombre : INSTITUCION_ID);
   _initLoginBg();
+  document.getElementById('loginStep1').style.display = 'none';
+  document.getElementById('loginStep2').style.display = '';
   document.getElementById('loginScreen').classList.add('active');
   loadData();
 }
@@ -5118,7 +5151,9 @@ function doLogout(){
     document.getElementById('demoBanner').style.display = 'none';
     const p1=document.getElementById('notifPanel');if(p1)p1.classList.remove('open');
     renderListaInstituciones();
-    document.getElementById('selectInstitucionScreen').classList.add('active');
+    document.getElementById('loginStep1').style.display = '';
+    document.getElementById('loginStep2').style.display = 'none';
+    document.getElementById('loginScreen').classList.add('active');
     return;
   }
   audit('Cierre de sesión','','sistema');
