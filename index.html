@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>FSCC v29 — Sanatorio Parque</title>
+<title>FSCC — Sanatorio Parque</title>
 <link rel="manifest" href="manifest.json" />
 <meta name="theme-color" content="#1a2744" />
 <meta name="description" content="FoodService Control Center — Sistema de control de calidad y seguridad alimentaria" />
@@ -587,7 +587,7 @@ if('serviceWorker' in navigator){
 </div>
 <header class="hdr">
   <div style="display:flex;align-items:baseline;gap:4px;cursor:pointer;" onclick="volverInicio()" title="Volver al inicio">
-    <h1>FOOD SERVICE CONTROL CENTER</h1>
+    <h1>FSCC</h1>
     <span class="sub" id="hdrInstitucionNombre">Sanatorio Parque</span>
   </div>
   <div class="hdr-right">
@@ -2358,7 +2358,7 @@ if('serviceWorker' in navigator){
 </div>
 
 </main>
-<footer class="footer">FOOD SERVICE CONTROL CENTER &middot; <span id="footerInstitucionNombre">Sanatorio Parque</span> &middot; v13</footer>
+<footer class="footer">FSCC &middot; <span id="footerInstitucionNombre">Sanatorio Parque</span> &middot; v39</footer>
 </div><!-- /app-wrap -->
 
 <!-- ══ MODAL FOTO ══ -->
@@ -7150,7 +7150,7 @@ tbody tr{border-bottom:1px solid #e4e3dd;}tbody td{padding:7px 10px;vertical-ali
   <thead><tr><th>Tipo</th><th>Responsable</th><th>Turno</th><th>Estado</th><th>Hora Registro</th><th>Fecha</th><th>Vencimiento</th><th>Observaciones</th><th>Foto</th></tr></thead>
   <tbody>${rows||'<tr><td colspan="9" style="text-align:center;padding:20px;color:#9a9995">Sin registros</td></tr>'}</tbody>
 </table></div>
-<div class="footer">FOOD SERVICE CONTROL CENTER · ${nombreInstitucionActual()} · ${ts}</div></body></html>`,now};
+<div class="footer">FSCC · ${nombreInstitucionActual()} · ${ts}</div></body></html>`,now};
 }
 
 function downloadSectorReport(sector,filtro){
@@ -7295,7 +7295,7 @@ tbody tr{border-bottom:1px solid #e4e3dd;}tbody td{padding:7px 10px;vertical-ali
     </div>
   </div>
 </div>
-<div class="footer">FOOD SERVICE CONTROL CENTER · ${nombreInstitucionActual()} · Generado el ${ts}</div></body></html>`,now};
+<div class="footer">FSCC · ${nombreInstitucionActual()} · Generado el ${ts}</div></body></html>`,now};
 }
 
 async function generarReporteOperario(modo){
@@ -7404,7 +7404,7 @@ tbody tr{border-bottom:1px solid #e4e3dd;}tbody td{padding:8px 10px;vertical-ali
 .footer{text-align:center;font-size:10px;color:#9a9995;padding:1.5rem;}
 @media print{body{background:#fff;}.cover,thead{-webkit-print-color-adjust:exact;print-color-adjust:exact;}}</style></head><body>
 <div class="cover"><div class="sub">Sanatorio Parque</div>
-<h1>FOOD SERVICE CONTROL CENTER — REPORTE GENERAL</h1>
+<h1>FSCC — REPORTE GENERAL</h1>
 <div class="ts">Generado el ${ts.toUpperCase()}</div></div>
 <div class="metrics">
   <div class="metric"><div class="ml">Total</div><div class="mv">${total}</div></div>
@@ -7417,7 +7417,7 @@ tbody tr{border-bottom:1px solid #e4e3dd;}tbody td{padding:8px 10px;vertical-ali
 <div class="content"><table>
 <thead><tr><th>Sector</th><th>Tipo</th><th>Responsable</th><th>Turno</th><th>Estado</th><th>Hora Reg.</th><th>Fecha</th><th>Vencimiento</th><th>Observaciones</th><th>Foto</th></tr></thead>
 <tbody>${rows}</tbody></table></div>
-<div class="footer">FOOD SERVICE CONTROL CENTER · ${nombreInstitucionActual()} · ${ts}</div></body></html>`;
+<div class="footer">FSCC · ${nombreInstitucionActual()} · ${ts}</div></body></html>`;
   return{html,now};
 }
 
