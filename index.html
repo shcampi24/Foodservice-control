@@ -143,6 +143,23 @@ body{font-family:var(--sans);background:var(--bg);color:var(--text);min-height:1
 .cert-summary-chip.csc-warn{background:#fff8e1;color:#8a6416;}
 .cert-summary-chip.csc-expired{background:#fde8e8;color:#c04040;}
 .cert-summary-chip.csc-missing{background:var(--bg);color:var(--text3);border:1px solid var(--border);}
+.legajo-section{background:var(--surface);border:1px solid var(--border-light);border-radius:var(--r);padding:16px 18px;margin-bottom:1.2rem;}
+.legajo-section h3{font-size:15px;font-weight:600;color:var(--text);margin:0 0 4px;}
+.legajo-section .legajo-sub{font-size:11px;color:var(--text3);margin-bottom:12px;}
+.legajo-cert-item{border:1px solid var(--border-light);border-radius:var(--r);padding:10px 14px;margin-bottom:8px;background:var(--bg);}
+.legajo-cert-header{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;}
+.legajo-cert-tipo{font-weight:600;font-size:13px;color:var(--text);}
+.legajo-cert-detail{font-size:11px;color:var(--text2);margin-top:4px;}
+.legajo-cert-detail span{margin-right:12px;}
+.legajo-historial{margin-top:8px;padding-top:8px;border-top:1px dashed var(--border);}
+.legajo-historial-title{font-size:10px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px;}
+.legajo-hist-item{display:flex;align-items:flex-start;gap:8px;padding:4px 0;font-size:11px;color:var(--text3);border-left:2px solid var(--border);margin-left:4px;padding-left:10px;}
+.legajo-hist-item .hist-dates{font-weight:500;}
+.legajo-hist-item .hist-meta{font-size:10px;}
+.cap-subtabs{display:flex;gap:0;background:var(--bg2);border:1px solid var(--border-light);border-radius:var(--rl) var(--rl) 0 0;overflow:hidden;margin-bottom:0;}
+.cap-subtab{flex:1;padding:9px 16px;font-size:12px;font-weight:500;color:var(--text3);cursor:pointer;border:none;background:none;font-family:var(--sans);text-align:center;transition:all .15s;}
+.cap-subtab:hover{color:var(--text);background:rgba(200,168,78,.04);}
+.cap-subtab.active{color:var(--text);background:var(--surface);font-weight:600;border-bottom:2px solid var(--gold);}
 .role-badge.operario{background:#2a6a9a;color:#fff;}
 .role-badge.cubre{background:#7a3a9a;color:#fff;}
 .role-badge.mantenimiento{background:#c56a00;color:#fff;}
@@ -689,22 +706,48 @@ if('serviceWorker' in navigator){
 
 <!-- ══ VISTA: CAPACITACIONES ══ -->
 <div class="view" id="view-capacitaciones">
-  <div class="op-header" id="capHeader">
-    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
-      <div>
-        <h2>📚 Capacitaciones</h2>
-        <div class="op-meta" id="capMeta">Registro de capacitaciones del personal</div>
-      </div>
-      <div id="capAdminBtns" style="display:none;gap:8px;display:flex;">
-        <select class="flt" id="capFiltroOperario" onchange="renderCapacitaciones()">
-          <option value="">Todos los operarios</option>
-        </select>
-        <button class="btn btn-ghost" onclick="exportCapacitaciones()" title="Exportar a Excel">📊 Excel</button>
-        <button class="btn btn-primary" onclick="openNuevaCapacitacion()">+ Nueva capacitación</button>
+  <!-- Sub-tabs: Capacitaciones | Certificados -->
+  <div class="cap-subtabs">
+    <button class="cap-subtab active" id="capSubCap" onclick="switchCapSub('cap')">📚 Capacitaciones</button>
+    <button class="cap-subtab" id="capSubCert" onclick="switchCapSub('cert')">📋 Certificados</button>
+  </div>
+
+  <!-- Panel: Capacitaciones (existente) -->
+  <div id="capPanelCap" style="border:1px solid var(--border-light);border-top:none;border-radius:0 0 var(--rl) var(--rl);padding:1rem 1.2rem;">
+    <div class="op-header" id="capHeader">
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+        <div>
+          <h2>📚 Capacitaciones</h2>
+          <div class="op-meta" id="capMeta">Registro de capacitaciones del personal</div>
+        </div>
+        <div id="capAdminBtns" style="display:none;gap:8px;display:flex;">
+          <select class="flt" id="capFiltroOperario" onchange="renderCapacitaciones()">
+            <option value="">Todos los operarios</option>
+          </select>
+          <button class="btn btn-ghost" onclick="exportCapacitaciones()" title="Exportar a Excel">📊 Excel</button>
+          <button class="btn btn-primary" onclick="openNuevaCapacitacion()">+ Nueva capacitación</button>
+        </div>
       </div>
     </div>
+    <div id="capListado" style="margin-top:1rem;"></div>
   </div>
-  <div id="capListado" style="margin-top:1rem;"></div>
+
+  <!-- Panel: Certificados / Legajo -->
+  <div id="capPanelCert" style="display:none;border:1px solid var(--border-light);border-top:none;border-radius:0 0 var(--rl) var(--rl);padding:1rem 1.2rem;">
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:12px;">
+      <div>
+        <h2>📋 Certificados y habilitaciones</h2>
+        <div class="op-meta" id="certLegajoMeta">Legajo de certificados del personal</div>
+      </div>
+      <div id="certLegajoAdminBtns" style="display:none;gap:8px;">
+        <select class="flt" id="certLegajoFiltroUser" onchange="renderLegajoCerts()">
+          <option value="">Todos los usuarios</option>
+        </select>
+      </div>
+    </div>
+    <div id="certLegajoSummary" class="cert-summary-bar"></div>
+    <div id="certLegajoContent"></div>
+  </div>
 </div>
 
 <!-- ══ VISTA: SUPERVISIÓN ══ -->
@@ -2381,7 +2424,7 @@ if('serviceWorker' in navigator){
 </div>
 
 </main>
-<footer class="footer">FSCC &middot; <span id="footerInstitucionNombre">Sanatorio Parque</span> &middot; v41</footer>
+<footer class="footer">FSCC &middot; <span id="footerInstitucionNombre">Sanatorio Parque</span> &middot; v42</footer>
 </div><!-- /app-wrap -->
 
 <!-- ══ MODAL FOTO ══ -->
@@ -6263,11 +6306,25 @@ function renderCertEditList(u){
   }
   el.innerHTML = certs.map((c,ci) => {
     const est = certEstado(c.fechaVenc);
-    return `<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:.5px solid var(--border-light);">
-      <span class="cert-badge ${est.cls}">${est.icon}</span>
-      <span style="flex:1;font-size:13px;font-weight:500;">${esc(c.tipo)}</span>
-      <span style="font-size:11px;color:var(--text2);">${c.entidad?esc(c.entidad)+' · ':''}${fmtDate(c.fechaEmision)||'—'} → ${fmtDate(c.fechaVenc)||'—'}</span>
-      <button class="btn btn-danger btn-sm" style="padding:2px 6px;font-size:10px;" onclick="eliminarCertificado(${ci})">✕</button>
+    const hist = c.historial || [];
+    const histHtml = hist.length ? `<div style="margin:4px 0 2px 24px;">
+      <div style="font-size:9px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px;">Historial de renovaciones</div>
+      ${hist.map(h => {
+        const hEst = certEstado(h.fechaVenc);
+        return `<div style="font-size:10px;color:var(--text3);border-left:2px solid var(--border);padding-left:8px;margin-bottom:3px;">
+          ${hEst.icon} ${fmtDate(h.fechaEmision)||'—'} → ${fmtDate(h.fechaVenc)||'—'}${h.entidad?' · '+esc(h.entidad):''}
+          <span style="font-size:9px;opacity:.7;"> — renovado ${h.renovadoTs?fmtDate(h.renovadoTs.split('T')[0]):''}</span>
+        </div>`;
+      }).join('')}
+    </div>` : '';
+    return `<div style="padding:6px 0;border-bottom:.5px solid var(--border-light);">
+      <div style="display:flex;align-items:center;gap:8px;">
+        <span class="cert-badge ${est.cls}">${est.icon}</span>
+        <span style="flex:1;font-size:13px;font-weight:500;">${esc(c.tipo)}</span>
+        <span style="font-size:11px;color:var(--text2);">${c.entidad?esc(c.entidad)+' · ':''}${fmtDate(c.fechaEmision)||'—'} → ${fmtDate(c.fechaVenc)||'—'}</span>
+        <button class="btn btn-danger btn-sm" style="padding:2px 6px;font-size:10px;" onclick="eliminarCertificado(${ci})">✕</button>
+      </div>
+      ${histHtml}
     </div>`;
   }).join('');
 }
@@ -6285,10 +6342,13 @@ function agregarCertificado(){
   if(!fechaVenc){ alert('Ingresá la fecha de vencimiento.'); return; }
   const entidad = document.getElementById('certEntidad').value.trim();
   if(!u.certificados) u.certificados = [];
-  // Si ya existe uno del mismo tipo, reemplazar
   const existIdx = u.certificados.findIndex(c => c.tipo === tipo);
   const cert = {tipo, fechaEmision, fechaVenc, entidad, cargadoPor: currentUser?currentUser.nombre:'—', cargadoTs: new Date().toISOString()};
   if(existIdx >= 0){
+    const old = u.certificados[existIdx];
+    if(!old.historial) old.historial = [];
+    old.historial.push({fechaEmision:old.fechaEmision, fechaVenc:old.fechaVenc, entidad:old.entidad, cargadoPor:old.cargadoPor, cargadoTs:old.cargadoTs, renovadoTs:new Date().toISOString()});
+    cert.historial = old.historial;
     u.certificados[existIdx] = cert;
   } else {
     u.certificados.push(cert);
@@ -6297,7 +6357,7 @@ function agregarCertificado(){
   saveUsers();
   renderCertEditList(u);
   renderCertificados();
-  // Limpiar campos
+  if(document.getElementById('capPanelCert') && document.getElementById('capPanelCert').style.display!=='none') renderLegajoCerts();
   document.getElementById('certFechaEmision').value = '';
   document.getElementById('certFechaVenc').value = '';
   document.getElementById('certEntidad').value = '';
@@ -6314,6 +6374,7 @@ function eliminarCertificado(ci){
   saveUsers();
   renderCertEditList(u);
   renderCertificados();
+  if(document.getElementById('capPanelCert') && document.getElementById('capPanelCert').style.display!=='none') renderLegajoCerts();
 }
 
 // Alerta de certificados en el dashboard
@@ -6333,6 +6394,132 @@ function getCertAlerts(){
   // Ordenar: vencidos primero, luego por fecha
   alertas.sort((a,b) => (a.tipo==='expired'?0:1)-(b.tipo==='expired'?0:1) || new Date(a.fecha)-new Date(b.fecha));
   return alertas;
+}
+
+// ═══════════════════════════════════════════════════
+//  LEGAJO DE CERTIFICADOS (dentro de Capacitaciones)
+// ═══════════════════════════════════════════════════
+function switchCapSub(sub){
+  document.querySelectorAll('.cap-subtab').forEach(b=>b.classList.remove('active'));
+  document.getElementById(sub==='cert'?'capSubCert':'capSubCap').classList.add('active');
+  document.getElementById('capPanelCap').style.display = sub==='cap'?'':'none';
+  document.getElementById('capPanelCert').style.display = sub==='cert'?'':'none';
+  if(sub==='cert') renderLegajoCerts();
+  if(sub==='cap') renderCapacitaciones();
+}
+
+function renderLegajoCerts(){
+  const esSvAdmin = esSupervisorOSuperior(currentUser);
+  const adminBtns = document.getElementById('certLegajoAdminBtns');
+  if(adminBtns) adminBtns.style.display = esSvAdmin ? 'flex' : 'none';
+
+  const filtro = document.getElementById('certLegajoFiltroUser');
+  if(filtro && esSvAdmin){
+    const prev = filtro.value;
+    filtro.innerHTML = '<option value="">Todos los usuarios</option>' +
+      users.map(u=>`<option value="${esc(u.nombre)}">${esc(u.nombre)} (${u.rol})</option>`).join('');
+    filtro.value = prev;
+  }
+
+  let usersToShow = [];
+  if(!esSvAdmin && currentUser){
+    const me = users.find(u=>u.user===currentUser.user);
+    if(me) usersToShow = [me];
+  } else if(esSvAdmin){
+    usersToShow = filtro && filtro.value ? users.filter(u=>u.nombre===filtro.value) : [...users];
+  }
+
+  let okCount=0, warnCount=0, expiredCount=0, missingCount=0;
+  usersToShow.forEach(u => {
+    const certs = u.certificados || [];
+    CERT_TIPOS_DEFAULT.forEach(tipo => {
+      const c = certs.find(x => x.tipo === tipo);
+      if(!c || !c.fechaVenc){ missingCount++; return; }
+      const est = certEstado(c.fechaVenc);
+      if(est.cls==='cert-ok') okCount++;
+      else if(est.cls==='cert-warn') warnCount++;
+      else if(est.cls==='cert-expired') expiredCount++;
+    });
+  });
+
+  const sumBar = document.getElementById('certLegajoSummary');
+  if(sumBar) sumBar.innerHTML = `
+    ${okCount?`<span class="cert-summary-chip csc-ok">🟢 ${okCount} vigentes</span>`:''}
+    ${warnCount?`<span class="cert-summary-chip csc-warn">🟡 ${warnCount} por vencer</span>`:''}
+    ${expiredCount?`<span class="cert-summary-chip csc-expired">🔴 ${expiredCount} vencidos</span>`:''}
+    ${missingCount?`<span class="cert-summary-chip csc-missing">⚪ ${missingCount} sin cargar</span>`:''}
+  `;
+
+  const meta = document.getElementById('certLegajoMeta');
+  if(meta) meta.textContent = esSvAdmin ? 'Certificados y habilitaciones del equipo' : 'Tu legajo personal de certificados';
+
+  const content = document.getElementById('certLegajoContent');
+  if(!content) return;
+
+  if(!usersToShow.length){
+    content.innerHTML = '<div style="text-align:center;padding:2rem;color:var(--text3);font-size:13px;">No hay usuarios para mostrar.</div>';
+    return;
+  }
+
+  content.innerHTML = usersToShow.map((u,ui) => {
+    const certs = u.certificados || [];
+    const allCertTipos = [...new Set([...CERT_TIPOS_DEFAULT, ...certs.map(c=>c.tipo)])];
+    const userIdx = users.indexOf(u);
+    const editBtn = esSvAdmin ? `<button class="btn btn-outline btn-sm" style="font-size:11px;" onclick="openCertModal(${userIdx})">✏ Cargar / Editar</button>` : '';
+
+    const certsHtml = allCertTipos.map(tipo => {
+      const c = certs.find(x => x.tipo === tipo);
+      const est = c && c.fechaVenc ? certEstado(c.fechaVenc) : {cls:'cert-empty',label:'Sin cargar',icon:'⚪'};
+      const hist = c && c.historial ? c.historial : [];
+
+      let detailHtml = '';
+      if(c && c.fechaVenc){
+        const diasVenc = Math.ceil((new Date(c.fechaVenc) - new Date(today()))/(1000*60*60*24));
+        const diasRenovar = diasVenc < 0 ? `<span style="color:var(--red);font-weight:600;">Vencido hace ${Math.abs(diasVenc)} días — requiere renovación</span>` :
+          diasVenc <= 30 ? `<span style="color:#8a6416;font-weight:500;">Quedan ${diasVenc} días para renovar</span>` : '';
+        detailHtml = `<div class="legajo-cert-detail">
+          <span>📅 Emisión: ${fmtDate(c.fechaEmision)||'—'}</span>
+          <span>⏰ Vence: ${fmtDate(c.fechaVenc)}</span>
+          ${c.entidad?'<span>🏛 '+esc(c.entidad)+'</span>':''}
+          ${c.cargadoPor?'<span style="font-size:10px;opacity:.7;">Cargado por '+esc(c.cargadoPor)+'</span>':''}
+        </div>
+        ${diasRenovar?'<div style="font-size:11px;margin-top:3px;">'+diasRenovar+'</div>':''}`;
+      }
+
+      let histHtml = '';
+      if(hist.length){
+        histHtml = `<div class="legajo-historial">
+          <div class="legajo-historial-title">Historial de renovaciones (${hist.length})</div>
+          ${hist.map(h => {
+            const hEst = certEstado(h.fechaVenc);
+            return `<div class="legajo-hist-item">
+              <div>
+                <div class="hist-dates">${hEst.icon} ${fmtDate(h.fechaEmision)||'—'} → ${fmtDate(h.fechaVenc)||'—'}${h.entidad?' · '+esc(h.entidad):''}</div>
+                <div class="hist-meta">Cargado por ${esc(h.cargadoPor||'—')} · Renovado el ${h.renovadoTs?fmtDate(h.renovadoTs.split('T')[0]):''}</div>
+              </div>
+            </div>`;
+          }).join('')}
+        </div>`;
+      }
+
+      return `<div class="legajo-cert-item">
+        <div class="legajo-cert-header">
+          <span class="legajo-cert-tipo">${esc(tipo)}</span>
+          <span class="cert-badge ${est.cls}">${est.icon} ${est.label}</span>
+        </div>
+        ${detailHtml}
+        ${histHtml}
+      </div>`;
+    }).join('');
+
+    return `<div class="legajo-section">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+        <h3>👤 ${esc(u.nombre)} <span style="font-size:11px;font-weight:400;color:var(--text3);">(${u.rol})</span></h3>
+        ${editBtn}
+      </div>
+      ${certsHtml}
+    </div>`;
+  }).join('');
 }
 
 // ═══════════════════════════════════════════════════
