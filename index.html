@@ -12936,7 +12936,7 @@ function switchView(v,btn){
   if(v==='mantenimiento'){renderMant();}
   if(v==='trazabilidad'){renderTraz();}
   if(v==='rondas'){renderRondas();}
-  if(v==='capacitaciones'){renderCapacitaciones();}
+  if(v==='capacitaciones'){renderCapacitaciones();if(document.getElementById('capPanelCert')&&document.getElementById('capPanelCert').style.display!=='none')renderLegajoCerts();}
   if(v==='stock'){renderStActive();}
 }
 
@@ -12981,6 +12981,9 @@ function renderAll(){
     // Re-render vista activa de mantenimiento (si está abierta)
     const vMant=document.getElementById('view-mantenimiento');
     if(vMant && vMant.classList.contains('active')) renderMant();
+    // Re-render legajo de certs si está visible
+    const certPanel=document.getElementById('capPanelCert');
+    if(certPanel && certPanel.style.display!=='none') renderLegajoCerts();
   }
 }
 
